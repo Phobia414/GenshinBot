@@ -1,41 +1,20 @@
-# ===== SECRETS =====
+# Секреты
 .env
 
-# ===== Python =====
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-dist/
-*.egg-info/
-.eggs/
-
-# ===== VIRTUAL ENV =====
-.venv/
-venv/
-env/
-ENV/
-
-# ===== VS CODE =====
-.vscode/settings.json
-.vscode/launch.json
-
-# ===== DATABASE =====
+# Базы данных
 *.db
-*.sqlite
 *.sqlite3
 
-# ===== LOGS =====
-*.log
+# Логи
 logs/
+*.log
 
-# ===== OS =====
-.DS_Store
-Thumbs.db
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
 
-# ===== PYTEST =====
-.pytest_cache/
-.coverage
-htmlcov/
+# Настройки IDE
+.idea/
+.vscode/
