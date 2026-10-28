@@ -30,7 +30,6 @@ async def init_db():
                     gacha_guaranteed_5 INTEGER DEFAULT 0, gacha_lost_50_50 INTEGER DEFAULT 0, last_daily INTEGER DEFAULT 0,
                     guild_char_exp INTEGER DEFAULT 0, guild_rest_exp INTEGER DEFAULT 0, guild_clean_exp INTEGER DEFAULT 0,
                     first_seen INTEGER DEFAULT 0, rel_image TEXT DEFAULT '',
-                    gacha_banner TEXT DEFAULT 'event_char',
                     PRIMARY KEY (user_id, chat_id)
                 )
             """,
@@ -71,6 +70,22 @@ async def init_db():
                     id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, chat_id INTEGER,
                     item_name TEXT, item_type TEXT, rarity INTEGER, image_url TEXT
                 )
+            """,
+            "applications": """
+                CREATE TABLE IF NOT EXISTS applications (
+                    user_id INTEGER,
+                    chat_id INTEGER,
+                    character_name TEXT,
+                    age TEXT,
+                    experience TEXT,
+                    about TEXT,
+                    timezone TEXT,
+                    triggers TEXT,
+                    metagaming TEXT,
+                    activity TEXT,
+                    status TEXT DEFAULT 'pending',
+                    PRIMARY KEY (user_id, chat_id)
+                )
             """
         }
 
@@ -90,7 +105,9 @@ async def init_db():
                     async with db.execute(f"PRAGMA table_info({table_name})") as cur:
                         cols = [row[1] for row in await cur.fetchall()]
 
-                    if "chat_id" not in cols:
+                    if "chat_id" not in cols and table_name not in ["applications", "bot_settings", "char_photos",
+                                                                    "custom_chars", "gacha_gifs",
+                                                                    "gacha_custom_images"]:
                         print(f"🔄 Миграция таблицы {table_name}...")
                         await db.execute(f"ALTER TABLE {table_name} RENAME TO {table_name}_old")
                         await db.execute(create_sql)
@@ -122,21 +139,18 @@ async def init_db():
             except Exception as e:
                 print(f"⚠️ Ошибка миграции {table_name}: {e}")
 
-        # Добавляем новые колонки в users, если их нет
         try:
             await db.execute("ALTER TABLE users ADD COLUMN rel_image TEXT DEFAULT ''")
         except Exception:
             pass
 
-        try:
-            await db.execute("ALTER TABLE users ADD COLUMN gacha_banner TEXT DEFAULT 'event_char'")
-        except Exception:
-            pass
-
         await db.execute("""
             CREATE TABLE IF NOT EXISTS chat_cleanup_settings (
-                chat_id INTEGER PRIMARY KEY, enabled INTEGER DEFAULT 0, min_messages INTEGER DEFAULT 100,
-                frequency_days INTEGER DEFAULT 7, last_cleanup INTEGER DEFAULT 0
+                chat_id INTEGER PRIMARY KEY,
+                enabled INTEGER DEFAULT 0,
+                min_messages INTEGER DEFAULT 100,
+                frequency_days INTEGER DEFAULT 7,
+                last_cleanup INTEGER DEFAULT 0
             )
         """)
         await db.execute("""
@@ -663,23 +677,18 @@ async def get_gacha_inventory(user_id, chat_id):
                            (user_id, chat_id))
 
 
-# --- ФУНКЦИИ ДЛЯ ПРОДАЖИ ---
-async def get_gacha_item(item_id):
-    return await fetch_one("SELECT * FROM gacha_inventory WHERE id = ?", (item_id,))
+# ============ APPLICATIONS ============
+async def save_application(user_id, chat_id, character_name, age, experience, about, timezone, triggers, metagaming,
+                           activity):
+    await execute("""
+        INSERT OR REPLACE INTO applications (user_id, chat_id, character_name, age, experience, about, timezone, triggers, metagaming, activity, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+    """, (user_id, chat_id, character_name, age, experience, about, timezone, triggers, metagaming, activity))
 
 
-async def delete_gacha_item(item_id):
-    await execute("DELETE FROM gacha_inventory WHERE id = ?", (item_id,))
+async def get_application(user_id, chat_id):
+    return await fetch_one("SELECT * FROM applications WHERE user_id = ? AND chat_id = ?", (user_id, chat_id))
 
 
-async def get_gacha_items_by_rarity(user_id, chat_id, rarity, limit=10):
-    return await fetch_all(
-        "SELECT * FROM gacha_inventory WHERE user_id = ? AND chat_id = ? AND rarity = ? LIMIT ?",
-        (user_id, chat_id, rarity, limit)
-    )
-
-
-async def delete_gacha_items(item_ids):
-    if not item_ids: return
-    placeholders = ",".join("?" for _ in item_ids)
-    await execute(f"DELETE FROM gacha_inventory WHERE id IN ({placeholders})", tuple(item_ids))
+async def update_application_status(user_id, chat_id, status):
+    await execute("UPDATE applications SET status = ? WHERE user_id = ? AND chat_id = ?", (status, user_id, chat_id))

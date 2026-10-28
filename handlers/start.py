@@ -1,13 +1,14 @@
 from aiogram import types, F
-from aiogram.filters import Command
+from aiogram.filters import Command, CommandObject
 from aiogram.types import FSInputFile
 from aiogram.fsm.context import FSMContext
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from bot_instance import bot, dp
 from callbacks import MenuCB, RegionCB, CharCB
 from config import CREATOR_USERNAME
-from db import get_user, update_user, is_character_taken, get_taken_characters, get_local_setting
-from characters import REGIONS, get_character_image
+from db import get_user, update_user, is_character_taken, get_taken_characters, get_local_setting, get_application
+from characters import REGIONS, get_character_image, CHARACTERS
 from constants import DIV, PLACEHOLDER_IMAGES
 from helpers import (
     esc, user_display_name, get_placeholder_image, _ensure_user,
@@ -16,7 +17,8 @@ from helpers import (
 from keyboards import (
     gender_kb, regions_kb, characters_kb, main_menu_kb,
 )
-import state as bot_state  # ИСПРАВЛЕНО: Переименовали импорт, чтобы не конфликтовать с FSM
+from handlers.apply import ApplyForm
+import state
 
 
 def format_text(text: str, name: str, div: str) -> str:
@@ -24,19 +26,56 @@ def format_text(text: str, name: str, div: str) -> str:
 
 
 @dp.message(Command("start"))
-async def cmd_start(message: types.Message, state: FSMContext):
-    # Очищаем состояние ожидания (если игрок застрял)
+async def cmd_start(message: types.Message, state: FSMContext, command: CommandObject):
     await state.clear()
-
     chat_id = message.chat.id
+
+    # --- ОБРАБОТКА ССЫЛКИ-ПРИГЛАШЕНИЯ ---
+    if command.args and command.args.startswith("apply_"):
+        target_chat_id = int(command.args.replace("apply_", ""))
+
+        # Проверяем, есть ли уже анкета
+        app = await get_application(message.from_user.id, target_chat_id)
+        if app:
+            status = app['status']
+            if status == 'pending':
+                return await message.answer("⏳ Ваша анкета уже находится на рассмотрении у администратора.")
+            elif status == 'rejected':
+                return await message.answer(
+                    "❌ Ваша предыдущая анкета была отклонена. Вы можете попробовать снова позже.")
+
+        # Получаем список занятых персонажей в целевом чате
+        taken = await get_taken_characters(target_chat_id)
+        free_chars = [name for name in CHARACTERS.keys() if name not in taken]
+
+        if not free_chars:
+            return await message.answer("😔 К сожалению, в этой ролевой сейчас нет свободных ролей.")
+
+        await state.update_data(target_chat_id=target_chat_id)
+        await state.set_state(ApplyForm.choosing_char)
+
+        b = InlineKeyboardBuilder()
+        # Выводим первые 20 штук для удобства
+        for ch in free_chars[:20]:
+            b.button(text=ch, callback_data=f"apply_char_{ch}")
+        b.adjust(2)
+
+        await message.answer(
+            f"🎭 <b>Выберите желаемую роль</b>\n{DIV}\n\n"
+            f"Ниже представлены свободные персонажи в этой ролевой. Выберите того, за кого хотите играть.",
+            reply_markup=b.as_markup(), parse_mode="HTML"
+        )
+        return
+    # --------------------------------------
+
     try:
         await message.delete()
     except Exception:
         pass
 
-    if chat_id in bot_state._last_bot_msg:
+    if chat_id in state._last_bot_msg:
         try:
-            await bot.delete_message(chat_id, bot_state._last_bot_msg[chat_id])
+            await bot.delete_message(chat_id, state._last_bot_msg[chat_id])
         except Exception:
             pass
 
@@ -64,14 +103,14 @@ async def cmd_start(message: types.Message, state: FSMContext):
                 reply_markup=gender_kb(message.from_user.id),
                 parse_mode="HTML"
             )
-            bot_state._last_bot_msg[chat_id] = msg.message_id
+            state._last_bot_msg[chat_id] = msg.message_id
         except Exception:
             msg = await message.answer(
                 text,
                 reply_markup=gender_kb(message.from_user.id),
                 parse_mode="HTML"
             )
-            bot_state._last_bot_msg[chat_id] = msg.message_id
+            state._last_bot_msg[chat_id] = msg.message_id
         return
 
     if not user["character_name"] or user.get("char_change_paid") == 1:
@@ -92,14 +131,14 @@ async def cmd_start(message: types.Message, state: FSMContext):
                 reply_markup=regions_kb(message.from_user.id),
                 parse_mode="HTML"
             )
-            bot_state._last_bot_msg[chat_id] = msg.message_id
+            state._last_bot_msg[chat_id] = msg.message_id
         except Exception:
             msg = await message.answer(
                 text,
                 reply_markup=regions_kb(message.from_user.id),
                 parse_mode="HTML"
             )
-            bot_state._last_bot_msg[chat_id] = msg.message_id
+            state._last_bot_msg[chat_id] = msg.message_id
         return
 
     name = esc(user_display_name(user))
@@ -131,14 +170,14 @@ async def cmd_start(message: types.Message, state: FSMContext):
                 reply_markup=main_menu_kb(message.from_user.id),
                 parse_mode="HTML"
             )
-        bot_state._last_bot_msg[chat_id] = msg.message_id
+        state._last_bot_msg[chat_id] = msg.message_id
     except Exception:
         msg = await message.answer(
             text,
             reply_markup=main_menu_kb(message.from_user.id),
             parse_mode="HTML"
         )
-        bot_state._last_bot_msg[chat_id] = msg.message_id
+        state._last_bot_msg[chat_id] = msg.message_id
 
 
 @dp.callback_query(MenuCB.filter(F.action.in_(["gender_male", "gender_female"])))
@@ -231,7 +270,7 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
                 reply_markup=main_menu_kb(query.from_user.id),
                 parse_mode="HTML"
             )
-        bot_state._last_bot_msg[chat.id] = msg.message_id
+        state._last_bot_msg[chat.id] = msg.message_id
     except Exception:
         msg = await bot.send_photo(
             chat_id=chat.id,
@@ -240,4 +279,4 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
             reply_markup=main_menu_kb(query.from_user.id),
             parse_mode="HTML"
         )
-        bot_state._last_bot_msg[chat.id] = msg.message_id
+        state._last_bot_msg[chat.id] = msg.message_id

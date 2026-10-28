@@ -219,4 +219,4 @@ async def cb_guild_boss_attack(query: types.CallbackQuery, callback_data: GuildC
     else:
         await query.answer(f"⚔️ {dmg} урона!", show_alert=False)
 
-    await cb_guild_boss(query, GuildCB(action="boss", owner_id=query.from_user.id))
+    await cb_guild_boss(query, GuildCB(action="boss", owner_id=query.from_user.id)) 

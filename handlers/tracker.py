@@ -16,7 +16,8 @@ from db import (
     get_user, update_user, increment_user_field,
     get_guild, update_guild,
     add_ingredient, get_ingredients, INGREDIENTS,
-    get_food_buff, get_total_bonuses, update_primogems
+    get_food_buff, get_total_bonuses, update_primogems,
+    get_application, update_application_status
 )
 from helpers import (
     esc, _mention, extract_target, resolve_user_id,
@@ -68,6 +69,7 @@ async def track_text(message: types.Message, user: dict, chat_id: int):
 
     text_lower = (message.text or "").lower().strip()
 
+    # ===== ПРОВЕРКА ВИКТОРИНЫ =====
     quiz = state._active_quizzes.get(message.chat.id)
     if quiz:
         correct_answer = quiz.get("answer", "")
@@ -101,6 +103,7 @@ async def track_text(message: types.Message, user: dict, chat_id: int):
             )
             state._active_quizzes.pop(message.chat.id, None)
             return
+    # ====================================================
 
     if "вызвать на дуэль" in text_lower and is_group:
         parts = text_lower.split()
@@ -428,6 +431,7 @@ async def on_chat_member_update(event: types.ChatMemberUpdated):
 
         was_in = old_status in ("member", "administrator", "creator", "restricted")
         is_gone = new_status in ("left", "kicked")
+        is_new = old_status in ("left", "kicked") and new_status in ("member", "administrator", "creator")
 
         if was_in and is_gone:
             user = await get_user(affected_user.id, event.chat.id)
@@ -444,5 +448,30 @@ async def on_chat_member_update(event: types.ChatMemberUpdated):
                     pass
                 print(f"Освобождена роль {old_name} (user {affected_user.id})")
                 await update_chat_list(event.chat.id)
+
+        # --- НОВЫЙ КОД: ПРИВЕТСТВИЕ И АНКЕТА ---
+        elif is_new:
+            app = await get_application(affected_user.id, event.chat.id)
+            if app and app['status'] == 'accepted':
+                # Выдаем роль в БД
+                await update_user(affected_user.id, event.chat.id, character_name=app['character_name'])
+                await update_application_status(affected_user.id, event.chat.id, 'joined')
+
+                text = (
+                    f"🎉 <b>У нас новенький! Встречайте!</b>\n\n"
+                    f"🎭 <b>Роль:</b> {esc(app['character_name'])}\n\n"
+                    f"📖 <b>Опыт:</b> {esc(app['experience'])}\n"
+                    f"🌟 <b>О себе:</b> {esc(app['about'])}\n"
+                    f"🕒 <b>Часовой пояс:</b> {esc(app['timezone'])}\n"
+                    f"⚠️ <b>Триггеры:</b> {esc(app['triggers'])}\n"
+                    f"🚫 <b>Метагейминг:</b> {esc(app['metagaming'])}\n"
+                    f"⚡ <b>Активность:</b> {esc(app['activity'])}"
+                )
+                try:
+                    await bot.send_message(event.chat.id, text, parse_mode="HTML")
+                except Exception:
+                    pass
+                await update_chat_list(event.chat.id)
+        # -------------------------------------
     except Exception as e:
         print(f"ChatMemberUpdate error: {e}")

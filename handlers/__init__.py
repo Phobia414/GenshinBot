@@ -18,3 +18,4 @@ from . import admin_panel
 from . import gacha
 from . import daily
 from . import economy
+from . import apply

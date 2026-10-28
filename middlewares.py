@@ -57,9 +57,20 @@ async def auto_register_cb(handler, event: types.CallbackQuery, data: dict):
         if event.from_user.username and u and u.get("username") != event.from_user.username:
             await update_user(event.from_user.id, chat_id, username=event.from_user.username)
 
+    # --- Блокировка меню для соискателей ---
+    cb_data = event.data or ""
+    if not cb_data.startswith(("apply_", "appr_")) and event.from_user.id != OWNER_ID:
+        from db import get_application
+        # Проверяем, есть ли активная анкета (pending или accepted, но еще не joined)
+        # Для простоты проверяем по chat_id, если это кнопка меню
+        app = await get_application(event.from_user.id, chat_id)
+        if app and app['status'] == 'pending':
+            await event.answer("⏳ Вы не можете пользоваться меню, пока ваша анкета на рассмотрении.", show_alert=True)
+            return
+    # ---------------------------------------
+
     allowed_prefixes = ("menu:gender_", "menu:regions", "reg:", "char:", "menu:tops", "top:", "menu:lists", "lists:",
                         "cmd:")
-    cb_data = event.data or ""
     if not cb_data.startswith(allowed_prefixes):
         if event.from_user.id != OWNER_ID:
             u = await get_user(event.from_user.id, chat_id)
