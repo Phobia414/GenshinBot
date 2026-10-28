@@ -18,7 +18,7 @@ from keyboards import (
     gender_kb, regions_kb, characters_kb, main_menu_kb,
 )
 from handlers.apply import ApplyForm
-import state
+import state as bot_state  # <--- ИСПРАВЛЕНО: переименован импорт
 
 
 def format_text(text: str, name: str, div: str) -> str:
@@ -34,7 +34,6 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
     if command.args and command.args.startswith("apply_"):
         target_chat_id = int(command.args.replace("apply_", ""))
 
-        # Проверяем, есть ли уже анкета
         app = await get_application(message.from_user.id, target_chat_id)
         if app:
             status = app['status']
@@ -44,7 +43,6 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
                 return await message.answer(
                     "❌ Ваша предыдущая анкета была отклонена. Вы можете попробовать снова позже.")
 
-        # Получаем список занятых персонажей в целевом чате
         taken = await get_taken_characters(target_chat_id)
         free_chars = [name for name in CHARACTERS.keys() if name not in taken]
 
@@ -55,7 +53,6 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
         await state.set_state(ApplyForm.choosing_char)
 
         b = InlineKeyboardBuilder()
-        # Выводим первые 20 штук для удобства
         for ch in free_chars[:20]:
             b.button(text=ch, callback_data=f"apply_char_{ch}")
         b.adjust(2)
@@ -73,9 +70,10 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
     except Exception:
         pass
 
-    if chat_id in state._last_bot_msg:
+    # ИСПРАВЛЕНО: используем bot_state
+    if chat_id in bot_state._last_bot_msg:
         try:
-            await bot.delete_message(chat_id, state._last_bot_msg[chat_id])
+            await bot.delete_message(chat_id, bot_state._last_bot_msg[chat_id])
         except Exception:
             pass
 
@@ -103,14 +101,14 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
                 reply_markup=gender_kb(message.from_user.id),
                 parse_mode="HTML"
             )
-            state._last_bot_msg[chat_id] = msg.message_id
+            bot_state._last_bot_msg[chat_id] = msg.message_id
         except Exception:
             msg = await message.answer(
                 text,
                 reply_markup=gender_kb(message.from_user.id),
                 parse_mode="HTML"
             )
-            state._last_bot_msg[chat_id] = msg.message_id
+            bot_state._last_bot_msg[chat_id] = msg.message_id
         return
 
     if not user["character_name"] or user.get("char_change_paid") == 1:
@@ -131,14 +129,14 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
                 reply_markup=regions_kb(message.from_user.id),
                 parse_mode="HTML"
             )
-            state._last_bot_msg[chat_id] = msg.message_id
+            bot_state._last_bot_msg[chat_id] = msg.message_id
         except Exception:
             msg = await message.answer(
                 text,
                 reply_markup=regions_kb(message.from_user.id),
                 parse_mode="HTML"
             )
-            state._last_bot_msg[chat_id] = msg.message_id
+            bot_state._last_bot_msg[chat_id] = msg.message_id
         return
 
     name = esc(user_display_name(user))
@@ -170,14 +168,14 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
                 reply_markup=main_menu_kb(message.from_user.id),
                 parse_mode="HTML"
             )
-        state._last_bot_msg[chat_id] = msg.message_id
+        bot_state._last_bot_msg[chat_id] = msg.message_id
     except Exception:
         msg = await message.answer(
             text,
             reply_markup=main_menu_kb(message.from_user.id),
             parse_mode="HTML"
         )
-        state._last_bot_msg[chat_id] = msg.message_id
+        bot_state._last_bot_msg[chat_id] = msg.message_id
 
 
 @dp.callback_query(MenuCB.filter(F.action.in_(["gender_male", "gender_female"])))
@@ -270,7 +268,7 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
                 reply_markup=main_menu_kb(query.from_user.id),
                 parse_mode="HTML"
             )
-        state._last_bot_msg[chat.id] = msg.message_id
+        bot_state._last_bot_msg[chat.id] = msg.message_id
     except Exception:
         msg = await bot.send_photo(
             chat_id=chat.id,
@@ -279,4 +277,4 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
             reply_markup=main_menu_kb(query.from_user.id),
             parse_mode="HTML"
         )
-        state._last_bot_msg[chat.id] = msg.message_id
+        bot_state._last_bot_msg[chat.id] = msg.message_id
