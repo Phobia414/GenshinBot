@@ -4,12 +4,8 @@ from aiogram import types, F
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from bot_instance import bot, dp
-from callbacks import MenuCB, GachaInvCB
-from db import (
-    get_user, update_user, update_primogems, get_gacha_gif,
-    add_gacha_item, get_gacha_inventory, get_gacha_item, delete_gacha_item,
-    get_gacha_items_by_rarity, delete_gacha_items
-)
+from callbacks import MenuCB
+from db import get_user, update_user, update_primogems, get_gacha_gif, add_gacha_item, get_gacha_inventory
 from gacha_data import POOL_3_STAR, POOL_4_STAR, POOL_5_STAR
 from helpers import edit_or_send, inject_user
 import state
@@ -147,8 +143,8 @@ async def cb_gacha_menu(query, callback_data, user, chat_id):
 @dp.callback_query(F.data == "gacha_change_banner")
 async def cb_gacha_change_banner(query):
     b = InlineKeyboardBuilder()
-    for key, val in BANNERS.items():
-        b.button(text=f"⊱ {val['icon']} {val['name']} ⊰", callback_data=f"gacha_set_banner_{key}")
+    for key, val in BANNERS.items(): b.button(text=f"⊱ {val['icon']} {val['name']} ⊰",
+                                              callback_data=f"gacha_set_banner_{key}")
     b.button(text="⊱ ‹ Назад ⊰", callback_data="gacha_back")
     b.adjust(1)
     text = f"╭──────────────────────────╮\n   🔄 ВЫБОР БАННЕРА\n╰──────────────────────────╯\n\n🎭 Ивентовый — 50/50.\n💠 Стандартный — только стандартные.\n⚔️ Оружейный — 75/25.\n\nВыбери баннер:"
@@ -173,113 +169,15 @@ async def cb_gacha_info(query, user, chat_id):
     await edit_or_send(query, text, b.as_markup())
 
 
-# ==================== ИНВЕНТАРЬ ГАЧИ (ПРОДАЖА) ====================
-
 @dp.callback_query(F.data == "gacha_inv")
 @inject_user
 async def cb_gacha_inv(query, user, chat_id):
     items = await get_gacha_inventory(query.from_user.id, chat_id)
-    if not items:
-        return await query.answer("Инвентарь пуст!", show_alert=True)
-
-    b = InlineKeyboardBuilder()
-    for it in items[:20]:
-        b.button(
-            text=f"{'⭐' * it['rarity']} {it['item_name']}",
-            callback_data=GachaInvCB(action="view", item_id=it["id"], owner_id=query.from_user.id)
-        )
-
-    b.button(text="📦 Продать 10х 3★",
-             callback_data=GachaInvCB(action="bulk_sell", rarity=3, owner_id=query.from_user.id))
-    b.button(text="📦 Продать 10х 4★",
-             callback_data=GachaInvCB(action="bulk_sell", rarity=4, owner_id=query.from_user.id))
-    b.button(text="📦 Продать 10х 5★",
-             callback_data=GachaInvCB(action="bulk_sell", rarity=5, owner_id=query.from_user.id))
-
-    b.button(text="⊱ ‹ Назад ⊰", callback_data="gacha_back")
-    b.adjust(1)
-
-    text = f"╭──────────────────────────╮\n   🎒 ИНВЕНТАРЬ\n╰──────────────────────────╯\n\nВыбери предмет, чтобы посмотреть детали и продать, или используй массовую продажу:"
-    await edit_or_send(query, text, b.as_markup())
-
-
-@dp.callback_query(GachaInvCB.filter(F.action == "view"))
-@inject_user
-async def cb_gacha_inv_view(query, callback_data: GachaInvCB, user, chat_id):
-    if query.from_user.id != callback_data.owner_id:
-        return
-
-    item = await get_gacha_item(callback_data.item_id)
-    if not item or item["user_id"] != query.from_user.id:
-        await query.answer("❌ Предмет не найден!", show_alert=True)
-        return
-
-    prices = {3: 5, 4: 20, 5: 160}
-    price = prices.get(item["rarity"], 5)
-
-    b = InlineKeyboardBuilder()
-    b.button(text=f"💰 Продать за {price} 💎",
-             callback_data=GachaInvCB(action="sell", item_id=item["id"], owner_id=query.from_user.id))
-    b.button(text="‹ К инвентарю", callback_data="gacha_inv")
-    b.adjust(1)
-
-    text = (
-        f"╭──────────────────────────╮\n"
-        f"   🎒 ПРЕДМЕТ\n"
-        f"╰──────────────────────────╯\n\n"
-        f"{'⭐' * item['rarity']} <b>{item['item_name']}</b>\n\n"
-        f"💰 Цена продажи: <b>{price} 💎</b>"
-    )
-    await edit_or_send(query, text, b.as_markup())
-
-
-@dp.callback_query(GachaInvCB.filter(F.action == "sell"))
-@inject_user
-async def cb_gacha_sell(query, callback_data: GachaInvCB, user, chat_id):
-    if query.from_user.id != callback_data.owner_id:
-        return
-
-    item = await get_gacha_item(callback_data.item_id)
-    if not item or item["user_id"] != query.from_user.id:
-        await query.answer("❌ Предмет не найден!", show_alert=True)
-        return
-
-    prices = {3: 5, 4: 20, 5: 160}
-    price = prices.get(item["rarity"], 5)
-
-    await delete_gacha_item(item["id"])
-    await update_primogems(query.from_user.id, chat_id, price)
-
-    await query.answer(f"✅ Продано за {price} 💎!", show_alert=True)
-    # ИСПРАВЛЕНО: Убраны лишние аргументы
-    await cb_gacha_inv(query)
-
-
-@dp.callback_query(GachaInvCB.filter(F.action == "bulk_sell"))
-@inject_user
-async def cb_gacha_bulk_sell(query, callback_data: GachaInvCB, user, chat_id):
-    if query.from_user.id != callback_data.owner_id:
-        return
-
-    rarity = callback_data.rarity
-    prices = {3: 5, 4: 20, 5: 160}
-    price_per_item = prices.get(rarity, 5)
-
-    items_to_sell = await get_gacha_items_by_rarity(query.from_user.id, chat_id, rarity, 10)
-
-    if len(items_to_sell) < 10:
-        await query.answer(f"❌ У тебя нет 10 предметов {rarity}★ для продажи!", show_alert=True)
-        return
-
-    item_ids = [it["id"] for it in items_to_sell]
-
-    await delete_gacha_items(item_ids)
-    total_price = price_per_item * 10
-    await update_primogems(query.from_user.id, chat_id, total_price)
-
-    await query.answer(f"✅ Продано 10 предметов {rarity}★ за {total_price} 💎!", show_alert=True)
-    # ИСПРАВЛЕНО: Убраны лишние аргументы
-    await cb_gacha_inv(query)
+    if not items: return await query.answer("Инвентарь пуст!", show_alert=True)
+    lines = [f"╭──────────────────────────╮\n   🎒 ИНВЕНТАРЬ\n╰──────────────────────────╯\n"]
+    for it in items[:20]: lines.append(f"{'⭐' * it['rarity']} {it['item_name']}")
+    b = InlineKeyboardBuilder().button(text="⊱ ‹ Назад ⊰", callback_data="gacha_back")
+    await edit_or_send(query, "\n".join(lines), b.as_markup())
 
 
 @dp.callback_query(F.data == "gacha_back")
@@ -293,16 +191,12 @@ async def cb_gacha_back(query, user, chat_id):
 async def cb_do_pull(query, user, chat_id):
     pulls = 1 if query.data == "gacha_1" else 10
     cost = COST_1 if pulls == 1 else COST_10
-    if user.get("primogems", 0) < cost:
-        return await query.answer(f"❌ Нужно {cost} 💎", show_alert=True)
-
+    if user.get("primogems", 0) < cost: return await query.answer(f"❌ Нужно {cost} 💎", show_alert=True)
     await query.answer("Крутим...")
     await update_primogems(query.from_user.id, chat_id, -cost)
 
     banner = user.get("gacha_banner", "event_char")
-    p4, p5, g5, l50 = user.get("gacha_pity_4", 0), user.get("gacha_pity_5", 0), user.get("gacha_guaranteed_5",
-                                                                                         0), user.get(
-        "gacha_lost_50_50", 0)
+    p4, p5, g5, l50 = user.get("gacha_pity_4", 0), user.get("gacha_pity_5", 0), user.get("gacha_guaranteed_5", 0), user.get("gacha_lost_50_50", 0)
     results, max_rarity, is_pink, best_item = [], 3, False, None
 
     for _ in range(pulls):
@@ -317,8 +211,7 @@ async def cb_do_pull(query, user, chat_id):
         elif best_item is None:
             best_item = item
 
-    await update_user(query.from_user.id, chat_id, gacha_pity_4=p4, gacha_pity_5=p5, gacha_guaranteed_5=g5,
-                      gacha_lost_50_50=l50)
+    await update_user(query.from_user.id, chat_id, gacha_pity_4=p4, gacha_pity_5=p5, gacha_guaranteed_5=g5, gacha_lost_50_50=l50)
     gif_type = "blue" if max_rarity == 3 else ("purple" if max_rarity == 4 else ("pink" if is_pink else "gold"))
 
     try:
@@ -336,8 +229,7 @@ async def cb_do_pull(query, user, chat_id):
             pass
 
     lines = [f"{'⭐' * rar} {it['name']}" for rar, it in results]
-    text = f"🌟 <b>РЕЗУЛЬТАТЫ (x{pulls})</b>\n\n" + "\n".join(
-        lines) + f"\n\n💎 Остаток: {user.get('primogems', 0) - cost}\n🔮 До гаранта: {BANNERS[banner]['pity_max'] - p5}"
+    text = f"🌟 <b>РЕЗУЛЬТАТЫ (x{pulls})</b>\n\n" + "\n".join(lines) + f"\n\n💎 Остаток: {user.get('primogems', 0) - cost}\n🔮 До гаранта: {BANNERS[banner]['pity_max'] - p5}"
 
     kb = InlineKeyboardBuilder().button(text="⊱ 🔮 К молитвам ⊰", callback_data="gacha_back")
     kb.adjust(1)
@@ -346,8 +238,7 @@ async def cb_do_pull(query, user, chat_id):
         best_img = state._gacha_images.get(best_item["name"], best_item["image"])
         caption = text + f"\n\n✨ Лучшее: {'⭐' * max_rarity} <b>{best_item['name']}</b>"
         try:
-            await bot.send_photo(chat_id=chat_id, photo=best_img, caption=caption, reply_markup=kb.as_markup(),
-                                 parse_mode="HTML")
+            await bot.send_photo(chat_id=chat_id, photo=best_img, caption=caption, reply_markup=kb.as_markup(), parse_mode="HTML")
         except:
             await bot.send_message(chat_id, text, reply_markup=kb.as_markup(), parse_mode="HTML")
     else:
