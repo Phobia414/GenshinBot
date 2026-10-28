@@ -14,6 +14,7 @@ from helpers import esc
 class ApplyForm(StatesGroup):
     choosing_char = State()
     age = State()
+    age_visibility = State()
     experience = State()
     about = State()
     timezone = State()
@@ -28,7 +29,6 @@ async def cb_apply_choose_char(query: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     chat_id = data.get("target_chat_id")
 
-    # Проверяем, не заняли ли роль, пока он думал
     taken = await get_taken_characters(chat_id)
     if char_name in taken:
         await query.answer("❌ Увы, эту роль только что заняли. Выберите другую.", show_alert=True)
@@ -37,21 +37,11 @@ async def cb_apply_choose_char(query: types.CallbackQuery, state: FSMContext):
     await state.update_data(character_name=char_name)
     await state.set_state(ApplyForm.age)
 
-    b = InlineKeyboardBuilder()
-    b.button(text="Пропустить", callback_data="apply_skip_age")
-
     await query.message.edit_text(
         f"🎂 <b>Сколько вам лет?</b>\n\n"
-        f"Пожалуйста, укажите ваш реальный возраст цифрой. Мы принимаем участников строго с 14 лет.\n\n"
-        f"<i>Если не хотите указывать — нажмите «Пропустить».</i>",
-        reply_markup=b.as_markup(), parse_mode="HTML"
+        f"Пожалуйста, укажите ваш реальный возраст цифрой. Мы принимаем участников строго с 14 лет.",
+        parse_mode="HTML"
     )
-
-
-@dp.callback_query(F.data == "apply_skip_age")
-async def cb_skip_age(query: types.CallbackQuery, state: FSMContext):
-    await state.update_data(age="Не указан")
-    await ask_experience(query.message, state)
 
 
 @dp.message(ApplyForm.age)
@@ -68,7 +58,30 @@ async def process_age(message: types.Message, state: FSMContext):
         return
 
     await state.update_data(age=str(age))
-    await ask_experience(message, state)
+    await state.set_state(ApplyForm.age_visibility)
+
+    b = InlineKeyboardBuilder()
+    b.button(text="✅ Показывать", callback_data="apply_age_show")
+    b.button(text="❌ Скрыть", callback_data="apply_age_hide")
+
+    await message.answer(
+        f"👁 <b>Показывать ваш возраст в анкете при вступлении?</b>\n\n"
+        f"Возраст будет виден другим участникам в приветственном сообщении.",
+        reply_markup=b.as_markup(), parse_mode="HTML"
+    )
+
+
+@dp.callback_query(F.data == "apply_age_show")
+async def cb_age_show(query: types.CallbackQuery, state: FSMContext):
+    await query.message.edit_text("👁 Возраст будет отображаться в анкете.")
+    await ask_experience(query.message, state)
+
+
+@dp.callback_query(F.data == "apply_age_hide")
+async def cb_age_hide(query: types.CallbackQuery, state: FSMContext):
+    await state.update_data(age="Скрыт")
+    await query.message.edit_text("🙈 Возраст будет скрыт от других.")
+    await ask_experience(query.message, state)
 
 
 async def ask_experience(message: types.Message, state: FSMContext):
@@ -86,7 +99,7 @@ async def process_experience(message: types.Message, state: FSMContext):
     await state.set_state(ApplyForm.about)
     await message.answer(
         f"🌟 <b>Расскажите немного о себе.</b>\n\n"
-        f"Увлечения, достижения, образ жизни. <i>Вся ваша анкета будет автоматически отправлена в чат при вступлении, чтобы другим участникам было проще начать с вами диалог!</i>",
+        f"Увлечения, достижения, образ жизни. <i>Вся ваша анкета будет автоматически отправлена в чат при вступлении!</i>",
         parse_mode="HTML"
     )
 
@@ -131,7 +144,7 @@ async def process_metagaming(message: types.Message, state: FSMContext):
     await state.set_state(ApplyForm.activity)
     await message.answer(
         f"⚡ <b>Какова ваша ожидаемая активность?</b>\n\n"
-        f"Сколько постов в неделю вы сможете писать в ролевой, и как часто планируете заходить в чат? (Например: 10-15 постов в неделю, захожу каждый вечер).",
+        f"Сколько постов в неделю вы сможете писать в ролевой? (Например: 10-15 постов в неделю).",
         parse_mode="HTML"
     )
 
@@ -141,7 +154,6 @@ async def process_activity(message: types.Message, state: FSMContext):
     await state.update_data(activity=message.text)
     data = await state.get_data()
 
-    # Сохраняем в БД
     await save_application(
         message.from_user.id, data["target_chat_id"], data["character_name"],
         data["age"], data["experience"], data["about"], data["timezone"],
@@ -149,46 +161,66 @@ async def process_activity(message: types.Message, state: FSMContext):
     )
     await state.clear()
 
-    await message.answer("✅ <b>Ваша анкета отправлена на проверку администратору!</b>\nПожалуйста, ожидайте ответа.")
+    await message.answer("✅ <b>Ваша анкета отправлена на проверку администраторам!</b>\nПожалуйста, ожидайте ответа.")
 
-    # Отправляем анкету владельцу бота
+    # Отправляем анкету всем админам целевой группы
+    text = (
+        f"📩 <b>НОВАЯ АНКЕТА</b>\n{DIV}\n\n"
+        f"👤 <b>Пользователь:</b> {esc(message.from_user.first_name)} (@{message.from_user.username})\n"
+        f"🎭 <b>Роль:</b> {esc(data['character_name'])}\n\n"
+        f"🎂 <b>Возраст:</b> {esc(data['age'])}\n"
+        f"📖 <b>Опыт:</b> {esc(data['experience'])}\n"
+        f"🌟 <b>О себе:</b> {esc(data['about'])}\n"
+        f"🕒 <b>Часовой пояс:</b> {esc(data['timezone'])}\n"
+        f"⚠️ <b>Триггеры:</b> {esc(data['triggers'])}\n"
+        f"🚫 <b>Метагейминг:</b> {esc(data['metagaming'])}\n"
+        f"⚡ <b>Активность:</b> {esc(data['activity'])}"
+    )
+
+    b = InlineKeyboardBuilder()
+    b.button(text="✅ Принять", callback_data=f"appr_accept_{message.from_user.id}_{data['target_chat_id']}")
+    b.button(text="❌ Отклонить", callback_data=f"appr_decline_{message.from_user.id}_{data['target_chat_id']}")
+    b.button(text="💬 Связаться", url=f"tg://user?id={message.from_user.id}")
+    b.adjust(2, 1)
+
     try:
-        text = (
-            f"📩 <b>НОВАЯ АНКЕТА</b>\n{DIV}\n\n"
-            f"👤 <b>Пользователь:</b> {esc(message.from_user.first_name)} (@{message.from_user.username})\n"
-            f"🆔 <b>ID:</b> <code>{message.from_user.id}</code>\n"
-            f"🏰 <b>Чат (ID):</b> <code>{data['target_chat_id']}</code>\n"
-            f"🎭 <b>Роль:</b> {esc(data['character_name'])}\n\n"
-            f"🎂 <b>Возраст:</b> {esc(data['age'])}\n"
-            f"📖 <b>Опыт:</b> {esc(data['experience'])}\n"
-            f"🌟 <b>О себе:</b> {esc(data['about'])}\n"
-            f"🕒 <b>Часовой пояс:</b> {esc(data['timezone'])}\n"
-            f"⚠️ <b>Триггеры:</b> {esc(data['triggers'])}\n"
-            f"🚫 <b>Метагейминг:</b> {esc(data['metagaming'])}\n"
-            f"⚡ <b>Активность:</b> {esc(data['activity'])}"
-        )
-
-        b = InlineKeyboardBuilder()
-        b.button(text="✅ Принять", callback_data=f"appr_accept_{message.from_user.id}_{data['target_chat_id']}")
-        b.button(text="❌ Отклонить", callback_data=f"appr_decline_{message.from_user.id}_{data['target_chat_id']}")
-        b.button(text="💬 Связаться", url=f"tg://user?id={message.from_user.id}")
-        b.adjust(2, 1)
-
-        await bot.send_message(OWNER_ID, text, reply_markup=b.as_markup(), parse_mode="HTML")
+        admins = await bot.get_chat_administrators(data["target_chat_id"])
+        for admin in admins:
+            if not admin.user.is_bot:
+                try:
+                    await bot.send_message(admin.user.id, text, reply_markup=b.as_markup(), parse_mode="HTML")
+                except Exception:
+                    pass  # Если админ закрыл ЛС, просто пропускаем
     except Exception as e:
-        print(f"Ошибка отправки анкеты: {e}")
+        print(f"Ошибка при рассылке админам: {e}")
+        # Если не удалось админам, шлем владельцу бота
+        try:
+            await bot.send_message(OWNER_ID, text, reply_markup=b.as_markup(), parse_mode="HTML")
+        except:
+            pass
 
 
-# --- Обработчики для владельца (Принять/Отклонить) ---
+# --- Обработчики для владельца и админов ---
+
+async def is_admin_of_chat(user_id: int, chat_id: int) -> bool:
+    if user_id == OWNER_ID:
+        return True
+    try:
+        member = await bot.get_chat_member(chat_id, user_id)
+        return member.status in ("administrator", "creator")
+    except Exception:
+        return False
+
 
 @dp.callback_query(F.data.startswith("appr_accept_"))
 async def cb_appr_accept(query: types.CallbackQuery):
-    if query.from_user.id != OWNER_ID: return
-
     parts = query.data.replace("appr_accept_", "").split("_")
     user_id, chat_id = int(parts[0]), int(parts[1])
 
-    # Создаем одноразовую ссылку
+    if not await is_admin_of_chat(query.from_user.id, chat_id):
+        await query.answer("❌ Вы не являетесь админом этой группы.", show_alert=True)
+        return
+
     try:
         link = await bot.create_chat_invite_link(chat_id, member_limit=1)
         invite_link = link.invite_link
@@ -198,13 +230,15 @@ async def cb_appr_accept(query: types.CallbackQuery):
         return
 
     await update_application_status(user_id, chat_id, "accepted")
-    await query.message.edit_text(f"{query.message.html_text}\n\n✅ <b>СТАТУС: ПРИНЯТ</b>", parse_mode="HTML")
+    await query.message.edit_text(
+        f"{query.message.html_text}\n\n✅ <b>СТАТУС: ПРИНЯТ (Админ: {query.from_user.first_name})</b>",
+        parse_mode="HTML")
 
     try:
         await bot.send_message(user_id,
                                f"🎉 <b>Поздравляем! Ваша анкета одобрена!</b>\n\n"
                                f"🔗 <b>Ссылка для вступления в группу:</b>\n{invite_link}\n\n"
-                               f"<i>Ссылка одноразовая! Как только вы зайдете, бот опубликует вашу анкету в чате.</i>",
+                               f"<i>Ссылка одноразовая!</i>",
                                parse_mode="HTML")
     except Exception:
         pass
@@ -212,17 +246,19 @@ async def cb_appr_accept(query: types.CallbackQuery):
 
 @dp.callback_query(F.data.startswith("appr_decline_"))
 async def cb_appr_decline(query: types.CallbackQuery):
-    if query.from_user.id != OWNER_ID: return
-
     parts = query.data.replace("appr_decline_", "").split("_")
     user_id, chat_id = int(parts[0]), int(parts[1])
 
+    if not await is_admin_of_chat(query.from_user.id, chat_id):
+        await query.answer("❌ Вы не являетесь админом этой группы.", show_alert=True)
+        return
+
     await update_application_status(user_id, chat_id, "rejected")
-    await query.message.edit_text(f"{query.message.html_text}\n\n❌ <b>СТАТУС: ОТКЛОНЕН</b>", parse_mode="HTML")
+    await query.message.edit_text(
+        f"{query.message.html_text}\n\n❌ <b>СТАТУС: ОТКЛОНЕН (Админ: {query.from_user.first_name})</b>",
+        parse_mode="HTML")
 
     try:
-        await bot.send_message(user_id,
-                               "😔 <b>К сожалению, ваша анкета была отклонена.</b>\nВы можете попробовать связаться с администратором.",
-                               parse_mode="HTML")
+        await bot.send_message(user_id, "😔 <b>К сожалению, ваша анкета была отклонена.</b>", parse_mode="HTML")
     except Exception:
         pass

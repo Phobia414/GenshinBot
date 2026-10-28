@@ -52,6 +52,7 @@ async def set_bot_commands():
         BotCommand(command="give", description="Передать примогемы"),
         BotCommand(command="cleanup", description="🧹 Настройки авто-чистки (для админов)"),
         BotCommand(command="cleanup_list", description="🛡 Кто купил защиту от чистки"),
+        BotCommand(command="applylink", description="🔗 Создать ссылку для набора (для админов)"),  # <--- ДОБАВЛЕНО
     ]
     try:
         await bot.set_my_commands(user_commands, scope=BotCommandScopeDefault())
