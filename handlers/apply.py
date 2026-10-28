@@ -132,7 +132,6 @@ async def process_activity(message: types.Message, state: FSMContext):
     await state.update_data(activity=message.text)
     data = await state.get_data()
 
-    # Сохраняем в БД (персонаж пока пустой)
     await save_application(
         message.from_user.id, data["target_chat_id"], "Не выбран",
         data["age"], data["experience"], data["about"], data["timezone"],
@@ -142,7 +141,6 @@ async def process_activity(message: types.Message, state: FSMContext):
 
     await message.answer("✅ <b>Ваша анкета отправлена на проверку администраторам!</b>\nПожалуйста, ожидайте ответа.")
 
-    # Отправляем анкету админам
     text = (
         f"📩 <b>НОВАЯ АНКЕТА</b>\n{DIV}\n\n"
         f"👤 <b>Пользователь:</b> {esc(message.from_user.first_name)} (@{message.from_user.username})\n"
@@ -178,8 +176,7 @@ async def process_activity(message: types.Message, state: FSMContext):
             pass
 
 
-# --- Обработчики для владельца и админов ---
-
+# --- Строгая проверка прав ---
 async def is_admin_of_chat(user_id: int, chat_id: int) -> bool:
     if user_id == OWNER_ID:
         return True
@@ -195,6 +192,7 @@ async def cb_appr_accept(query: types.CallbackQuery):
     parts = query.data.replace("appr_accept_", "").split("_")
     user_id, chat_id = int(parts[0]), int(parts[1])
 
+    # Проверяем, является ли нажавший админом этой группы
     if not await is_admin_of_chat(query.from_user.id, chat_id):
         await query.answer("❌ Вы не являетесь админом этой группы.", show_alert=True)
         return

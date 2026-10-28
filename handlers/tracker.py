@@ -18,7 +18,7 @@ from db import (
     get_guild, update_guild,
     add_ingredient, get_ingredients, INGREDIENTS,
     get_food_buff, get_total_bonuses, update_primogems,
-    get_application, update_application_status, get_taken_characters
+    get_application, update_application_status
 )
 from helpers import (
     esc, _mention, extract_target, resolve_user_id,
@@ -26,11 +26,11 @@ from helpers import (
 )
 from state import _inter_cooldown
 import state
-from characters import get_character_image, CHARACTERS
+from characters import get_character_image
 from helpers import get_placeholder_image
 from handlers.chat_list import update_chat_list
 from handlers.fun import start_duel_logic
-from keyboards import back_kb
+from keyboards import back_kb, regions_kb
 
 
 @dp.callback_query(F.data == "quiz_answer")
@@ -449,78 +449,17 @@ async def on_chat_member_update(event: types.ChatMemberUpdated):
                     pass
                 await update_chat_list(event.chat.id)
 
-        # --- ВЫБОР РОЛИ ПРИ ВХОДЕ ---
+        # --- ВЫБОР РЕГИОНА ПРИ ВХОДЕ ---
         elif is_new:
             app = await get_application(affected_user.id, event.chat.id)
             if app and app['status'] == 'accepted':
-                taken = await get_taken_characters(event.chat.id)
-                free_chars = [name for name in CHARACTERS.keys() if name not in taken]
-
-                if not free_chars:
-                    await bot.send_message(event.chat.id,
-                                           "😔 Свободных ролей нет. Ожидайте, пока кто-нибудь освободит роль.")
-                    return
-
-                b = InlineKeyboardBuilder()
-                # Выводим первые 15 свободных персонажей
-                for ch in free_chars[:15]:
-                    b.button(text=ch, callback_data=f"newchar_{affected_user.id}_{event.chat.id}_{ch}")
-                b.adjust(2)
-
                 mention = f'<a href="tg://user?id={affected_user.id}">{esc(affected_user.first_name)}</a>'
                 await bot.send_message(
                     event.chat.id,
-                    f"🎉 {mention}, твоя анкета одобрена!\n\nПожалуйста, выбери своего персонажа из списка ниже:",
-                    reply_markup=b.as_markup(), parse_mode="HTML"
+                    f"🎉 {mention}, твоя анкета одобрена!\n\nПожалуйста, выбери регион, откуда твой персонаж:",
+                    reply_markup=regions_kb(affected_user.id), parse_mode="HTML"
                 )
                 await update_application_status(affected_user.id, event.chat.id, 'waiting_char')
         # -------------------------------------
     except Exception as e:
         print(f"ChatMemberUpdate error: {e}")
-
-
-@dp.callback_query(F.data.startswith("newchar_"))
-async def cb_newchar(query: types.CallbackQuery):
-    parts = query.data.split("_")
-    uid = int(parts[1])
-    chat_id = int(parts[2])
-    char_name = "_".join(parts[3:])
-
-    if query.from_user.id != uid:
-        await query.answer("❌ Это не твоя анкета!", show_alert=True)
-        return
-
-    # Проверяем, не заняли ли роль
-    taken = await get_taken_characters(chat_id)
-    if char_name in taken:
-        await query.answer("❌ Увы, эту роль только что заняли. Выберите другую.", show_alert=True)
-        return
-
-    await update_user(uid, chat_id, character_name=char_name)
-    await update_application_status(uid, chat_id, 'joined')
-
-    # Получаем анкету для отправки в чат
-    app = await get_application(uid, chat_id)
-
-    if not app:
-        await query.answer("❌ Ошибка: анкета не найдена.", show_alert=True)
-        return
-
-    text = (
-        f"🎉 <b>У нас новенький! Встречайте!</b>\n\n"
-        f"🎭 <b>Роль:</b> {esc(char_name)}\n\n"
-        f"📖 <b>Опыт:</b> {esc(app['experience'])}\n"
-        f"🌟 <b>О себе:</b> {esc(app['about'])}\n"
-        f"🕒 <b>Часовой пояс:</b> {esc(app['timezone'])}\n"
-        f"⚠️ <b>Триггеры:</b> {esc(app['triggers'])}\n"
-        f"🚫 <b>Метагейминг:</b> {esc(app['metagaming'])}\n"
-        f"⚡ <b>Активность:</b> {esc(app['activity'])}"
-    )
-
-    try:
-        await query.message.delete()
-    except:
-        pass
-
-    await bot.send_message(chat_id, text, parse_mode="HTML")
-    await update_chat_list(chat_id)

@@ -6,9 +6,7 @@ services:
     env_file:
       - .env
     volumes:
-      # База данных сохраняется между перезапусками
-      - ./genshin.db:/app/genshin.db
-      # Логи сохраняются на хосте (если добавим позже)
+      - ./data:/app/data
       - ./logs:/app/logs
     environment:
       - TZ=Europe/Moscow

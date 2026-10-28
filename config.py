@@ -5,7 +5,7 @@ load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 OWNER_ID = int(os.getenv("OWNER_ID", "0"))
-DB_PATH = os.getenv("DB_PATH", "genshin.db")
+DB_PATH = os.getenv("DB_PATH", "data/genshin.db")
 SENTRY_DSN = os.getenv("SENTRY_DSN", "")
 
 QUIZ_CHAT_ID = int(os.getenv("QUIZ_CHAT_ID", OWNER_ID))

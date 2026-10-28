@@ -2,13 +2,13 @@ from aiogram import types, F
 from aiogram.filters import Command, CommandObject
 from aiogram.types import FSInputFile
 from aiogram.fsm.context import FSMContext
-from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from bot_instance import bot, dp
 from callbacks import MenuCB, RegionCB, CharCB
 from config import CREATOR_USERNAME
-from db import get_user, update_user, is_character_taken, get_taken_characters, get_local_setting, get_application
-from characters import REGIONS, get_character_image, CHARACTERS
+from db import get_user, update_user, is_character_taken, get_taken_characters, get_local_setting, get_application, \
+    update_application_status
+from characters import REGIONS, get_character_image
 from constants import DIV, PLACEHOLDER_IMAGES
 from helpers import (
     esc, user_display_name, get_placeholder_image, _ensure_user,
@@ -18,6 +18,7 @@ from keyboards import (
     gender_kb, regions_kb, characters_kb, main_menu_kb,
 )
 from handlers.apply import ApplyForm
+from handlers.chat_list import update_chat_list
 import state as bot_state
 
 
@@ -30,7 +31,6 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
     await state.clear()
     chat_id = message.chat.id
 
-    # --- ОБРАБОТКА ССЫЛКИ-ПРИГЛАШЕНИЯ ---
     if command.args and command.args.startswith("apply_"):
         target_chat_id = int(command.args.replace("apply_", ""))
 
@@ -44,7 +44,7 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
                     "❌ Ваша предыдущая анкета была отклонена. Вы можете попробовать снова позже.")
 
         await state.update_data(target_chat_id=target_chat_id)
-        await state.set_state(ApplyForm.age)  # <--- СРАЗУ СПРАШИВАЕМ ВОЗРАСТ
+        await state.set_state(ApplyForm.age)
 
         await message.answer(
             f"🎂 <b>Сколько вам лет?</b>\n\n"
@@ -52,7 +52,6 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
             parse_mode="HTML"
         )
         return
-    # --------------------------------------
 
     try:
         await message.delete()
@@ -66,7 +65,7 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
             pass
 
     user = await _ensure_user(message.from_user.id, chat_id)
-    # ... (остальной код старта без изменений, он отвечает за обычный вход)
+
     if not user["gender"]:
         default_text = (
             f"✨ ДОБРО ПОЖАЛОВАТЬ В ТЕЙВАТ\n{{div}}\n\n"
@@ -80,6 +79,7 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
         )
         raw_text = await get_local_setting("text_start", chat_id, default_text)
         text = format_text(raw_text, "", DIV)
+
         img = await get_section_image("menu")
         try:
             msg = await message.answer_photo(
@@ -106,17 +106,11 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
         try:
             msg = await message.answer_photo(
                 FSInputFile(img) if img in PLACEHOLDER_IMAGES else img,
-                caption=text,
-                reply_markup=regions_kb(message.from_user.id),
-                parse_mode="HTML"
+                caption=text, reply_markup=regions_kb(message.from_user.id), parse_mode="HTML"
             )
             bot_state._last_bot_msg[chat_id] = msg.message_id
         except Exception:
-            msg = await message.answer(
-                text,
-                reply_markup=regions_kb(message.from_user.id),
-                parse_mode="HTML"
-            )
+            msg = await message.answer(text, reply_markup=regions_kb(message.from_user.id), parse_mode="HTML")
             bot_state._last_bot_msg[chat_id] = msg.message_id
         return
 
@@ -137,25 +131,15 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
     try:
         if image in PLACEHOLDER_IMAGES:
             msg = await message.answer_photo(
-                FSInputFile(image),
-                caption=text,
-                reply_markup=main_menu_kb(message.from_user.id),
-                parse_mode="HTML"
+                FSInputFile(image), caption=text, reply_markup=main_menu_kb(message.from_user.id), parse_mode="HTML"
             )
         else:
             msg = await message.answer_photo(
-                image,
-                caption=text,
-                reply_markup=main_menu_kb(message.from_user.id),
-                parse_mode="HTML"
+                image, caption=text, reply_markup=main_menu_kb(message.from_user.id), parse_mode="HTML"
             )
         bot_state._last_bot_msg[chat_id] = msg.message_id
     except Exception:
-        msg = await message.answer(
-            text,
-            reply_markup=main_menu_kb(message.from_user.id),
-            parse_mode="HTML"
-        )
+        msg = await message.answer(text, reply_markup=main_menu_kb(message.from_user.id), parse_mode="HTML")
         bot_state._last_bot_msg[chat_id] = msg.message_id
 
 
@@ -209,6 +193,34 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
         return
 
     await update_user(query.from_user.id, chat_id, character_name=name, char_change_paid=0)
+
+    # --- ЛОГИКА ЗАВЕРШЕНИЯ АНКЕТЫ ---
+    app = await get_application(query.from_user.id, chat_id)
+    if app and app['status'] == 'waiting_char':
+        await update_application_status(query.from_user.id, chat_id, 'joined')
+        text = (
+            f"🎉 <b>У нас новенький! Встречайте!</b>\n\n"
+            f"🎭 <b>Роль:</b> {esc(name)}\n\n"
+            f"📖 <b>Опыт:</b> {esc(app['experience'])}\n"
+            f"🌟 <b>О себе:</b> {esc(app['about'])}\n"
+            f"🕒 <b>Часовой пояс:</b> {esc(app['timezone'])}\n"
+            f"⚠️ <b>Триггеры:</b> {esc(app['triggers'])}\n"
+            f"🚫 <b>Метагейминг:</b> {esc(app['metagaming'])}\n"
+            f"⚡ <b>Активность:</b> {esc(app['activity'])}"
+        )
+        await bot.send_message(chat_id, text, parse_mode="HTML")
+        await update_chat_list(chat_id)
+
+        try:
+            await query.message.delete()
+        except:
+            pass
+
+        await bot.send_message(chat_id, f"✅ Анкета опубликована! Добро пожаловать в игру, {esc(name)}!",
+                               reply_markup=main_menu_kb(query.from_user.id))
+        return
+    # -------------------------------------
+
     chat = query.message.chat
     ts = ""
     if chat.type in ("group", "supergroup"):
@@ -235,27 +247,18 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
     try:
         if char_image in PLACEHOLDER_IMAGES:
             msg = await bot.send_photo(
-                chat_id=chat.id,
-                photo=FSInputFile(char_image),
-                caption=text,
-                reply_markup=main_menu_kb(query.from_user.id),
-                parse_mode="HTML"
+                chat_id=chat.id, photo=FSInputFile(char_image), caption=text,
+                reply_markup=main_menu_kb(query.from_user.id), parse_mode="HTML"
             )
         else:
             msg = await bot.send_photo(
-                chat_id=chat.id,
-                photo=char_image,
-                caption=text,
-                reply_markup=main_menu_kb(query.from_user.id),
-                parse_mode="HTML"
+                chat_id=chat.id, photo=char_image, caption=text,
+                reply_markup=main_menu_kb(query.from_user.id), parse_mode="HTML"
             )
         bot_state._last_bot_msg[chat.id] = msg.message_id
     except Exception:
         msg = await bot.send_photo(
-            chat_id=chat.id,
-            photo=FSInputFile(get_placeholder_image()),
-            caption=text,
-            reply_markup=main_menu_kb(query.from_user.id),
-            parse_mode="HTML"
+            chat_id=chat.id, photo=FSInputFile(get_placeholder_image()), caption=text,
+            reply_markup=main_menu_kb(query.from_user.id), parse_mode="HTML"
         )
         bot_state._last_bot_msg[chat.id] = msg.message_id
