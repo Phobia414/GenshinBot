@@ -16,19 +16,22 @@ async def cb_board(query: types.CallbackQuery, callback_data: MenuCB):
     if query.from_user.id != callback_data.owner_id:
         await query.answer("⚠️ Чужое меню!", show_alert=True)
         return
-    user = await get_user(query.from_user.id)
+    chat_id = query.message.chat.id
+    user = await get_user(query.from_user.id, chat_id)
     now = int(datetime.now(timezone.utc).timestamp())
+
     if now - user["last_board"] >= BOARD_COOLDOWN:
         tasks = generate_tasks()
-        await update_user(query.from_user.id, last_board=now,
+        await update_user(query.from_user.id, chat_id, last_board=now,
                           board_msgs=0, board_sts=0, board_reps=0,
                           board_tasks=";".join(tasks), board_claimed="",
                           board_notified="", board_accepted="", board_active="")
-        user = await get_user(query.from_user.id)
+        user = await get_user(query.from_user.id, chat_id)
     else:
         tasks = user["board_tasks"].split(";") if user["board_tasks"] else generate_tasks()
         if not user["board_tasks"]:
-            await update_user(query.from_user.id, board_tasks=";".join(tasks))
+            await update_user(query.from_user.id, chat_id, board_tasks=";".join(tasks))
+
     accepted = user["board_accepted"].split(";") if user["board_accepted"] else []
     claimed = user["board_claimed"].split(";") if user["board_claimed"] else []
     name = esc(user_display_name(user))
@@ -44,13 +47,17 @@ async def cb_task(query: types.CallbackQuery, callback_data: TaskCB):
     if query.from_user.id != callback_data.owner_id:
         await query.answer("⚠️ Чужое меню!", show_alert=True)
         return
-    user = await get_user(query.from_user.id)
+    chat_id = query.message.chat.id
+    user = await get_user(query.from_user.id, chat_id)
     t_id = callback_data.task_id
+
     if t_id not in TASKS:
         await query.answer("❌ Задание не найдено", show_alert=True)
         return
+
     claimed = user["board_claimed"].split(";") if user["board_claimed"] else []
     accepted = user["board_accepted"].split(";") if user["board_accepted"] else []
+
     if t_id in claimed:
         await query.answer("✅ Награда уже получена!", show_alert=True)
         return
@@ -60,10 +67,11 @@ async def cb_task(query: types.CallbackQuery, callback_data: TaskCB):
         progress = get_progress(user, t["cat"])
         await query.answer(f"⏳ Прогресс: {progress}/{t['need']}", show_alert=True)
         return
+
     accepted.append(t_id)
-    await update_user(query.from_user.id, board_accepted=";".join(accepted))
+    await update_user(query.from_user.id, chat_id, board_accepted=";".join(accepted))
     await query.answer("✅ Задание принято!", show_alert=True)
-    user = await get_user(query.from_user.id)
+    user = await get_user(query.from_user.id, chat_id)
     tasks = user["board_tasks"].split(";") if user["board_tasks"] else []
     text = f"📋 ДОСКА ЗАНЯТОСТИ\n{DIV}\n\nЗадание принято!"
     await edit_or_send(query, text, board_kb(query.from_user.id, user, tasks, accepted, claimed))

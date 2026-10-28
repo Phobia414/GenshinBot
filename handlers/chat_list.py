@@ -24,8 +24,10 @@ async def update_chat_list(group_id: int):
     taken_users = {}
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
+        # ИСПРАВЛЕНО: Добавлен фильтр chat_id = ?, чтобы роли не смешивались между чатами
         async with db.execute(
-                "SELECT character_name, user_id FROM users WHERE character_name IS NOT NULL AND character_name != ''") as cur:
+                "SELECT character_name, user_id FROM users WHERE character_name IS NOT NULL AND character_name != '' AND chat_id = ?",
+                (group_id,)) as cur:
             for row in await cur.fetchall():
                 taken_users[row["character_name"]] = row["user_id"]
 

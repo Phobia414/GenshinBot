@@ -1,6 +1,6 @@
 # bosses.py
 # Мировые боссы. Ротация — каждую субботу в 12:00.
-# Урон 500-1500 за удар.
+# Урон 3000-10000 за удар.
 
 WORLD_BOSSES = {
     "Двалин": {
@@ -47,5 +47,5 @@ WORLD_BOSSES = {
 
 BOSS_ROTATION_DAY = 5       # 5 = суббота (пн=0)
 BOSS_ROTATION_HOUR = 12     # 12:00
-BOSS_DAMAGE_MIN = 500
-BOSS_DAMAGE_MAX = 1500
+BOSS_DAMAGE_MIN = 3000      # Увеличенный минимальный урон
+BOSS_DAMAGE_MAX = 10000     # Увеличенный максимальный урон

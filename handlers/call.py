@@ -11,6 +11,7 @@ from constants import (
 )
 from helpers import esc, _ensure_user
 from db import update_user
+from keyboards import back_kb
 
 
 @dp.message(Command("call"))
@@ -29,9 +30,9 @@ async def cmd_call(message: types.Message):
             m = left // 60
             s = left % 60
             if m > 0:
-                await message.reply(f"⏳ Слишком часто. Подожди {m} мин. {s} сек.")
+                await message.reply(f"⏳ Слишком часто. Подожди {m} мин. {s} сек.", reply_markup=back_kb(message.from_user.id))
             else:
-                await message.reply(f"⏳ Слишком часто. Подожди {s} сек.")
+                await message.reply(f"⏳ Слишком часто. Подожди {s} сек.", reply_markup=back_kb(message.from_user.id))
             return
         _call_cooldown[chat_id] = now
     parts = message.text.split(maxsplit=1)
@@ -43,16 +44,16 @@ async def cmd_call(message: types.Message):
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT user_id, character_name FROM users "
-            "WHERE character_name IS NOT NULL AND character_name != '' "
+            "WHERE character_name IS NOT NULL AND character_name != '' AND chat_id = ? "
             "AND (IFNULL(call_opt_out, 0) = 0 OR user_id = ?) "
             "ORDER BY user_id",
-            (message.from_user.id,)
+            (chat_id, message.from_user.id)
         ) as cur:
             rows = await cur.fetchall()
     if not rows:
         text = (f"📢 ПОЗЫВНОЙ\n{DIV}\n\n{esc(call_text)}\n\n{DIV}\n\n"
                 f"Упоминать некого — все отключили уведомления.")
-        await message.answer(text, parse_mode="HTML")
+        await message.answer(text, parse_mode="HTML", reply_markup=back_kb(message.from_user.id))
         return
     total = len(rows)
     shown = rows[:CALL_MAX_MENTIONS]
@@ -66,26 +67,28 @@ async def cmd_call(message: types.Message):
         mentions_line += f"\n…и ещё {total - CALL_MAX_MENTIONS} чел."
     text = f"📢 ПОЗЫВНОЙ\n{DIV}\n\n{esc(call_text)}\n\n{DIV}\n\n{mentions_line}"
     try:
-        await message.answer(text, parse_mode="HTML")
+        await message.answer(text, parse_mode="HTML", reply_markup=back_kb(message.from_user.id))
     except Exception as e:
         await message.reply(f"⚠️ Не смог отправить позывной: {e}")
 
 
 @dp.message(Command("calloff"))
 async def cmd_calloff(message: types.Message):
-    user = await _ensure_user(message.from_user.id)
+    chat_id = message.chat.id
+    user = await _ensure_user(message.from_user.id, chat_id)
     if user.get("call_opt_out"):
-        await message.answer("🔕 Уведомления позывного уже отключены.\n\nВернуть: /callon")
+        await message.answer("🔕 Уведомления позывного уже отключены.\n\nВернуть: /callon", reply_markup=back_kb(message.from_user.id))
         return
-    await update_user(message.from_user.id, call_opt_out=1)
-    await message.answer(f"🔕 Готово!\n{DIV}\n\nТеперь я не буду упоминать тебя в /call.\n\nВернуть: /callon")
+    await update_user(message.from_user.id, chat_id, call_opt_out=1)
+    await message.answer(f"🔕 Готово!\n{DIV}\n\nТеперь я не буду упоминать тебя в /call.\n\nВернуть: /callon", reply_markup=back_kb(message.from_user.id))
 
 
 @dp.message(Command("callon"))
 async def cmd_callon(message: types.Message):
-    user = await _ensure_user(message.from_user.id)
+    chat_id = message.chat.id
+    user = await _ensure_user(message.from_user.id, chat_id)
     if not user.get("call_opt_out"):
-        await message.answer("🔔 Уведомления позывного и так включены.\n\nОтключить: /calloff")
+        await message.answer("🔔 Уведомления позывного и так включены.\n\nОтключить: /calloff", reply_markup=back_kb(message.from_user.id))
         return
-    await update_user(message.from_user.id, call_opt_out=0)
-    await message.answer(f"🔔 Возвращаю тебя в список упоминаний.\n{DIV}\n\nЕсли снова захочешь отключить: /calloff")
+    await update_user(message.from_user.id, chat_id, call_opt_out=0)
+    await message.answer(f"🔔 Возвращаю тебя в список упоминаний.\n{DIV}\n\nЕсли снова захочешь отключить: /calloff", reply_markup=back_kb(message.from_user.id))

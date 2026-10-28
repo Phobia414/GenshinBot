@@ -1,44 +1,80 @@
 from aiogram import types, F
 from aiogram.filters import Command
 from aiogram.types import FSInputFile
+from aiogram.fsm.context import FSMContext
 
 from bot_instance import bot, dp
 from callbacks import MenuCB, RegionCB, CharCB
 from config import CREATOR_USERNAME
-from db import get_user, update_user, is_character_taken, get_taken_characters
-from characters import REGIONS
+from db import get_user, update_user, is_character_taken, get_taken_characters, get_local_setting
+from characters import REGIONS, get_character_image
 from constants import DIV, PLACEHOLDER_IMAGES
 from helpers import (
     esc, user_display_name, get_placeholder_image, _ensure_user,
-    edit_or_send,
+    edit_or_send, get_section_image
 )
 from keyboards import (
     gender_kb, regions_kb, characters_kb, main_menu_kb,
 )
+import state as bot_state  # ИСПРАВЛЕНО: Переименовали импорт, чтобы не конфликтовать с FSM
+
+
+def format_text(text: str, name: str, div: str) -> str:
+    return text.replace("{name}", name).replace("{div}", div)
 
 
 @dp.message(Command("start"))
-async def cmd_start(message: types.Message):
-    user = await _ensure_user(message.from_user.id)
+async def cmd_start(message: types.Message, state: FSMContext):
+    # Очищаем состояние ожидания (если игрок застрял)
+    await state.clear()
+
+    chat_id = message.chat.id
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+    if chat_id in bot_state._last_bot_msg:
+        try:
+            await bot.delete_message(chat_id, bot_state._last_bot_msg[chat_id])
+        except Exception:
+            pass
+
+    user = await _ensure_user(message.from_user.id, chat_id)
+
     if not user["gender"]:
-        text = (
-            f"✨ ДОБРО ПОЖАЛОВАТЬ В ТЕЙВАТ\n{DIV}\n\n"
+        default_text = (
+            f"✨ ДОБРО ПОЖАЛОВАТЬ В ТЕЙВАТ\n{{div}}\n\n"
             f"Я — Орион, твой верный\n"
             f"спутник в этом мире 🧭\n\n"
             f"🌸 Мой создатель — {CREATOR_USERNAME}\n"
             f"Без него я бы не существовал!\n\n"
-            f"{DIV}\n\n"
+            f"{{div}}\n\n"
             f"Прежде чем мы отправимся\n"
             f"в путь, скажи:"
         )
-        img = get_placeholder_image()
+        raw_text = await get_local_setting("text_start", chat_id, default_text)
+        text = format_text(raw_text, "", DIV)
+
+        img = await get_section_image("menu")
         try:
-            await message.answer_photo(FSInputFile(img), caption=text,
-                                       reply_markup=gender_kb(message.from_user.id), parse_mode="HTML")
+            msg = await message.answer_photo(
+                FSInputFile(img) if img in PLACEHOLDER_IMAGES else img,
+                caption=text,
+                reply_markup=gender_kb(message.from_user.id),
+                parse_mode="HTML"
+            )
+            bot_state._last_bot_msg[chat_id] = msg.message_id
         except Exception:
-            await message.answer(text, reply_markup=gender_kb(message.from_user.id), parse_mode="HTML")
+            msg = await message.answer(
+                text,
+                reply_markup=gender_kb(message.from_user.id),
+                parse_mode="HTML"
+            )
+            bot_state._last_bot_msg[chat_id] = msg.message_id
         return
-    if not user["character_name"]:
+
+    if not user["character_name"] or user.get("char_change_paid") == 1:
         text = (
             f"🌸 ВЫБОР ПЕРСОНАЖА\n{DIV}\n\n"
             f"Рад снова тебя видеть,\n"
@@ -48,27 +84,61 @@ async def cmd_start(message: types.Message):
             f"{DIV}\n\n"
             f"Выбери регион:"
         )
-        img = get_placeholder_image()
+        img = await get_section_image("menu")
         try:
-            await message.answer_photo(FSInputFile(img), caption=text,
-                                       reply_markup=regions_kb(message.from_user.id), parse_mode="HTML")
+            msg = await message.answer_photo(
+                FSInputFile(img) if img in PLACEHOLDER_IMAGES else img,
+                caption=text,
+                reply_markup=regions_kb(message.from_user.id),
+                parse_mode="HTML"
+            )
+            bot_state._last_bot_msg[chat_id] = msg.message_id
         except Exception:
-            await message.answer(text, reply_markup=regions_kb(message.from_user.id), parse_mode="HTML")
+            msg = await message.answer(
+                text,
+                reply_markup=regions_kb(message.from_user.id),
+                parse_mode="HTML"
+            )
+            bot_state._last_bot_msg[chat_id] = msg.message_id
         return
+
     name = esc(user_display_name(user))
-    text = (
-        f"🌟 ГЛАВНОЕ МЕНЮ\n{DIV}\n\n"
-        f"Привет, {name}!\n"
+    default_menu = (
+        f"🌟 ГЛАВНОЕ МЕНЮ\n{{div}}\n\n"
+        f"Привет, {{name}}!\n"
         f"Куда отправимся сегодня?\n\n"
-        f"{DIV}\n\n"
+        f"{{div}}\n\n"
         f"🧭 Меня создал {CREATOR_USERNAME}"
     )
-    img = get_placeholder_image()
+    raw_menu = await get_local_setting("text_menu", chat_id, default_menu)
+    text = format_text(raw_menu, name, DIV)
+
+    fallback = get_character_image(user["character_name"]) if user["character_name"] else None
+    image = await get_section_image("menu", fallback)
+
     try:
-        await message.answer_photo(FSInputFile(img), caption=text,
-                                   reply_markup=main_menu_kb(message.from_user.id), parse_mode="HTML")
+        if image in PLACEHOLDER_IMAGES:
+            msg = await message.answer_photo(
+                FSInputFile(image),
+                caption=text,
+                reply_markup=main_menu_kb(message.from_user.id),
+                parse_mode="HTML"
+            )
+        else:
+            msg = await message.answer_photo(
+                image,
+                caption=text,
+                reply_markup=main_menu_kb(message.from_user.id),
+                parse_mode="HTML"
+            )
+        bot_state._last_bot_msg[chat_id] = msg.message_id
     except Exception:
-        await message.answer(text, reply_markup=main_menu_kb(message.from_user.id), parse_mode="HTML")
+        msg = await message.answer(
+            text,
+            reply_markup=main_menu_kb(message.from_user.id),
+            parse_mode="HTML"
+        )
+        bot_state._last_bot_msg[chat_id] = msg.message_id
 
 
 @dp.callback_query(MenuCB.filter(F.action.in_(["gender_male", "gender_female"])))
@@ -76,8 +146,9 @@ async def cb_gender(query: types.CallbackQuery, callback_data: MenuCB):
     if query.from_user.id != callback_data.owner_id:
         await query.answer("⚠️ Это чужое меню!", show_alert=True)
         return
+    chat_id = query.message.chat.id
     g = "male" if callback_data.action == "gender_male" else "female"
-    await update_user(query.from_user.id, gender=g)
+    await update_user(query.from_user.id, chat_id, gender=g)
     text = f"💖 ОТЛИЧНО!\n{DIV}\n\nТеперь выбери регион,\nоткуда родом твой герой 🎭"
     await edit_or_send(query, text, regions_kb(query.from_user.id))
 
@@ -96,7 +167,8 @@ async def cb_region(query: types.CallbackQuery, callback_data: RegionCB):
     if query.from_user.id != callback_data.owner_id:
         await query.answer("⚠️ Это чужое меню!", show_alert=True)
         return
-    taken = await get_taken_characters()
+    chat_id = query.message.chat.id
+    taken = await get_taken_characters(chat_id)
     region_name = REGIONS[callback_data.region]
     text = f"🎭 ГЕРОИ РЕГИОНА {region_name}\n{DIV}\n\nВыбери того, кто станет\nтвоим воплощением ✨"
     await edit_or_send(query, text, characters_kb(query.from_user.id, callback_data.region, taken))
@@ -107,27 +179,65 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
     if query.from_user.id != callback_data.owner_id:
         await query.answer("⚠️ Это чужое меню!", show_alert=True)
         return
-    user = await get_user(query.from_user.id)
+    chat_id = query.message.chat.id
+    user = await get_user(query.from_user.id, chat_id)
     name = callback_data.character
+
     if user["character_name"] and not user["char_change_paid"]:
         await query.answer("❌ У тебя уже есть персонаж. Смену можно купить в Лавке!", show_alert=True)
         return
-    if await is_character_taken(name):
+    if await is_character_taken(name, chat_id):
         await query.answer(f"❌ {name} уже занят.", show_alert=True)
         return
-    await update_user(query.from_user.id, character_name=name, char_change_paid=0)
+
+    await update_user(query.from_user.id, chat_id, character_name=name, char_change_paid=0)
     chat = query.message.chat
     ts = ""
     if chat.type in ("group", "supergroup"):
         try:
             await bot.promote_chat_member(chat_id=chat.id, user_id=query.from_user.id,
-                can_change_info=False, can_delete_messages=False, can_invite_users=False,
-                can_restrict_members=False, can_pin_messages=False, can_promote_members=False,
-                can_manage_chat=False, can_manage_video_chats=True)
+                                          can_change_info=False, can_delete_messages=False, can_invite_users=False,
+                                          can_restrict_members=False, can_pin_messages=False, can_promote_members=False,
+                                          can_manage_chat=False, can_manage_video_chats=True)
             await bot.set_chat_administrator_custom_title(
                 chat_id=chat.id, user_id=query.from_user.id, custom_title=name[:16])
             ts = "\n\n👑 Титул установлен!"
         except Exception:
             ts = ""
+
     text = f"🎉 ДОБРО ПОЖАЛОВАТЬ!\n{DIV}\n\nТеперь ты — {esc(name)}!{ts}\n\n{DIV}\n\nОрион рад за тебя! 💛"
-    await edit_or_send(query, text, main_menu_kb(query.from_user.id))
+
+    try:
+        await query.message.delete()
+    except Exception:
+        pass
+
+    char_image = get_character_image(name)
+
+    try:
+        if char_image in PLACEHOLDER_IMAGES:
+            msg = await bot.send_photo(
+                chat_id=chat.id,
+                photo=FSInputFile(char_image),
+                caption=text,
+                reply_markup=main_menu_kb(query.from_user.id),
+                parse_mode="HTML"
+            )
+        else:
+            msg = await bot.send_photo(
+                chat_id=chat.id,
+                photo=char_image,
+                caption=text,
+                reply_markup=main_menu_kb(query.from_user.id),
+                parse_mode="HTML"
+            )
+        bot_state._last_bot_msg[chat.id] = msg.message_id
+    except Exception:
+        msg = await bot.send_photo(
+            chat_id=chat.id,
+            photo=FSInputFile(get_placeholder_image()),
+            caption=text,
+            reply_markup=main_menu_kb(query.from_user.id),
+            parse_mode="HTML"
+        )
+        bot_state._last_bot_msg[chat.id] = msg.message_id

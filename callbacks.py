@@ -93,3 +93,9 @@ class CmdCatCB(CallbackData, prefix="cmd"):
 class BossCB(CallbackData, prefix="boss"):
     action: str
     owner_id: int
+
+class GachaInvCB(CallbackData, prefix="ginv"):
+    action: str
+    item_id: int = 0
+    rarity: int = 0  # <--- ДОБАВЛЕНО ДЛЯ МАССОВОЙ ПРОДАЖИ
+    owner_id: int = 0

@@ -1,5 +1,5 @@
 from . import start
-from . import chat_list  # <-- ВАЖНО: стоит ПЕРЕД tracker, чтобы ловить текст алфавита
+from . import chat_list
 from . import tracker
 from . import menu
 from . import board
@@ -14,3 +14,7 @@ from . import lists
 from . import call
 from . import checkimages
 from . import admin
+from . import admin_panel
+from . import gacha
+from . import daily
+from . import economy

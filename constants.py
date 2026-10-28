@@ -1,21 +1,16 @@
 import random
 
 PLACEHOLDER_IMAGES = [
-    "images/1.jpg",
-    "images/2.jpg",
-    "images/3.jpg",
-    "images/4.jpg",
-    "images/5.jpg",
-    "images/6.jpg",
-    "images/7.jpg",
-    "images/8.jpg",
-    "images/9.jpg",
-    "images/10.jpg",
+    "images/1.webp", "images/genshin_impact.jpg", "images/i.jpg",
+    "images/03_snezhnaya.webp", "images/11260417012023_09c9e336d755d64d1f744572f3d56465cf503e84.jpg",
+    "images/1165855266_1757516381_nod-krai-12.jpg", "images/1562927370_2011.webp",
+    "images/17c60636eb481159045248fc7c2421c4.jpg", "images/199146755_1757516364_nod-krai-04.webp",
+    "images/d5e7e85695337cf7a287c3c7991801c7.png", "images/f084b2da1aa90f0091a4e9c834a79ffa.jpg",
 ]
 
 PLACEHOLDER_IMAGE = random.choice(PLACEHOLDER_IMAGES)
 
-DIV = "━━━━━━━━━━━━━"
+DIV = "═══════════════"
 
 DUNGEON_IMAGES = {
     "midsummer": "https://avatars.mds.yandex.net/i?id=06e947b6f94dc9485db176cf6b16cc7d_l-12190868-images-thumbs&n=13",
@@ -73,10 +68,8 @@ REP_PER_GUILD_BOSS_KILL = 15
 CALL_COOLDOWN = 300
 CALL_MAX_MENTIONS = 50
 CALL_EMOJIS = [
-    "📣", "🔔", "📢", "🎯", "⭐",
-    "✨", "🌟", "💫", "🎴", "⚡",
-    "🔥", "💠", "🔷", "🌀", "🎵",
-    "🌸", "🍀", "💎", "🎁", "🏆",
+    "📣", "🔔", "📢", "🎯", "⭐", "✨", "🌟", "💫", "🎴", "⚡",
+    "🔥", "💠", "🔷", "🌀", "🎵", "🌸", "🍀", "💎", "🎁", "🏆",
 ]
 
 QUIZ_QUESTIONS = [
@@ -100,10 +93,7 @@ ARTIFACT_SLOTS = {
 }
 
 SLOT_SHORT = {
-    "flower": "🌸 Цветок",
-    "plume": "🪶 Перо",
-    "sands": "⏳ Пески",
-    "goblet": "🏆 Кубок",
+    "flower": "🌸 Цветок", "plume": "🪶 Перо", "sands": "⏳ Пески", "goblet": "🏆 Кубок",
 }
 
 RARITY_BONUS = {3: 5, 4: 10, 5: 20}
@@ -181,8 +171,14 @@ PLAYER_COMMANDS = {
     "main": {"title": "🎮 ОСНОВНЫЕ КОМАНДЫ", "commands": [
         ("/start", "Открыть главное меню"),
         ("/freerole", "Освободить свою роль"),
+        ("/daily", "Получить ежедневную награду"),
+        ("/give Сумма (ответом/@)", "Передать примогемы"),
         ("кто я", "Показать свою карточку"),
         ("кто ты (ответом)", "Карточка игрока"),
+    ]},
+    "gacha": {"title": "🔮 ГАЧА (МОЛИТВЫ)", "commands": [
+        ("/gacha", "Открыть меню молитв"),
+        ("🔮 Молитва x1 / x10", "Потратить примогемы"),
     ]},
     "interactions": {"title": "🎭 ВЗАИМОДЕЙСТВИЯ", "commands": [
         ("обнять / поцеловать / погладить", "Нежные"),
@@ -197,26 +193,38 @@ PLAYER_COMMANDS = {
     "guild": {"title": "🏰 ГИЛЬДИЯ", "commands": [
         ("/createguild Название", "Создать (700 монет)"),
         ("/donate Сумма", "Пополнить казну"),
+        ("/transfer_ally Сумма", "Передать деньги союзу"),
         ("/disbandguild", "Распустить (лидер)"),
     ]},
     "duel": {"title": "⚔️ ДУЭЛЬ", "commands": [
         ("/duel Сумма (ответом или @)", "Вызвать на дуэль"),
+        ("Вызвать на дуэль Сумма", "Текстом (ответом или @)"),
     ]},
     "call": {"title": "📢 ПОЗЫВНОЙ", "commands": [
         ("/call Текст", "Созвать всех участников"),
         ("/callon", "Включить уведомления позывного"),
         ("/calloff", "Отключить уведомления позывного"),
     ]},
-    "cooking": {"title": "🍳 КУЛИНАРИЯ", "commands": [
-        ("🍳 Кулинария (в меню)", "Открыть книгу"),
-        ("Ингредиенты", "Выпадают за активность (5%)"),
+    "admin_chat": {"title": "⚙️ ПАНЕЛЬ АДМИНА ЧАТА", "commands": [
+        ("/warn (ответом)", "Выдать предупреждение (3 = мут 24ч)"),
+        ("/unwarn (ответом)", "Снять предупреждение"),
+        ("/mute <мин> (ответом)", "Замутить участника"),
+        ("/unmute (ответом)", "Размутить участника"),
+        ("/stats", "Статистика чата (топы)"),
+        ("/cleanup", "Настройки авто-чистки"),
+        ("/cleanup_set on 100 7", "Вкл/Выкл авто-чистку"),
+        ("/cleanup_list", "Кто купил защиту от чистки"),
+        ("/setlist @channel", "Привязать канал со списком ролей"),
+        ("/font bold/none", "Сменить шрифт списка ролей"),
+        ("/setname Имя = Шрифт", "Заменить имя в списке"),
     ]},
-    "admin": {"title": "⚙️ АДМИН-КОМАНДЫ", "commands": [
+    "admin_owner": {"title": "👑 ПАНЕЛЬ ВЛАДЕЛЬЦА БОТА", "commands": [
+        ("/admin (в ЛС)", "Глобальная админ-панель (тексты, фото)"),
         ("/addmoney / /setmoney", "Управление монетами"),
         ("/addrep / /addresin", "Репутация и смола"),
-        ("/warn / /unwarn", "Предупреждения"),
-        ("/mute / /unmute", "Мут и размут"),
-        ("/protect / /unprotect", "Защита юзера"),
+        ("/addgems", "Выдать примогемы"),
+        ("/protect / /unprotect", "Защита юзера (только владелец)"),
+        ("/delguild", "Удалить гильдию"),
         ("/checkimages", "Проверить ссылки картинок"),
     ]},
 }

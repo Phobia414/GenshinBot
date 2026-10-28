@@ -3,6 +3,8 @@ from datetime import datetime, timezone
 from aiogram import types, F
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 
 from bot_instance import bot, dp
 from callbacks import MenuCB, RelCB, GiftCB, ProposeCB
@@ -11,23 +13,31 @@ from constants import (
     DIV, GIFTS, XP_PER_LEVEL, MAX_LEVEL, WEDDING_LEVEL,
 )
 from db import (
-    get_user, update_user, get_protected_owner,
+    get_user, update_user, get_protected_owner, get_local_setting
 )
 from helpers import (
     esc, user_display_name, edit_or_send, _ensure_user,
-    extract_target, resolve_user_id, _now_ts,
+    extract_target, resolve_user_id, _now_ts, get_section_image, inject_user
 )
 from keyboards import relations_kb, gifts_kb, back_kb
 from state import _propose_cooldown
 
 
+class RelationsEdit(StatesGroup):
+    waiting_for_image = State()
+
+
 @dp.callback_query(MenuCB.filter(F.action == "relations"))
-async def cb_relations(query: types.CallbackQuery, callback_data: MenuCB):
+@inject_user
+async def cb_relations(query: types.CallbackQuery, callback_data: MenuCB, user: dict, chat_id: int, state: FSMContext):
+    await state.clear()
+
     if query.from_user.id != callback_data.owner_id:
         await query.answer("⚠️ Чужое меню!", show_alert=True)
         return
-    user = await get_user(query.from_user.id)
+
     name = esc(user_display_name(user))
+
     if user["partner_id"]:
         level = min(user["rel_xp"] // XP_PER_LEVEL, MAX_LEVEL)
         married = bool(user["is_married"])
@@ -39,31 +49,132 @@ async def cb_relations(query: types.CallbackQuery, callback_data: MenuCB):
             extra += f"\n💒 Свадьба: {datetime.fromtimestamp(user['married_at'], timezone.utc).strftime('%d.%m.%Y')}"
         if user["child_id"]:
             extra += f"\n👶 Ребёнок: {esc(user['child_name'])}"
-        text = (f"❤️ ОТНОШЕНИЯ\n{DIV}\n\n"
-                f"💕 {name} + {esc(user['partner_name'])}\n\n"
-                f"{DIV}\n\n"
-                f"📅 Вместе с: {started}\n"
-                f"📊 Уровень: {level} / {MAX_LEVEL}\n"
-                f"✨ Опыт: {user['rel_xp']} XP\n"
-                f"💍 Статус: {status}{extra}")
+
+        default_text = (f"❤️ ОТНОШЕНИЯ\n{{div}}\n\n"
+                        f"💕 {{name}} + {{partner_name}}\n\n"
+                        f"{{div}}\n\n"
+                        f"📅 Вместе с: {{rel_started}}\n"
+                        f"📊 Уровень: {{rel_level}} / {{max_level}}\n"
+                        f"✨ Опыт: {{rel_xp}} XP\n"
+                        f"💍 Статус: {{rel_status}}{{extra}}")
+        raw_text = await get_local_setting("text_relations", chat_id, default_text)
+
+        text = raw_text.replace("{name}", name) \
+            .replace("{partner_name}", esc(user['partner_name'])) \
+            .replace("{rel_started}", started) \
+            .replace("{rel_level}", str(level)) \
+            .replace("{max_level}", str(MAX_LEVEL)) \
+            .replace("{rel_xp}", str(user['rel_xp'])) \
+            .replace("{rel_status}", status) \
+            .replace("{extra}", extra) \
+            .replace("{div}", DIV)
+
         kb = relations_kb(query.from_user.id, True, married, level >= WEDDING_LEVEL,
                           bool(user["child_id"]), user["gender"])
     else:
-        text = (f"❤️ ОТНОШЕНИЯ\n{DIV}\n\n"
-                f"{name}, твоё сердце\nсвободно 💌\n\n"
-                f"{DIV}\n\n"
-                f"Ответь на сообщение игрока\nи напиши /propose\n\n"
-                f"или укажи @username:\n/propose @user")
+        default_text = (f"❤️ ОТНОШЕНИЯ\n{{div}}\n\n"
+                        f"{{name}}, твоё сердце\nсвободно 💌\n\n"
+                        f"{{div}}\n\n"
+                        f"Ответь на сообщение игрока\nи напиши /propose\n\n"
+                        f"или укажи @username:\n/propose @user")
+        raw_text = await get_local_setting("text_relations", chat_id, default_text)
+        text = raw_text.replace("{name}", name).replace("{div}", DIV)
+
         kb = relations_kb(query.from_user.id, False, False, False, False, user["gender"])
-    await edit_or_send(query, text, kb)
+
+    image = user.get("rel_image")
+    if not image:
+        image = await get_section_image("relations", chat_id=chat_id)
+
+    await edit_or_send(query, text, kb, image_url=image)
+
+
+@dp.callback_query(RelCB.filter(F.action == "set_image"))
+@inject_user
+async def cb_rel_set_image(query: types.CallbackQuery, callback_data: RelCB, user: dict, chat_id: int,
+                           state: FSMContext):
+    if query.from_user.id != callback_data.owner_id:
+        return
+
+    if not user["partner_id"]:
+        await query.answer("❌ Нет партнёра.", show_alert=True)
+        return
+
+    await state.set_state(RelationsEdit.waiting_for_image)
+    b = InlineKeyboardBuilder()
+    b.button(text="❌ Отмена", callback_data=MenuCB(action="relations", owner_id=query.from_user.id))
+
+    await query.message.answer(
+        "🖼 <b>ФОТО ПАРЫ</b>\n\n"
+        "Отправь мне фотографию, которая будет отображаться в вашем меню отношений.\n\n"
+        "<i>(Её сможет сменить любой из вас в любой момент)</i>",
+        reply_markup=b.as_markup(),
+        parse_mode="HTML"
+    )
+
+
+@dp.message(RelationsEdit.waiting_for_image, F.photo)
+async def process_rel_image(message: types.Message, state: FSMContext):
+    chat_id = message.chat.id
+    user = await get_user(message.from_user.id, chat_id)
+
+    if not user or not user["partner_id"]:
+        await state.clear()
+        return
+
+    file_id = message.photo[-1].file_id
+
+    await update_user(message.from_user.id, chat_id, rel_image=file_id)
+    await update_user(user["partner_id"], chat_id, rel_image=file_id)
+
+    await state.clear()
+    await message.answer("✅ Фото пары успешно обновлено! Вот ваше меню:")
+
+    user = await get_user(message.from_user.id, chat_id)
+
+    name = esc(user_display_name(user))
+    level = min(user["rel_xp"] // XP_PER_LEVEL, MAX_LEVEL)
+    married = bool(user["is_married"])
+    status = "💍 В браке" if married else "💕 В отношениях"
+    started = (
+        datetime.fromtimestamp(user["rel_started"], timezone.utc).strftime("%d.%m.%Y") if user["rel_started"] else "?")
+    extra = ""
+    if married and user["married_at"]:
+        extra += f"\n💒 Свадьба: {datetime.fromtimestamp(user['married_at'], timezone.utc).strftime('%d.%m.%Y')}"
+    if user["child_id"]:
+        extra += f"\n👶 Ребёнок: {esc(user['child_name'])}"
+
+    default_text = (f"❤️ ОТНОШЕНИЯ\n{{div}}\n\n"
+                    f"💕 {{name}} + {{partner_name}}\n\n"
+                    f"{{div}}\n\n"
+                    f"📅 Вместе с: {{rel_started}}\n"
+                    f"📊 Уровень: {{rel_level}} / {{max_level}}\n"
+                    f"✨ Опыт: {{rel_xp}} XP\n"
+                    f"💍 Статус: {{rel_status}}{{extra}}")
+    raw_text = await get_local_setting("text_relations", chat_id, default_text)
+
+    text = raw_text.replace("{name}", name) \
+        .replace("{partner_name}", esc(user['partner_name'])) \
+        .replace("{rel_started}", started) \
+        .replace("{rel_level}", str(level)) \
+        .replace("{max_level}", str(MAX_LEVEL)) \
+        .replace("{rel_xp}", str(user['rel_xp'])) \
+        .replace("{rel_status}", status) \
+        .replace("{extra}", extra) \
+        .replace("{div}", DIV)
+
+    kb = relations_kb(message.from_user.id, True, married, level >= WEDDING_LEVEL, bool(user["child_id"]),
+                      user["gender"])
+
+    await message.answer_photo(file_id, caption=text, reply_markup=kb, parse_mode="HTML")
 
 
 @dp.callback_query(RelCB.filter(F.action == "gifts"))
-async def cb_gifts(query: types.CallbackQuery, callback_data: RelCB):
+@inject_user
+async def cb_gifts(query: types.CallbackQuery, callback_data: RelCB, user: dict, chat_id: int):
     if query.from_user.id != callback_data.owner_id:
         await query.answer("⚠️ Чужое меню!", show_alert=True)
         return
-    user = await get_user(query.from_user.id)
     if not user["partner_id"]:
         await query.answer("❌ Нет партнёра.", show_alert=True)
         return
@@ -72,11 +183,11 @@ async def cb_gifts(query: types.CallbackQuery, callback_data: RelCB):
 
 
 @dp.callback_query(GiftCB.filter())
-async def cb_gift_buy(query: types.CallbackQuery, callback_data: GiftCB):
+@inject_user
+async def cb_gift_buy(query: types.CallbackQuery, callback_data: GiftCB, user: dict, chat_id: int):
     if query.from_user.id != callback_data.owner_id:
         await query.answer("⚠️ Чужое меню!", show_alert=True)
         return
-    user = await get_user(query.from_user.id)
     if not user["partner_id"]:
         await query.answer("❌ Нет партнёра.", show_alert=True)
         return
@@ -87,11 +198,13 @@ async def cb_gift_buy(query: types.CallbackQuery, callback_data: GiftCB):
     if user["balance"] < g["price"]:
         await query.answer(f"❌ Нужно {g['price']}", show_alert=True)
         return
-    await update_user(query.from_user.id, balance=user["balance"] - g["price"])
-    partner = await get_user(user["partner_id"])
+
+    await update_user(query.from_user.id, chat_id, balance=user["balance"] - g["price"])
+    partner = await get_user(user["partner_id"], chat_id)
     if partner:
-        await update_user(partner["user_id"], rel_xp=partner["rel_xp"] + g["xp"])
-    await update_user(query.from_user.id, rel_xp=user["rel_xp"] + g["xp"])
+        await update_user(partner["user_id"], chat_id, rel_xp=partner["rel_xp"] + g["xp"])
+    await update_user(query.from_user.id, chat_id, rel_xp=user["rel_xp"] + g["xp"])
+
     level = min((user["rel_xp"] + g["xp"]) // XP_PER_LEVEL, MAX_LEVEL)
     b = InlineKeyboardBuilder()
     b.button(text="🎁 Ещё ›", callback_data=RelCB(action="gifts", owner_id=query.from_user.id))
@@ -106,11 +219,11 @@ async def cb_gift_buy(query: types.CallbackQuery, callback_data: GiftCB):
 
 
 @dp.callback_query(RelCB.filter(F.action == "marry"))
-async def cb_marry(query: types.CallbackQuery, callback_data: RelCB):
+@inject_user
+async def cb_marry(query: types.CallbackQuery, callback_data: RelCB, user: dict, chat_id: int):
     if query.from_user.id != callback_data.owner_id:
         await query.answer("⚠️ Чужое меню!", show_alert=True)
         return
-    user = await get_user(query.from_user.id)
     if not user["partner_id"]:
         await query.answer("❌ Нет партнёра.", show_alert=True)
         return
@@ -122,10 +235,10 @@ async def cb_marry(query: types.CallbackQuery, callback_data: RelCB):
         await query.answer("❌ Вы уже женаты.", show_alert=True)
         return
     now = int(datetime.now(timezone.utc).timestamp())
-    await update_user(query.from_user.id, is_married=1, married_at=now)
-    partner = await get_user(user["partner_id"])
+    await update_user(query.from_user.id, chat_id, is_married=1, married_at=now)
+    partner = await get_user(user["partner_id"], chat_id)
     if partner:
-        await update_user(partner["user_id"], is_married=1, married_at=now)
+        await update_user(partner["user_id"], chat_id, is_married=1, married_at=now)
     m1 = f'<a href="tg://user?id={query.from_user.id}">{esc(query.from_user.first_name)}</a>'
     m2 = f'<a href="tg://user?id={user["partner_id"]}">{esc(user["partner_name"])}</a>'
     text = f"💍 СВАДЬБА СЫГРАНА!\n{DIV}\n\n{m1} и {m2}\nтеперь муж и жена! 🎉\n\n{DIV}\n\nОрион поздравляет! 💛"
@@ -133,36 +246,37 @@ async def cb_marry(query: types.CallbackQuery, callback_data: RelCB):
 
 
 @dp.callback_query(RelCB.filter(F.action == "adopt_hint"))
-async def cb_adopt_hint(query: types.CallbackQuery, callback_data: RelCB):
+@inject_user
+async def cb_adopt_hint(query: types.CallbackQuery, callback_data: RelCB, user: dict, chat_id: int):
     if query.from_user.id != callback_data.owner_id:
         await query.answer("⚠️ Чужое меню!", show_alert=True)
         return
-    user = await get_user(query.from_user.id)
     verb = ("усыновить" if user["gender"] == "male"
             else ("удочерить" if user["gender"] == "female" else "усыновить/удочерить"))
     await query.answer(f"👶 Ответь на сообщение партнёра и напиши «{verb}»\n(можно и через @username)", show_alert=True)
 
 
 @dp.callback_query(RelCB.filter(F.action == "breakup"))
-async def cb_breakup(query: types.CallbackQuery, callback_data: RelCB):
+@inject_user
+async def cb_breakup(query: types.CallbackQuery, callback_data: RelCB, user: dict, chat_id: int):
     if query.from_user.id != callback_data.owner_id:
         await query.answer("⚠️ Чужое меню!", show_alert=True)
         return
-    user = await get_user(query.from_user.id)
     pid = user["partner_id"]
     if not pid:
         await query.answer("❌ Нет партнёра.", show_alert=True)
         return
-    await update_user(query.from_user.id, partner_id=0, partner_name="", rel_xp=0,
-                      is_married=0, rel_started=0, married_at=0, child_id=0, child_name="")
-    await update_user(pid, partner_id=0, partner_name="", rel_xp=0,
-                      is_married=0, rel_started=0, married_at=0, child_id=0, child_name="")
+    await update_user(query.from_user.id, chat_id, partner_id=0, partner_name="", rel_xp=0,
+                      is_married=0, rel_started=0, married_at=0, child_id=0, child_name="", rel_image="")
+    await update_user(pid, chat_id, partner_id=0, partner_name="", rel_xp=0,
+                      is_married=0, rel_started=0, married_at=0, child_id=0, child_name="", rel_image="")
     text = f"💔 ОТНОШЕНИЯ РАЗОРВАНЫ\n{DIV}\n\nВсё ещё впереди!"
     await edit_or_send(query, text, back_kb(query.from_user.id))
 
 
 @dp.message(Command("propose"))
 async def cmd_propose(message: types.Message):
+    chat_id = message.chat.id
     if message.chat.type not in ("group", "supergroup"):
         await message.answer("❌ Только в группе.")
         return
@@ -182,8 +296,8 @@ async def cmd_propose(message: types.Message):
     if target_id == message.from_user.id:
         await message.answer("❌ Себе нельзя.")
         return
-    me = await _ensure_user(message.from_user.id)
-    other = await _ensure_user(target_id)
+    me = await _ensure_user(message.from_user.id, chat_id)
+    other = await _ensure_user(target_id, chat_id)
     try:
         tg_target = await bot.get_chat(target_id)
         if getattr(tg_target, "is_bot", False):
@@ -191,9 +305,9 @@ async def cmd_propose(message: types.Message):
             return
     except Exception:
         pass
-    protected_owner = await get_protected_owner(target_id)
+    protected_owner = await get_protected_owner(target_id, chat_id)
     if protected_owner and message.from_user.id != protected_owner:
-        owner_user = await get_user(protected_owner)
+        owner_user = await get_user(protected_owner, chat_id)
         if owner_user and owner_user.get("character_name"):
             owner_name = esc(owner_user["character_name"])
         else:
@@ -209,10 +323,6 @@ async def cmd_propose(message: types.Message):
     if not other["character_name"]:
         await message.answer(f"❌ {esc(display)} ещё не выбрал персонажа.")
         return
-    # ПАТЧ 5: игрок не писал боту — он не увидит предложение
-    if not other.get("last_msg_time"):
-        await message.answer(f"❌ {esc(display)} ещё не писал боту. Пусть напишет /start.")
-        return
     if me["partner_id"]:
         await message.answer("❌ Ты уже в отношениях.")
         return
@@ -220,7 +330,7 @@ async def cmd_propose(message: types.Message):
         await message.answer(f"❌ {esc(display)} уже в отношениях.")
         return
     if message.from_user.id != OWNER_ID:
-        key = ("propose", message.from_user.id, target_id, message.chat.id)
+        key = ("propose", message.from_user.id, target_id, chat_id)
         now_ts = _now_ts()
         last = _propose_cooldown.get(key, 0)
         if now_ts - last < PROPOSE_COOLDOWN:
@@ -242,12 +352,13 @@ async def cmd_propose(message: types.Message):
 
 
 @dp.callback_query(ProposeCB.filter())
-async def cb_propose(query: types.CallbackQuery, callback_data: ProposeCB):
+@inject_user
+async def cb_propose(query: types.CallbackQuery, callback_data: ProposeCB, user: dict, chat_id: int):
     if query.from_user.id != callback_data.target_id:
         await query.answer("❌ Не для тебя!", show_alert=True)
         return
-    proposer = await get_user(callback_data.proposer_id)
-    target = await get_user(callback_data.target_id)
+    proposer = await get_user(callback_data.proposer_id, chat_id)
+    target = await get_user(callback_data.target_id, chat_id)
     if not proposer or not target:
         await query.answer("❌ Ошибка", show_alert=True)
         return
@@ -257,7 +368,7 @@ async def cb_propose(query: types.CallbackQuery, callback_data: ProposeCB):
         text = f"💔 ОТКЛОНЕНО\n{DIV}\n\nНичего страшного!"
         await edit_or_send(query, text, b.as_markup())
         return
-    protected_owner = await get_protected_owner(callback_data.target_id)
+    protected_owner = await get_protected_owner(callback_data.target_id, chat_id)
     if protected_owner and callback_data.proposer_id != protected_owner:
         await query.answer("❌ Этот человек только для владельца.", show_alert=True)
         return
@@ -268,10 +379,10 @@ async def cb_propose(query: types.CallbackQuery, callback_data: ProposeCB):
         await query.answer("❌ Кто-то уже в отношениях.", show_alert=True)
         return
     now = int(datetime.now(timezone.utc).timestamp())
-    await update_user(callback_data.proposer_id, partner_id=callback_data.target_id,
+    await update_user(callback_data.proposer_id, chat_id, partner_id=callback_data.target_id,
                       partner_name=target["character_name"] or "Игрок",
                       rel_xp=0, is_married=0, rel_started=now)
-    await update_user(callback_data.target_id, partner_id=callback_data.proposer_id,
+    await update_user(callback_data.target_id, chat_id, partner_id=callback_data.proposer_id,
                       partner_name=proposer["character_name"] or "Игрок",
                       rel_xp=0, is_married=0, rel_started=now)
     b = InlineKeyboardBuilder()
