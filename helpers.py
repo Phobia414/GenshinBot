@@ -128,36 +128,36 @@ def get_reputation_bonuses(rep):
     return earn_bonus, drop_bonus, shop_discount
 
 
-# ==========================================
-# ОБНОВЛЕННАЯ ПРОГРЕССИЯ РАНГОВ
-# ==========================================
 def get_reputation_title(rep, region_name):
     level = get_rep_level(rep)
 
-    ranks = {
-        1: "🌱 Новичок",
-        2: "🍃 Путник",
-        3: "🗺️ Искатель",
-        4: "⚔️ Защитник",
-        5: "🛡️ Ветеран",
-        6: "✨ Знаток",
-        7: "🏅 Почетный житель",
-        8: "⭐ Знаменитость",
-        9: "👑 Мастер",
-        10: "🏆 Герой"
+    # ИСПРАВЛЕНО: Словарь падежей (Предложный, Родительный)
+    cases = {
+        "Мондштадт": ("Мондштадте", "Мондштадта"),
+        "Ли Юэ": ("Ли Юэ", "Ли Юэ"),
+        "Инадзума": ("Инадзуме", "Инадзумы"),
+        "Сумеру": ("Сумеру", "Сумеру"),
+        "Фонтейн": ("Фонтейне", "Фонтейна"),
+        "Натлан": ("Натлане", "Натлана"),
+        "Нод-Край": ("Нод-Крае", "Нод-Края"),
+        "Снежная": ("Снежной", "Снежной"),
+        "Тейват": ("Тейвате", "Тейвата"),
     }
 
-    # Если уровень выше 10, оставляем 10-й
-    rank_name = ranks.get(level, "🏆 Герой")
+    prep, gen = cases.get(region_name, (region_name, region_name))
 
-    return f"{rank_name} {region_name}"
+    if level >= 10: return f"🏆 Герой {gen}"
+    if level >= 7: return f"⭐ Знаменитость {gen}"
+    if level >= 5: return f"🌟 Уважаемый житель {gen}"
+    if level >= 3: return f"✨ Известный в {prep}"
+    return f"🌱 Новичок в {prep}"
 
 
 def find_region_by_character(character):
     if not character: return None
     key = get_character_region(character)
     if key and key in REGIONS:
-        if key == "other": return key, "Тейвате"
+        if key == "other": return key, "Тейват"
         return key, REGIONS[key]
     return None
 

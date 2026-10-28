@@ -34,12 +34,16 @@ async def cb_menu(query, callback_data, user, chat_id):
         if r_key and r_key in REGIONS and r_key != "other":
             region_display = REGIONS[r_key].split(" ", 1)[1] if " " in REGIONS[r_key] else REGIONS[r_key]
 
+    # --- ИСПРАВЛЕННЫЙ КОД: Получаем ранг репутации для статуса ---
     rep = user.get("reputation", 0) or 0
     reg_info = find_region_by_character(user.get("character_name"))
-    reg_name_for_title = reg_info[1] if reg_info else "Тейвате"
+    reg_name_for_title = reg_info[1] if reg_info else "Тейват"
+
     if " " in reg_name_for_title:
         reg_name_for_title = reg_name_for_title.split(" ", 1)[1]
+
     rep_title = get_reputation_title(rep, reg_name_for_title)
+    # ------------------------------------------------------
 
     text = (
         f"╓───────────────────────╖\n"
@@ -71,12 +75,14 @@ async def cb_profile(query, callback_data, user, chat_id):
     partner_line = f"❤️ {esc(user['partner_name'])}" if user["partner_id"] else "❤️ Свободен(а)"
     resin = await update_resin(query.from_user.id, chat_id)
 
+    # --- ИСПРАВЛЕННЫЙ КОД: Ранг для профиля ---
     rep = user["reputation"] or 0
     reg_info = find_region_by_character(user.get("character_name"))
-    reg_name_for_title = reg_info[1] if reg_info else "Тейвате"
+    reg_name_for_title = reg_info[1] if reg_info else "Тейват"
     if " " in reg_name_for_title:
         reg_name_for_title = reg_name_for_title.split(" ", 1)[1]
     rep_title = get_reputation_title(rep, reg_name_for_title)
+    # ------------------------------------
 
     text = (
         f"╓───────────────────────╖\n"
@@ -108,8 +114,7 @@ async def cb_freerole(query, callback_data, user, chat_id):
     await update_user(query.from_user.id, chat_id, character_name="")
     await query.answer(f"⚠️ Роль «{old}» освобождена. Вернуть можно за {PRICE_ROLE_CHANGE} монет.", show_alert=True)
     if chat_id: await update_chat_list(chat_id)
-    # ИСПРАВЛЕНО: Убраны лишние аргументы, так как cb_profile уже обернут в @inject_user
-    await cb_profile(query, MenuCB(action="profile", owner_id=query.from_user.id))
+    await cb_profile(query, MenuCB(action="profile", owner_id=query.from_user.id), user, chat_id)
 
 
 @dp.callback_query(MenuCB.filter(F.action == "adventurers"))
@@ -129,7 +134,7 @@ async def cb_reputation(query, callback_data, user, chat_id):
     level, cur, need = get_rep_progress(rep)
 
     reg_info = find_region_by_character(user.get("character_name"))
-    reg_name_for_title = reg_info[1] if reg_info else "Тейвате"
+    reg_name_for_title = reg_info[1] if reg_info else "Тейват"
     if " " in reg_name_for_title:
         reg_name_for_title = reg_name_for_title.split(" ", 1)[1]
 
