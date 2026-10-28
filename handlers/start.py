@@ -18,7 +18,7 @@ from keyboards import (
     gender_kb, regions_kb, characters_kb, main_menu_kb,
 )
 from handlers.apply import ApplyForm
-import state as bot_state  # <--- ИСПРАВЛЕНО: переименован импорт
+import state as bot_state
 
 
 def format_text(text: str, name: str, div: str) -> str:
@@ -37,30 +37,19 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
         app = await get_application(message.from_user.id, target_chat_id)
         if app:
             status = app['status']
-            if status == 'pending':
-                return await message.answer("⏳ Ваша анкета уже находится на рассмотрении у администратора.")
+            if status in ('pending', 'waiting_char'):
+                return await message.answer("⏳ Ваша анкета уже на рассмотрении или одобрена. Ожидайте.")
             elif status == 'rejected':
                 return await message.answer(
                     "❌ Ваша предыдущая анкета была отклонена. Вы можете попробовать снова позже.")
 
-        taken = await get_taken_characters(target_chat_id)
-        free_chars = [name for name in CHARACTERS.keys() if name not in taken]
-
-        if not free_chars:
-            return await message.answer("😔 К сожалению, в этой ролевой сейчас нет свободных ролей.")
-
         await state.update_data(target_chat_id=target_chat_id)
-        await state.set_state(ApplyForm.choosing_char)
-
-        b = InlineKeyboardBuilder()
-        for ch in free_chars[:20]:
-            b.button(text=ch, callback_data=f"apply_char_{ch}")
-        b.adjust(2)
+        await state.set_state(ApplyForm.age)  # <--- СРАЗУ СПРАШИВАЕМ ВОЗРАСТ
 
         await message.answer(
-            f"🎭 <b>Выберите желаемую роль</b>\n{DIV}\n\n"
-            f"Ниже представлены свободные персонажи в этой ролевой. Выберите того, за кого хотите играть.",
-            reply_markup=b.as_markup(), parse_mode="HTML"
+            f"🎂 <b>Сколько вам лет?</b>\n\n"
+            f"Пожалуйста, укажите ваш реальный возраст цифрой. Мы принимаем участников строго с 14 лет.",
+            parse_mode="HTML"
         )
         return
     # --------------------------------------
@@ -70,7 +59,6 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
     except Exception:
         pass
 
-    # ИСПРАВЛЕНО: используем bot_state
     if chat_id in bot_state._last_bot_msg:
         try:
             await bot.delete_message(chat_id, bot_state._last_bot_msg[chat_id])
@@ -78,7 +66,7 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
             pass
 
     user = await _ensure_user(message.from_user.id, chat_id)
-
+    # ... (остальной код старта без изменений, он отвечает за обычный вход)
     if not user["gender"]:
         default_text = (
             f"✨ ДОБРО ПОЖАЛОВАТЬ В ТЕЙВАТ\n{{div}}\n\n"
@@ -92,22 +80,15 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
         )
         raw_text = await get_local_setting("text_start", chat_id, default_text)
         text = format_text(raw_text, "", DIV)
-
         img = await get_section_image("menu")
         try:
             msg = await message.answer_photo(
                 FSInputFile(img) if img in PLACEHOLDER_IMAGES else img,
-                caption=text,
-                reply_markup=gender_kb(message.from_user.id),
-                parse_mode="HTML"
+                caption=text, reply_markup=gender_kb(message.from_user.id), parse_mode="HTML"
             )
             bot_state._last_bot_msg[chat_id] = msg.message_id
         except Exception:
-            msg = await message.answer(
-                text,
-                reply_markup=gender_kb(message.from_user.id),
-                parse_mode="HTML"
-            )
+            msg = await message.answer(text, reply_markup=gender_kb(message.from_user.id), parse_mode="HTML")
             bot_state._last_bot_msg[chat_id] = msg.message_id
         return
 

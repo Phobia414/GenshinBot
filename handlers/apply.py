@@ -12,7 +12,6 @@ from helpers import esc
 
 
 class ApplyForm(StatesGroup):
-    choosing_char = State()
     age = State()
     age_visibility = State()
     experience = State()
@@ -21,27 +20,6 @@ class ApplyForm(StatesGroup):
     triggers = State()
     metagaming = State()
     activity = State()
-
-
-@dp.callback_query(F.data.startswith("apply_char_"))
-async def cb_apply_choose_char(query: types.CallbackQuery, state: FSMContext):
-    char_name = query.data.replace("apply_char_", "")
-    data = await state.get_data()
-    chat_id = data.get("target_chat_id")
-
-    taken = await get_taken_characters(chat_id)
-    if char_name in taken:
-        await query.answer("❌ Увы, эту роль только что заняли. Выберите другую.", show_alert=True)
-        return
-
-    await state.update_data(character_name=char_name)
-    await state.set_state(ApplyForm.age)
-
-    await query.message.edit_text(
-        f"🎂 <b>Сколько вам лет?</b>\n\n"
-        f"Пожалуйста, укажите ваш реальный возраст цифрой. Мы принимаем участников строго с 14 лет.",
-        parse_mode="HTML"
-    )
 
 
 @dp.message(ApplyForm.age)
@@ -132,7 +110,7 @@ async def process_triggers(message: types.Message, state: FSMContext):
     await state.set_state(ApplyForm.metagaming)
     await message.answer(
         f"🚫 <b>Как вы относитесь к метагеймингу?</b>\n\n"
-        f"<i>Расшифровка: Метагейминг — это использование информации, которую ваш персонаж не знает в ролевой, но знаете вы как игрок (например, вы прочитали в ООС-чате, что персонаж другого игрока задумал предательство, и ваш персонаж «случайно» начинает его подозревать).</i>\n\n"
+        f"<i>Расшифровка: Метагейминг — это использование информации, которую ваш персонаж не знает в ролевой, но знаете вы как игрок.</i>\n\n"
         f"Напишите ваше отношение.",
         parse_mode="HTML"
     )
@@ -154,8 +132,9 @@ async def process_activity(message: types.Message, state: FSMContext):
     await state.update_data(activity=message.text)
     data = await state.get_data()
 
+    # Сохраняем в БД (персонаж пока пустой)
     await save_application(
-        message.from_user.id, data["target_chat_id"], data["character_name"],
+        message.from_user.id, data["target_chat_id"], "Не выбран",
         data["age"], data["experience"], data["about"], data["timezone"],
         data["triggers"], data["metagaming"], data["activity"]
     )
@@ -163,11 +142,11 @@ async def process_activity(message: types.Message, state: FSMContext):
 
     await message.answer("✅ <b>Ваша анкета отправлена на проверку администраторам!</b>\nПожалуйста, ожидайте ответа.")
 
-    # Отправляем анкету всем админам целевой группы
+    # Отправляем анкету админам
     text = (
         f"📩 <b>НОВАЯ АНКЕТА</b>\n{DIV}\n\n"
         f"👤 <b>Пользователь:</b> {esc(message.from_user.first_name)} (@{message.from_user.username})\n"
-        f"🎭 <b>Роль:</b> {esc(data['character_name'])}\n\n"
+        f"🎭 <b>Роль:</b> Будет выбрана при входе\n\n"
         f"🎂 <b>Возраст:</b> {esc(data['age'])}\n"
         f"📖 <b>Опыт:</b> {esc(data['experience'])}\n"
         f"🌟 <b>О себе:</b> {esc(data['about'])}\n"
@@ -190,10 +169,9 @@ async def process_activity(message: types.Message, state: FSMContext):
                 try:
                     await bot.send_message(admin.user.id, text, reply_markup=b.as_markup(), parse_mode="HTML")
                 except Exception:
-                    pass  # Если админ закрыл ЛС, просто пропускаем
+                    pass
     except Exception as e:
         print(f"Ошибка при рассылке админам: {e}")
-        # Если не удалось админам, шлем владельцу бота
         try:
             await bot.send_message(OWNER_ID, text, reply_markup=b.as_markup(), parse_mode="HTML")
         except:
@@ -238,7 +216,7 @@ async def cb_appr_accept(query: types.CallbackQuery):
         await bot.send_message(user_id,
                                f"🎉 <b>Поздравляем! Ваша анкета одобрена!</b>\n\n"
                                f"🔗 <b>Ссылка для вступления в группу:</b>\n{invite_link}\n\n"
-                               f"<i>Ссылка одноразовая!</i>",
+                               f"<i>Ссылка одноразовая! Как только вы зайдете в группу, бот попросит вас выбрать персонажа, и ваша анкета появится в чате.</i>",
                                parse_mode="HTML")
     except Exception:
         pass
