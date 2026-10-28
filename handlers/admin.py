@@ -360,7 +360,6 @@ async def cmd_cleanup_set(message: types.Message):
         await message.answer("Формат: <code>/cleanup_set on 100 7</code>", parse_mode="HTML")
         return
 
-    # Переменная переименована, чтобы не перекрывать глобальный state
     enabled_state = 1 if parts[1].lower() == "on" else 0
     try:
         min_msgs = int(parts[2])
@@ -394,24 +393,25 @@ async def cmd_cleanup_list(message: types.Message):
         lines.append(f"• {name} — {', '.join(tags)}")
     await message.answer("\n".join(lines), reply_markup=back_kb(message.from_user.id))
 
-    @dp.message(Command("applylink"))
-    async def cmd_applylink(message: types.Message):
-        if message.chat.type not in ("group", "supergroup"):
-            await message.answer("❌ Эта команда работает только в группе.")
-            return
 
-        if not await is_chat_admin(message.chat.id, message.from_user.id) and message.from_user.id != OWNER_ID:
-            await message.answer("❌ Только для администраторов группы.")
-            return
+@dp.message(Command("applylink"))
+async def cmd_applylink(message: types.Message):
+    if message.chat.type not in ("group", "supergroup"):
+        await message.answer("❌ Эта команда работает только в группе.")
+        return
 
-        bot_username = (await bot.get_me()).username
-        link = f"https://t.me/{bot_username}?start=apply_{message.chat.id}"
+    if not await is_chat_admin(message.chat.id, message.from_user.id) and message.from_user.id != OWNER_ID:
+        await message.answer("❌ Только для администраторов группы.")
+        return
 
-        text = (
-            f"🔗 <b>ССЫЛКА ДЛЯ НАБОРА В АНКЕТУ</b>\n{DIV}\n\n"
-            f"Отправьте эту ссылку в рекламный пост. Все, кто по ней перейдут, "
-            f"смогут заполнить анкету именно для вашей ролевой.\n\n"
-            f"<code>{link}</code>\n\n"
-            f"<i>Анкеты будут приходить в ЛС всем админам этой группы.</i>"
-        )
-        await message.answer(text, parse_mode="HTML")
+    bot_username = (await bot.get_me()).username
+    link = f"https://t.me/{bot_username}?start=apply_{message.chat.id}"
+
+    text = (
+        f"🔗 <b>ССЫЛКА ДЛЯ НАБОРА В АНКЕТУ</b>\n{DIV}\n\n"
+        f"Отправьте эту ссылку в рекламный пост. Все, кто по ней перейдут, "
+        f"смогут заполнить анкету именно для вашей ролевой.\n\n"
+        f"<code>{link}</code>\n\n"
+        f"<i>Анкеты будут приходить в ЛС всем админам этой группы.</i>"
+    )
+    await message.answer(text, parse_mode="HTML")
