@@ -2,6 +2,7 @@ from aiogram import types, F
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+import time
 
 from bot_instance import bot, dp
 from config import OWNER_ID
@@ -139,7 +140,9 @@ async def process_activity(message: types.Message, state: FSMContext):
     )
     await state.clear()
 
-    await message.answer("✅ <b>Ваша анкета отправлена на проверку администраторам!</b>\nПожалуйста, ожидайте ответа.")
+    # ИСПРАВЛЕНО: Добавлен parse_mode="HTML"
+    await message.answer("✅ <b>Ваша анкета отправлена на проверку администраторам!</b>\nПожалуйста, ожидайте ответа.",
+                         parse_mode="HTML")
 
     text = (
         f"📩 <b>НОВАЯ АНКЕТА</b>\n{DIV}\n\n"
@@ -176,7 +179,8 @@ async def process_activity(message: types.Message, state: FSMContext):
             pass
 
 
-# --- Строгая проверка прав ---
+# --- Обработчики для владельца и админов ---
+
 async def is_admin_of_chat(user_id: int, chat_id: int) -> bool:
     if user_id == OWNER_ID:
         return True
@@ -192,13 +196,14 @@ async def cb_appr_accept(query: types.CallbackQuery):
     parts = query.data.replace("appr_accept_", "").split("_")
     user_id, chat_id = int(parts[0]), int(parts[1])
 
-    # Проверяем, является ли нажавший админом этой группы
     if not await is_admin_of_chat(query.from_user.id, chat_id):
         await query.answer("❌ Вы не являетесь админом этой группы.", show_alert=True)
         return
 
     try:
-        link = await bot.create_chat_invite_link(chat_id, member_limit=1)
+        # ИСПРАВЛЕНО: Ссылка будет жить 24 часа, чтобы не сгорала, если человек нажмет позже
+        expire_date = int(time.time()) + 86400
+        link = await bot.create_chat_invite_link(chat_id, member_limit=1, expire_date=expire_date)
         invite_link = link.invite_link
     except Exception as e:
         await query.message.edit_text(f"{query.message.html_text}\n\n❌ <b>Ошибка создания ссылки:</b> {e}",
@@ -213,8 +218,8 @@ async def cb_appr_accept(query: types.CallbackQuery):
     try:
         await bot.send_message(user_id,
                                f"🎉 <b>Поздравляем! Ваша анкета одобрена!</b>\n\n"
-                               f"🔗 <b>Ссылка для вступления в группу:</b>\n{invite_link}\n\n"
-                               f"<i>Ссылка одноразовая! Как только вы зайдете в группу, бот попросит вас выбрать персонажа, и ваша анкета появится в чате.</i>",
+                               f"🔗 <b>Ссылка для вступления в группу (живет 24 часа):</b>\n{invite_link}\n\n"
+                               f"<i>Как только вы зайдете в группу, бот попросит вас выбрать персонажа, и ваша анкета появится в чате.</i>",
                                parse_mode="HTML")
     except Exception:
         pass
