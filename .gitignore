@@ -4,6 +4,7 @@
 # Базы данных
 *.db
 *.sqlite3
+data/
 
 # Логи
 logs/
