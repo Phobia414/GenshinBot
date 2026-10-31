@@ -1,6 +1,7 @@
 from aiogram import types
 from aiogram.filters import Command
 from aiogram.types import FSInputFile, InputMediaPhoto, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.exceptions import TelegramBadRequest
 import aiosqlite
 from config import DB_PATH
 from telegraph import Telegraph
@@ -18,22 +19,23 @@ import state
 
 
 async def get_telegraph_client():
-    """Правильная инициализация Telegraph с токеном"""
+    """Получаем или создаем клиент Telegraph (с безопасным сохранением токена)"""
     token = await get_setting("telegraph_token")
+    tg = Telegraph()
 
-    if not token:
-        # Если токена нет, создаем новый аккаунт
+    if token:
+        tg.access_token = token
+    else:
         import random, string
         rand_str = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
-        tg = Telegraph()
-        account = tg.create_account(short_name=f'Orion_{rand_str}')
-
-        # Сохраняем токен (в новых версиях библиотеки это объект, в старых - словарь)
-        token = account.access_token if hasattr(account, 'access_token') else account['access_token']
-        await set_setting("telegraph_token", token)
-
-    # Передаем токен в конструктор (это решает ошибку AttributeError)
-    return Telegraph(access_token=token)
+        try:
+            # Метод create_account сам устанавливает tg.access_token
+            tg.create_account(short_name=f'Orion_{rand_str}')
+            await set_setting("telegraph_token", tg.access_token)
+        except Exception as e:
+            print(f"❌ Ошибка создания аккаунта Telegraph: {e}")
+            raise e
+    return tg
 
 
 async def update_chat_list(group_id: int):
@@ -53,7 +55,7 @@ async def update_chat_list(group_id: int):
             for row in await cur.fetchall():
                 taken_users[row["character_name"]] = row["search_rp_partner"] or ""
 
-    # Формируем HTML для страницы Telegraph
+    # Генерируем HTML для Telegraph
     html_content = "<p>Занят - ☒<br>Ищет сорол - ⨂<br>Свободен - пусто</p>"
 
     for reg_key, reg_name in REGIONS.items():
@@ -81,28 +83,26 @@ async def update_chat_list(group_id: int):
                 display_name = display_name[:15] + "…"
             char_list.append(f"{display_name}{status}")
 
-        # Разбиваем на 2 колонки для Telegraph (используем &nbsp; для ровных отступов)
         region_text = []
         for i in range(0, len(char_list), 2):
             left = char_list[i]
             right = char_list[i + 1] if i + 1 < len(char_list) else ""
 
             if right:
-                region_text.append(f"{left} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {right}")
+                region_text.append(f"{left:<22} {right}")
             else:
                 region_text.append(left)
 
         html_content += f"<h3>{display_reg}</h3>"
-        # Оборачиваем в тег <pre>, чтобы Telegraph не "съедал" пробелы
-        html_content += f"<pre>{'<br>'.join(region_text)}</pre>"
+        html_content += f"<pre>{'\n'.join(region_text)}</pre>"
 
-    # Пытаемся создать страницу в Telegraph
+    # Пробуем создать страницу в Telegraph
     telegraph_url = None
     try:
         tg = await get_telegraph_client()
         page = tg.create_page(
             title='Список ролей',
-            html_content=html_content,
+            content=html_content,  # Используем content для новых версий библиотеки
             author_name='Орион'
         )
         telegraph_url = page['url']
@@ -112,35 +112,45 @@ async def update_chat_list(group_id: int):
 
     custom_img = await get_local_setting("image_rolelist", group_id)
 
-    # Формируем кнопку и подпись к фото
+    # Создаем кнопку, если ссылка есть
+    kb = None
     if telegraph_url:
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📜 Открыть полный список", url=telegraph_url)]
         ])
         caption = "＿＿＿＿ [ Список ролей ] ＿＿＿＿\n\nНажми на кнопку ниже, чтобы посмотреть всех персонажей и их статус 👇"
     else:
-        kb = None
-        caption = "＿＿＿＿ [ Список ролей ] ＿＿＿＿\n\n⚠️ Не удалось загрузить полный список (Ошибка Телеграфа). Загляните позже."
+        caption = "＿＿＿＿ [ Список ролей ] ＿＿＿＿\n\n⚠️ Не удалось загрузить полный список (Ошибка Телеграфа)."
 
-    # Обновляем сообщение в канале (картинка + подпись + кнопка)
+    # Обновляем сообщение (картинку + текст + кнопку)
     try:
         if custom_img:
             media = InputMediaPhoto(media=custom_img, caption=caption, parse_mode="HTML")
         else:
             media = InputMediaPhoto(media=FSInputFile("images/list_banner.jpg"), caption=caption, parse_mode="HTML")
 
-        # reply_markup=kb прикрепляет кнопку прямо к сообщению с фото
         await bot.edit_message_media(chat_id=channel_id, message_id=msg_id, media=media, reply_markup=kb)
         return True
+    except TelegramBadRequest as e:
+        if "message is not modified" in str(e):
+            return True  # Игнорируем, если сообщение не изменилось
+        print(f"❌ Ошибка при редактировании фото: {e}")
     except Exception as e:
         print(f"❌ Ошибка при редактировании фото: {e}")
-        try:
-            await bot.edit_message_caption(chat_id=channel_id, message_id=msg_id, caption=caption, parse_mode="HTML",
-                                           reply_markup=kb)
+
+    # Если не удалось отредактировать медиа, пробуем обновить только подпись
+    try:
+        await bot.edit_message_caption(chat_id=channel_id, message_id=msg_id, caption=caption, parse_mode="HTML",
+                                       reply_markup=kb)
+        return True
+    except TelegramBadRequest as e:
+        if "message is not modified" in str(e):
             return True
-        except Exception as e2:
-            print(f"❌ Ошибка при редактировании подписи: {e2}")
-            return False
+        print(f"❌ Ошибка при редактировании подписи: {e}")
+    except Exception as e:
+        print(f"❌ Ошибка при редактировании подписи: {e}")
+
+    return False
 
 
 @dp.message(Command("setlist"))
@@ -166,11 +176,9 @@ async def cmd_setlist(message: types.Message):
         existing_channel, existing_msg_id = await get_group_channel(message.chat.id)
 
         if existing_channel == channel_id and existing_msg_id:
-            # Если канал уже привязан, просто обновляем старое сообщение
             await update_chat_list(message.chat.id)
             await message.answer(f"✅ Список в канале <b>{channel.title}</b> обновлен!", parse_mode="HTML")
         else:
-            # Создаем новое сообщение
             custom_img = await get_local_setting("image_rolelist", message.chat.id)
             try:
                 if custom_img:
@@ -179,7 +187,7 @@ async def cmd_setlist(message: types.Message):
                     photo = FSInputFile("images/list_banner.jpg")
                     msg = await bot.send_photo(channel_id, photo, caption="🔄 Генерирую список ролей...")
             except Exception:
-                await message.answer("❌ Ошибка: Файл images/list_banner.jpg не найден. Закиньте баннер в папку images.")
+                await message.answer("❌ Ошибка: Файл images/list_banner.jpg не найден.")
                 return
 
             await set_group_channel(message.chat.id, channel_id, msg.message_id)
