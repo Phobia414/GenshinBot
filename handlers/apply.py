@@ -1,6 +1,7 @@
 from aiogram import types, F
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.filters import StateFilter # <--- ДОБАВЛЕН ИМПОРТ
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 import time
 
@@ -50,24 +51,33 @@ async def process_age(message: types.Message, state: FSMContext):
     )
 
 
-@dp.callback_query(F.data == "apply_age_show")
+@dp.callback_query(F.data == "apply_age_show", StateFilter(ApplyForm.age_visibility))
 async def cb_age_show(query: types.CallbackQuery, state: FSMContext):
-    await query.message.edit_text("👁 Возраст будет отображаться в анкете.")
-    await ask_experience(query.message, state)
+    await query.answer() # Мгновенно убираем "часики"
+    try:
+        await query.message.edit_text("👁 Возраст будет отображаться в анкете.")
+    except Exception:
+        pass # Игнорируем ошибку, если сообщение уже изменено
+    await ask_experience(query, state)
 
 
-@dp.callback_query(F.data == "apply_age_hide")
+@dp.callback_query(F.data == "apply_age_hide", StateFilter(ApplyForm.age_visibility))
 async def cb_age_hide(query: types.CallbackQuery, state: FSMContext):
+    await query.answer()
     await state.update_data(age="Скрыт")
-    await query.message.edit_text("🙈 Возраст будет скрыт от других.")
-    await ask_experience(query.message, state)
+    try:
+        await query.message.edit_text("🙈 Возраст будет скрыт от других.")
+    except Exception:
+        pass
+    await ask_experience(query, state)
 
 
-async def ask_experience(message: types.Message, state: FSMContext):
+async def ask_experience(query: types.CallbackQuery, state: FSMContext):
     await state.set_state(ApplyForm.experience)
-    await message.answer(
-        f"📖 <b>Расскажите о вашем опыте в ролевых.</b>\n\n"
-        f"Где вы играли раньше и как давно это было? Если вы новичок — просто напишите об этом.",
+    await bot.send_message(
+        chat_id=query.from_user.id,
+        text=f"📖 <b>Расскажите о вашем опыте в ролевых.</b>\n\n"
+             f"Где вы играли раньше и как давно это было? Если вы новичок — просто напишите об этом.",
         parse_mode="HTML"
     )
 
