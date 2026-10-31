@@ -35,6 +35,7 @@ async def update_chat_list(group_id: int):
                 taken_users[row["character_name"]] = row["search_rp_partner"] or ""
 
     # === ГЕНЕРАЦИЯ ТЕКСТА ПО ТЗ ===
+    lines = ["▰▰▰ 〔 Список персонажей 〕 ▰▰▰\n"]
 
     for reg_key, reg_name in REGIONS.items():
         display_reg = reg_name.split(" ", 1)[1] if " " in reg_name else reg_name
@@ -87,10 +88,12 @@ async def update_chat_list(group_id: int):
     inner_text = "\n\n".join(lines)
     full_text = f"<b><code>{inner_text}</code></b>"
 
-    custom_img = await get_local_setting("image_rolelist", group_id)
+    # Минималистичная подпись для фото
+    caption = "▰▰▰ 〔 Список персонажей 〕 ▰▰▰"
 
-    # === РЕЖИМ 1: Все влезает в подпись к фото (до 1024 символов) ===
+    # === РЕЖИМ 1: Текст короткий (помещается в подпись к фото) ===
     if len(full_text) <= 1024:
+        # Если есть отдельное текстовое сообщение от прошлых версий - удаляем его
         if text_msg_id:
             try:
                 await bot.delete_message(chat_id=channel_id, message_id=int(text_msg_id))
@@ -99,35 +102,61 @@ async def update_chat_list(group_id: int):
             await set_local_setting("list_text_msg", "", group_id)
 
         try:
-            if custom_img:
-                media = InputMediaPhoto(media=custom_img, caption=full_text, parse_mode="HTML")
-            else:
-                media = InputMediaPhoto(media=FSInputFile("images/list_banner.jpg"), caption=full_text,
-                                        parse_mode="HTML")
-
-            await bot.edit_message_media(chat_id=channel_id, message_id=msg_id, media=media)
+            await bot.edit_message_caption(
+                chat_id=channel_id,
+                message_id=msg_id,
+                caption=full_text,
+                parse_mode="HTML"
+            )
             return True
         except TelegramBadRequest as e:
             if "message is not modified" in str(e):
                 return True
-            print(f"❌ Ошибка при редактировании фото: {e}")
-            return False
+            # Если не удалось отредактировать (например, сменили картинку), то обновляем медиа
+            try:
+                custom_img = await get_local_setting("image_rolelist", group_id)
+                media = InputMediaPhoto(media=custom_img or FSInputFile("images/list_banner.jpg"), caption=full_text,
+                                        parse_mode="HTML")
+                await bot.edit_message_media(chat_id=channel_id, message_id=msg_id, media=media)
+                return True
+            except Exception as e2:
+                print(f"❌ Ошибка при редактировании: {e2}")
+                return False
 
-    # === РЕЖИМ 2: Текст слишком длинный ===
+    # === РЕЖИМ 2: Текст длинный (Редактируем фото и текст отдельно) ===
     else:
+        if text_msg_id:
+            # Сообщения уже существуют, просто РЕДАКТИРУЕМ ИХ!
+            try:
+                # 1. Обновляем текст в ответе
+                await bot.edit_message_text(
+                    chat_id=channel_id,
+                    message_id=int(text_msg_id),
+                    text=full_text,
+                    parse_mode="HTML"
+                )
+                # 2. Обновляем подпись у фото (на случай, если она изменилась)
+                try:
+                    await bot.edit_message_caption(
+                        chat_id=channel_id,
+                        message_id=msg_id,
+                        caption=caption,
+                        parse_mode="HTML"
+                    )
+                except TelegramBadRequest:
+                    pass  # Игнорируем, если подпись не изменилась
+                return True
+            except Exception as e:
+                print(f"⚠️ Не удалось отредактировать старые сообщения, создаем новые: {e}")
+                # Если пользователь удалил сообщение вручную, идем дальше и создаем новые
+
+        # Если сообщений нет (или их удалили), создаем новые
         try:
             await bot.delete_message(chat_id=channel_id, message_id=msg_id)
         except Exception:
             pass
-        if text_msg_id:
-            try:
-                await bot.delete_message(chat_id=channel_id, message_id=int(text_msg_id))
-            except Exception:
-                pass
 
-        # Минималистичная подпись для фото, чтобы не было лишнего текста
-        caption = "▰▰▰ 〔 Список ролей 〕 ▰▰▰"
-
+        custom_img = await get_local_setting("image_rolelist", group_id)
         try:
             if custom_img:
                 photo_msg = await bot.send_photo(channel_id, custom_img, caption=caption, parse_mode="HTML")
