@@ -20,9 +20,7 @@ async def update_chat_list(group_id: int):
     if not channel_id or not msg_id:
         return False
 
-    # Получаем ID второго сообщения (на случай, если текст превысит лимиты)
     text_msg_id = await get_local_setting("list_text_msg", group_id)
-
     font_style = await get_group_font(group_id)
     custom_fonts = await get_custom_names(group_id)
 
@@ -35,10 +33,8 @@ async def update_chat_list(group_id: int):
             for row in await cur.fetchall():
                 taken_users[row["character_name"]] = row["search_rp_partner"] or ""
 
-    lines = ["＿＿＿＿ [ Список ролей ] ＿＿＿＿\n"]
-    lines.append("Занят - ☒")
-    lines.append("Ищет сорол - ⨂")
-    lines.append("Свободен - пусто\n")
+    # Собираем регионы в компактные блоки
+    block_lines = []
 
     for reg_key, reg_name in REGIONS.items():
         display_reg = reg_name.split(" ", 1)[1] if " " in reg_name else reg_name
@@ -50,7 +46,6 @@ async def update_chat_list(group_id: int):
         if not chars_in_reg:
             continue
 
-        # Формируем список имен с их статусами
         char_list = []
         for ch in sorted(chars_in_reg):
             norm_name = normalize_character_name(ch)
@@ -65,7 +60,6 @@ async def update_chat_list(group_id: int):
                 else:
                     status = " - ☒"  # Просто занят
 
-            # Ограничиваем длину имени, чтобы не сломать ровные колонки
             if len(display_name) > 16:
                 display_name = display_name[:15] + "…"
 
@@ -78,58 +72,23 @@ async def update_chat_list(group_id: int):
             left = char_list[i]
             right = char_list[i + 1] if i + 1 < len(char_list) else ""
 
-            # Выравниваем с помощью пробелов и оборачиваем в <code> для моноширинного шрифта
             if right:
-                # <20 означает, что левая колонка занимает 20 символов
                 region_lines.append(f"<code>{left:<20} {right}</code>")
             else:
                 region_lines.append(f"<code>{left}</code>")
 
-        lines.append("\n".join(region_lines) + "\n")
+        block_lines.append("\n".join(region_lines))
 
-    text = "\n".join(lines)
+    # Оборачиваем ВЕСЬ список в сворачиваемую цитату (blockquote expandable)
+    # Это создаст красивый свернутый блок в сообщении.
+    inner_text = "Занят - ☒\nИщет сорол - ⨂\nСвободен - пусто\n\n" + "\n\n".join(block_lines)
+    full_text = f"📜 <b>СПИСОК РОЛЕЙ</b>\n\n<blockquote expandable>{inner_text}</blockquote>"
+
     custom_img = await get_local_setting("image_rolelist", group_id)
 
-    # Если текст все еще больше 1024 (что маловероятно при двух колонках)
-    if len(text) > 1024:
-        try:
-            await bot.delete_message(chat_id=channel_id, message_id=msg_id)
-        except Exception:
-            pass
-        if text_msg_id:
-            try:
-                await bot.delete_message(chat_id=channel_id, message_id=int(text_msg_id))
-            except Exception:
-                pass
-
-        caption = "👇 <b>Полный список ролей в сообщении ниже</b> 👇"
-        try:
-            if custom_img:
-                photo_msg = await bot.send_photo(channel_id, custom_img, caption=caption, parse_mode="HTML")
-            else:
-                photo_msg = await bot.send_photo(channel_id, FSInputFile("images/list_banner.jpg"), caption=caption,
-                                                 parse_mode="HTML")
-        except Exception as e:
-            print(f"❌ Ошибка отправки фото: {e}")
-            return False
-
-        try:
-            text_msg = await bot.send_message(channel_id, text, parse_mode="HTML",
-                                              reply_to_message_id=photo_msg.message_id)
-        except Exception as e:
-            print(f"❌ Ошибка отправки текста: {e}")
-            return False
-
-        await set_group_channel(group_id, channel_id, photo_msg.message_id)
-        await set_local_setting("list_text_msg", text_msg.message_id, group_id)
-        try:
-            await bot.pin_chat_message(channel_id, photo_msg.message_id, disable_notification=True)
-        except Exception:
-            pass
-        return True
-
-    else:
-        # Если влезло в лимит, отправляем одним сообщением с фото
+    # === РЕЖИМ А: Всё влезает в подпись к фото (до 1024 символов) ===
+    if len(full_text) <= 1024:
+        # Удаляем старый текстовый блок, если он был
         if text_msg_id:
             try:
                 await bot.delete_message(chat_id=channel_id, message_id=int(text_msg_id))
@@ -139,20 +98,58 @@ async def update_chat_list(group_id: int):
 
         try:
             if custom_img:
-                media = InputMediaPhoto(media=custom_img, caption=text, parse_mode="HTML")
+                media = InputMediaPhoto(media=custom_img, caption=full_text, parse_mode="HTML")
             else:
-                media = InputMediaPhoto(media=FSInputFile("images/list_banner.jpg"), caption=text, parse_mode="HTML")
+                media = InputMediaPhoto(media=FSInputFile("images/list_banner.jpg"), caption=full_text,
+                                        parse_mode="HTML")
 
             await bot.edit_message_media(chat_id=channel_id, message_id=msg_id, media=media)
             return True
         except Exception as e:
-            print(f"❌ Ошибка при обновлении списка: {e}")
-            try:
-                await bot.edit_message_caption(chat_id=channel_id, message_id=msg_id, caption=text, parse_mode="HTML")
-                return True
-            except Exception as e2:
-                print(f"❌ Ошибка при обновлении подписи: {e2}")
-                return False
+            print(f"❌ Ошибка при обновлении в режиме А: {e}")
+            # Если произошла ошибка (например, из-за лимита на самом деле), переходим в Режим Б
+
+    # === РЕЖИМ Б: Текст слишком длинный. Картинка + Reply ===
+    # Удаляем старые сообщения
+    try:
+        await bot.delete_message(chat_id=channel_id, message_id=msg_id)
+    except Exception:
+        pass
+    if text_msg_id:
+        try:
+            await bot.delete_message(chat_id=channel_id, message_id=int(text_msg_id))
+        except Exception:
+            pass
+
+    # 1. Отправляем картинку с короткой подписью
+    caption = "👇 <b>Полный список ролей в сообщении ниже</b> 👇"
+    try:
+        if custom_img:
+            photo_msg = await bot.send_photo(channel_id, custom_img, caption=caption, parse_mode="HTML")
+        else:
+            photo_msg = await bot.send_photo(channel_id, FSImageFile("images/list_banner.jpg"), caption=caption,
+                                             parse_mode="HTML")
+    except Exception as e:
+        print(f"❌ Ошибка отправки фото в режиме Б: {e}")
+        return False
+
+    # 2. Отправляем текст как ОТВЕТ (reply) на картинку
+    try:
+        text_msg = await bot.send_message(channel_id, full_text, parse_mode="HTML",
+                                          reply_to_message_id=photo_msg.message_id)
+    except Exception as e:
+        print(f"❌ Ошибка отправки текста в режиме Б: {e}")
+        return False
+
+    # Сохраняем ID
+    await set_group_channel(group_id, channel_id, photo_msg.message_id)
+    await set_local_setting("list_text_msg", text_msg.message_id, group_id)
+
+    try:
+        await bot.pin_chat_message(channel_id, photo_msg.message_id, disable_notification=True)
+    except Exception:
+        pass
+    return True
 
 
 @dp.message(Command("setlist"))
