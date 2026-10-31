@@ -273,6 +273,11 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
 
     await update_user(query.from_user.id, chat_id, character_name=name, char_change_paid=0)
 
+    # ====================================================
+    # ТУТ САМОЕ ГЛАВНОЕ: МГНОВЕННОЕ ОБНОВЛЕНИЕ СПИСКА
+    await update_chat_list(chat_id)
+    # ====================================================
+
     app = await get_application(query.from_user.id, chat_id)
     if app and app['status'] == 'waiting_char':
         await update_application_status(query.from_user.id, chat_id, 'joined')
@@ -287,7 +292,6 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
             f"⚡ <b>Активность:</b> {esc(app['activity'])}"
         )
         await bot.send_message(chat_id, text, parse_mode="HTML")
-        await update_chat_list(chat_id)
 
         try:
             await query.message.delete()

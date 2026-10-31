@@ -60,14 +60,12 @@ async def update_chat_list(group_id: int):
             if ch in taken_users:
                 partner = taken_users[ch]
                 if partner:
-                    # Если указан сорол, выводим как в ТЗ: "Дилюк (Для Альбедо)"
                     searching.append(f"{partner} (Для {display_name})")
                 else:
                     occupied.append(display_name)
             else:
                 free.append(display_name)
 
-        # Формируем блок для региона
         region_lines = []
         region_lines.append("▱▱▱▱▱▱▱▱▱▱▱")
         region_lines.append(display_reg)
@@ -75,7 +73,7 @@ async def update_chat_list(group_id: int):
 
         if occupied:
             region_lines.append(f"Занятые: {', '.join(occupied)}")
-            region_lines.append("")  # Пустая строка для отступа
+            region_lines.append("")
 
         if searching:
             region_lines.append(f"Нужны в соролы: {', '.join(searching)}")
@@ -85,10 +83,8 @@ async def update_chat_list(group_id: int):
             region_lines.append(f"Свободные: {', '.join(free)}")
             region_lines.append("")
 
-        # Добавляем регион в общий список (убираем лишние пустые строки в конце)
         lines.append("\n".join(region_lines).strip())
 
-    # Объединяем все, оборачиваем в <b><code> для моноширинного жирного шрифта
     inner_text = "\n\n".join(lines)
     full_text = f"<b><code>{inner_text}</code></b>"
 
@@ -130,7 +126,9 @@ async def update_chat_list(group_id: int):
             except Exception:
                 pass
 
-        caption = "👇 <b>Полный список персонажей в сообщении ниже</b> 👇"
+        # Минималистичная подпись для фото, чтобы не было лишнего текста
+        caption = "▰▰▰ 〔 Список персонажей 〕 ▰▰▰"
+
         try:
             if custom_img:
                 photo_msg = await bot.send_photo(channel_id, custom_img, caption=caption, parse_mode="HTML")
