@@ -18,14 +18,15 @@ import state
 
 
 async def get_telegraph_client():
-    """Получаем или создаем клиент Telegraph (с сохранением токена)"""
+    """Получаем или создаем клиент Telegraph"""
     token = await get_setting("telegraph_token")
     tg = Telegraph()
     if token:
         tg.access_token = token
     else:
-        # Создаем аккаунт один раз и сохраняем токен
-        tg.create_account(short_name='GenshinRoleBot')
+        import random, string
+        rand_str = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
+        tg.create_account(short_name=f'Orion_{rand_str}')
         await set_setting("telegraph_token", tg.access_token)
     return tg
 
@@ -34,9 +35,6 @@ async def update_chat_list(group_id: int):
     channel_id, msg_id = await get_group_channel(group_id)
     if not channel_id or not msg_id:
         return False
-
-    # ID старого текстового сообщения (если оно было от прошлой версии)
-    text_msg_id = await get_local_setting("list_text_msg", group_id)
 
     font_style = await get_group_font(group_id)
     custom_fonts = await get_custom_names(group_id)
@@ -72,87 +70,79 @@ async def update_chat_list(group_id: int):
 
             status = ""
             if ch in taken_users:
-                if taken_users[ch]:
-                    status = " - ☒ ⨂"
-                else:
-                    status = " - ☒"
+                status = " - ☒ ⨂" if taken_users[ch] else " - ☒"
 
+            # Выравниваем длину имени для ровных колонок в <pre>
+            if len(display_name) > 16:
+                display_name = display_name[:15] + "…"
             char_list.append(f"{display_name}{status}")
 
-        # Формируем 2 колонки для Telegraph (используем &nbsp; для отступов)
         region_text = []
         for i in range(0, len(char_list), 2):
             left = char_list[i]
             right = char_list[i + 1] if i + 1 < len(char_list) else ""
+
+            # В Telegraph используем пробелы для колонок внутри тега <pre>
             if right:
-                region_text.append(f"{left} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {right}")
+                region_text.append(f"{left:<22} {right}")
             else:
                 region_text.append(left)
 
         html_content += f"<h3>{display_reg}</h3>"
-        html_content += f"<p>{'<br>'.join(region_text)}</p>"
+        # <pre> сохраняет пробелы и делает шрифт моноширинным (как в коде)
+        html_content += f"<pre>{'<br>'.join(region_text)}</pre>"
 
-    # Создаем страницу в Telegraph
+    # Пробуем создать страницу в Telegraph
+    telegraph_url = None
     try:
         tg = await get_telegraph_client()
         page = tg.create_page(
             title='Список ролей',
             html_content=html_content,
-            author_name='Орион',
-            author_url='https://t.me/OrionGenshin_bot'  # Можете поменять на ссылку на бота
+            author_name='Орион'
         )
         telegraph_url = page['url']
     except Exception as e:
-        print(f"❌ Ошибка при создании страницы Telegraph: {e}")
+        print(f"❌ Ошибка Telegraph: {e}")
         telegraph_url = None
 
     custom_img = await get_local_setting("image_rolelist", group_id)
 
-    # Формируем кнопку
+    # Создаем кнопку, если ссылка есть
     kb = None
     if telegraph_url:
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📜 Открыть полный список", url=telegraph_url)]
         ])
+        caption = "＿＿＿＿ [ Список ролей ] ＿＿＿＿\n\nНажми на кнопку ниже, чтобы посмотреть всех персонажей и их статус 👇"
+    else:
+        caption = "＿＿＿＿ [ Список ролей ] ＿＿＿＿\n\n⚠️ Не удалось загрузить полный список (Ошибка Телеграфа)."
 
-    caption = "＿＿＿＿ [ Список ролей ] ＿＿＿＿\n\nНажми на кнопку ниже, чтобы посмотреть всех персонажей и их статус 👇"
-
-    # Удаляем старое длинное сообщение, если оно было
-    if text_msg_id:
-        try:
-            await bot.delete_message(chat_id=channel_id, message_id=int(text_msg_id))
-        except Exception:
-            pass
-        await set_local_setting("list_text_msg", "", group_id)
-
-    # Обновляем или отправляем сообщение с фото и кнопкой
+    # Обновляем сообщение (картинку + текст + кнопку)
     try:
         if custom_img:
             media = InputMediaPhoto(media=custom_img, caption=caption, parse_mode="HTML")
         else:
             media = InputMediaPhoto(media=FSInputFile("images/list_banner.jpg"), caption=caption, parse_mode="HTML")
 
+        # Редактируем сообщение, прикрепляя кнопку (reply_markup=kb)
         await bot.edit_message_media(chat_id=channel_id, message_id=msg_id, media=media, reply_markup=kb)
         return True
     except Exception as e:
-        print(f"❌ Ошибка при обновлении списка с фото: {e}")
-        # Если не удалось отредактировать, пробуем просто изменить подпись
+        print(f"❌ Ошибка при редактировании фото: {e}")
         try:
             await bot.edit_message_caption(chat_id=channel_id, message_id=msg_id, caption=caption, parse_mode="HTML",
                                            reply_markup=kb)
             return True
         except Exception as e2:
-            print(f"❌ Ошибка при обновлении подписи: {e2}")
+            print(f"❌ Ошибка при редактировании подписи: {e2}")
             return False
 
 
 @dp.message(Command("setlist"))
 async def cmd_setlist(message: types.Message):
-    if message.chat.type not in ("group", "supergroup"):
-        return
-    if not await is_chat_admin(message.chat.id, message.from_user.id):
-        await message.answer("❌ Только для админов чата.")
-        return
+    if message.chat.type not in ("group", "supergroup"): return
+    if not await is_chat_admin(message.chat.id, message.from_user.id): return
 
     parts = message.text.split(maxsplit=1)
     if len(parts) < 2:
@@ -169,32 +159,39 @@ async def cmd_setlist(message: types.Message):
             await message.answer("❌ Бот не админ в канале.")
             return
 
-        custom_img = await get_local_setting("image_rolelist", message.chat.id)
-        try:
-            if custom_img:
-                msg = await bot.send_photo(channel_id, custom_img, caption="🔄 Генерирую список ролей...")
-            else:
-                photo = FSInputFile("images/list_banner.jpg")
-                msg = await bot.send_photo(channel_id, photo, caption="🔄 Генерирую список ролей...")
-        except Exception:
-            await message.answer(
-                "❌ Ошибка: Файл images/list_banner.jpg не найден. Закиньте баннер в папку images или загрузите его через админ-панель.")
-            return
+        existing_channel, existing_msg_id = await get_group_channel(message.chat.id)
 
-        await set_group_channel(message.chat.id, channel_id, msg.message_id)
-        await update_chat_list(message.chat.id)
+        if existing_channel == channel_id and existing_msg_id:
+            await update_chat_list(message.chat.id)
+            await message.answer(f"✅ Список в канале <b>{channel.title}</b> обновлен!", parse_mode="HTML")
+        else:
+            custom_img = await get_local_setting("image_rolelist", message.chat.id)
+            try:
+                if custom_img:
+                    msg = await bot.send_photo(channel_id, custom_img, caption="🔄 Генерирую список ролей...")
+                else:
+                    photo = FSInputFile("images/list_banner.jpg")
+                    msg = await bot.send_photo(channel_id, photo, caption="🔄 Генерирую список ролей...")
+            except Exception:
+                await message.answer("❌ Ошибка: Файл images/list_banner.jpg не найден.")
+                return
 
-        try:
-            await bot.pin_chat_message(chat_id=channel_id, message_id=msg.message_id, disable_notification=True)
-        except Exception:
-            await message.answer("⚠️ Не удалось закрепить сообщение. Дай боту право 'Закреплять сообщения' в канале.")
+            await set_group_channel(message.chat.id, channel_id, msg.message_id)
+            await update_chat_list(message.chat.id)
 
-        await message.answer(f"✅ Список создан в канале <b>{channel.title}</b>!", parse_mode="HTML")
+            try:
+                await bot.pin_chat_message(chat_id=channel_id, message_id=msg.message_id, disable_notification=True)
+            except Exception:
+                pass
+
+            await message.answer(f"✅ Список создан в канале <b>{channel.title}</b>!", parse_mode="HTML")
+
         await message.delete()
     except Exception as e:
         await message.answer(f"❌ Ошибка: <code>{e}</code>", parse_mode="HTML")
 
 
+# --- ОСТАЛЬНЫЕ КОМАНДЫ (/font, /setname) ---
 @dp.message(Command("font"))
 async def cmd_font(message: types.Message):
     if message.chat.type not in ("group", "supergroup"): return
@@ -202,29 +199,21 @@ async def cmd_font(message: types.Message):
 
     parts = message.text.split()
     if len(parts) < 2:
-        await message.answer(
-            "🎨 <b>Доступные стили шрифта:</b>\n\n"
-            "• <code>/font bold</code> — Жирный\n"
-            "• <code>/font italic</code> — Курсив\n"
-            "• <code>/font monospace</code> — Моно\n"
-            "• <code>/font none</code> — Обычный (сброс)\n\n"
-            "<i>Шрифт применится ко всем персонажам сразу.</i>",
-            parse_mode="HTML"
-        )
+        await message.answer("🎨 Доступные стили: bold, italic, monospace, none\nПример: <code>/font bold</code>",
+                             parse_mode="HTML")
         return
 
     style = parts[1].lower()
     if style not in ("bold", "italic", "monospace", "none"):
-        await message.answer("❌ Неизвестный стиль. Используй bold, italic, monospace или none.")
+        await message.answer("❌ Неизвестный стиль.")
         return
 
     await set_group_font(message.chat.id, style)
     success = await update_chat_list(message.chat.id)
-
     if success:
-        await message.answer(f"✅ Стиль списка в канале изменен на: <b>{style}</b>", parse_mode="HTML")
+        await message.answer(f"✅ Стиль изменен на: <b>{style}</b>", parse_mode="HTML")
     else:
-        await message.answer(f"⚠️ Стиль <b>{style}</b> сохранен, но канал не обновлен.", parse_mode="HTML")
+        await message.answer(f"⚠️ Стиль сохранен, но канал не обновлен.", parse_mode="HTML")
 
 
 @dp.message(Command("setname"))
@@ -234,13 +223,10 @@ async def cmd_setname(message: types.Message):
 
     text = message.text.replace("/setname", "").strip()
     if "=" not in text:
-        await message.answer("⚠️ Формат: <code>/setname ОбычноеИмя = КрасивыйШрифт</code>", parse_mode="HTML")
+        await message.answer("⚠️ Формат: <code>/setname Имя = Шрифт</code>", parse_mode="HTML")
         return
 
     parts = text.split("=", 1)
-    default_name = parts[0].strip()
-    custom_name = parts[1].strip()
-
-    await set_custom_name(message.chat.id, default_name, custom_name)
+    await set_custom_name(message.chat.id, parts[0].strip(), parts[1].strip())
     await update_chat_list(message.chat.id)
-    await message.answer(f"✅ Готово! <b>{default_name}</b> → <b>{custom_name}</b>", parse_mode="HTML")
+    await message.answer(f"✅ Имя заменено!", parse_mode="HTML")
