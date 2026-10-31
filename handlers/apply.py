@@ -140,7 +140,6 @@ async def process_activity(message: types.Message, state: FSMContext):
     )
     await state.clear()
 
-    # ИСПРАВЛЕНО: Добавлен parse_mode="HTML"
     await message.answer("✅ <b>Ваша анкета отправлена на проверку администраторам!</b>\nПожалуйста, ожидайте ответа.",
                          parse_mode="HTML")
 
@@ -201,7 +200,6 @@ async def cb_appr_accept(query: types.CallbackQuery):
         return
 
     try:
-        # ИСПРАВЛЕНО: Ссылка будет жить 24 часа, чтобы не сгорала, если человек нажмет позже
         expire_date = int(time.time()) + 86400
         link = await bot.create_chat_invite_link(chat_id, member_limit=1, expire_date=expire_date)
         invite_link = link.invite_link

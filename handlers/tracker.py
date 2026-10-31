@@ -4,8 +4,7 @@ from datetime import datetime, timezone
 
 from aiogram import types, F
 from aiogram.types import FSInputFile
-from aiogram.filters import StateFilter
-from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.filters import StateFilter, Command
 
 from bot_instance import bot, dp
 from config import ANTISPAM_SECONDS, DB_PATH
@@ -36,6 +35,38 @@ from keyboards import back_kb, regions_kb
 @dp.callback_query(F.data == "quiz_answer")
 async def cb_quiz_answer(query: types.CallbackQuery):
     await query.answer("✍️ Просто напиши правильный ответ в чат!", show_alert=True)
+
+
+@dp.message(Command("rppartner"))
+async def cmd_rppartner(message: types.Message):
+    chat_id = message.chat.id
+    if message.chat.type not in ("group", "supergroup"):
+        return await message.answer("❌ Только в группе.")
+
+    user = await get_user(message.from_user.id, chat_id)
+    if not user or not user["character_name"]:
+        return await message.answer("❌ Сначала выбери персонажа!")
+
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        await message.answer(
+            "Использование:\n"
+            "<code>/rppartner Имя_Роли</code> — искать напарника (можно несколько через запятую)\n"
+            "<code>/rppartner off</code> — отменить поиск",
+            parse_mode="HTML"
+        )
+        return
+
+    target = parts[1].strip()
+    if target.lower() == "off":
+        await update_user(message.from_user.id, chat_id, search_rp_partner="")
+        await message.answer("✅ Поиск со-роли отменен.")
+    else:
+        await update_user(message.from_user.id, chat_id, search_rp_partner=target)
+        await message.answer(f"✅ Теперь ты ищешь со-роль: <b>{esc(target)}</b>! Твоя роль в списке помечена как ⨂.",
+                             parse_mode="HTML")
+
+    await update_chat_list(chat_id)
 
 
 @dp.message(StateFilter(None), F.text & ~F.text.startswith("/"))
@@ -70,7 +101,6 @@ async def track_text(message: types.Message, user: dict, chat_id: int):
 
     text_lower = (message.text or "").lower().strip()
 
-    # ===== ПРОВЕРКА ВИКТОРИНЫ =====
     quiz = state._active_quizzes.get(message.chat.id)
     if quiz:
         correct_answer = quiz.get("answer", "")
@@ -95,16 +125,16 @@ async def track_text(message: types.Message, user: dict, chat_id: int):
 
             mention = f'<a href="tg://user?id={message.from_user.id}">{esc(message.from_user.first_name)}</a>'
 
-            await message.answer(
-                f"🎉 <b>ПРАВИЛЬНЫЙ ОТВЕТ!</b>\n\n"
-                f"{mention} быстрее всех ответил и получает "
-                f"<b>{reward} монет</b> и <b>40 Примогемов</b>! 💰💎",
+            await bot.send_message(
+                chat_id=chat_id,
+                text=f"🎉 <b>ПРАВИЛЬНЫЙ ОТВЕТ!</b>\n\n"
+                     f"{mention} быстрее всех ответил и получает "
+                     f"<b>{reward} монет</b> и <b>40 Примогемов</b>! 💰💎",
                 parse_mode="HTML",
                 reply_markup=back_kb(message.from_user.id)
             )
             state._active_quizzes.pop(message.chat.id, None)
             return
-    # ====================================================
 
     if "вызвать на дуэль" in text_lower and is_group:
         parts = text_lower.split()
@@ -438,7 +468,8 @@ async def on_chat_member_update(event: types.ChatMemberUpdated):
             user = await get_user(affected_user.id, event.chat.id)
             if user and user["character_name"]:
                 old_name = user["character_name"]
-                await update_user(affected_user.id, event.chat.id, character_name="", char_change_paid=0)
+                await update_user(affected_user.id, event.chat.id, character_name="", char_change_paid=0,
+                                  search_rp_partner="")
                 try:
                     await bot.send_message(
                         event.chat.id,
@@ -449,7 +480,6 @@ async def on_chat_member_update(event: types.ChatMemberUpdated):
                     pass
                 await update_chat_list(event.chat.id)
 
-        # --- ВЫБОР РЕГИОНА ПРИ ВХОДЕ ---
         elif is_new:
             app = await get_application(affected_user.id, event.chat.id)
             if app and app['status'] == 'accepted':
@@ -460,6 +490,5 @@ async def on_chat_member_update(event: types.ChatMemberUpdated):
                     reply_markup=regions_kb(affected_user.id), parse_mode="HTML"
                 )
                 await update_application_status(affected_user.id, event.chat.id, 'waiting_char')
-        # -------------------------------------
     except Exception as e:
         print(f"ChatMemberUpdate error: {e}")

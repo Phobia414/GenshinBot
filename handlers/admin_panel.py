@@ -3,8 +3,6 @@ from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-import asyncio
-
 from bot_instance import bot, dp
 from config import OWNER_ID
 from constants import DIV
@@ -23,7 +21,6 @@ class AdminEdit(StatesGroup):
     waiting_for_chat_id = State()
     waiting_for_gif = State()
     waiting_for_gacha_photo = State()
-    waiting_for_broadcast = State()  # <--- НОВОЕ СОСТОЯНИЕ
     setting_key = State()
 
 
@@ -33,7 +30,7 @@ def get_media_file_id(message):
     if message.video: return message.video.file_id
     if message.document:
         if message.document.mime_type and (message.document.mime_type.startswith(
-                "image/") or message.document.mime_type == "video/mp4"): return message.document.file_id
+            "image/") or message.document.mime_type == "video/mp4"): return message.document.file_id
     return None
 
 
@@ -49,7 +46,8 @@ EDITABLE_PHOTOS = {
     "relations": "💕 Отношения", "adventurers": "🏛 Гильдия искателей", "dungeons": "⚔️ Подземелья",
     "guild": "🏰 Гильдии", "reputation": "🎖 Репутация", "tops": "🏆 Топы (общее)",
     "tops_balance": "💰 Топ по балансу", "tops_messages": "💬 Топ по сообщениям",
-    "tops_rep": "⭐ Топ по репутации", "tops_guilds": "🏰 Топ по гильдиям", "fun": "⚔ Дуэль (Развлечения)"
+    "tops_rep": "⭐ Топ по репутации", "tops_guilds": "🏰 Топ по гильдиям", "fun": "⚔ Дуэль (Развлечения)",
+    "rolelist": "📜 Баннер списка ролей (в канале)"
 }
 
 
@@ -60,7 +58,6 @@ async def render_admin_menu(message, state):
 
     b = InlineKeyboardBuilder()
     b.button(text=f"⊱ Контекст: {context_text} ⊰", callback_data="admin_change_context")
-    b.button(text="⊱ 📢 Сделать рассылку ⊰", callback_data="admin_broadcast")  # <--- НОВАЯ КНОПКА
     b.button(text="⊱ 📝 Изменить тексты ⊰", callback_data="admin_edit_texts")
     b.button(text="⊱ 🖼 Изменить картинки ⊰", callback_data="admin_edit_photos")
     b.button(text="⊱ 🎭 Персонажи ⊰", callback_data="admin_edit_chars")
@@ -81,7 +78,6 @@ async def cmd_admin(message, state):
 
     b = InlineKeyboardBuilder()
     b.button(text="⊱ Контекст: 🌐 ВСЕ ЧАТЫ (Глобально) ⊰", callback_data="admin_change_context")
-    b.button(text="⊱ 📢 Сделать рассылку ⊰", callback_data="admin_broadcast")  # <--- НОВАЯ КНОПКА
     b.button(text="⊱ 📝 Изменить тексты ⊰", callback_data="admin_edit_texts")
     b.button(text="⊱ 🖼 Изменить картинки ⊰", callback_data="admin_edit_photos")
     b.button(text="⊱ 🎭 Персонажи ⊰", callback_data="admin_edit_chars")
@@ -147,84 +143,6 @@ async def cb_admin_back(query, state):
     if query.from_user.id != OWNER_ID: return
     await state.set_state(None)
     await render_admin_menu(query.message, state)
-
-
-# ==================== РАССЫЛКА ====================
-@dp.callback_query(F.data == "admin_broadcast")
-async def cb_admin_broadcast(query, state):
-    if query.from_user.id != OWNER_ID: return
-
-    data = await state.get_data()
-    target_chat_id = data.get("target_chat_id", 0)
-    dest_text = "во <b>ВСЕ</b> известные чаты" if target_chat_id == 0 else f"в чат <code>{target_chat_id}</code>"
-
-    await state.set_state(AdminEdit.waiting_for_broadcast)
-    b = InlineKeyboardBuilder()
-    b.button(text="❌ Отмена", callback_data="admin_back")
-
-    await query.message.edit_text(
-        f"📢 <b>СОЗДАНИЕ РАССЫЛКИ</b>\n{DIV}\n\n"
-        f"Сообщение будет отправлено {dest_text}.\n\n"
-        f"Отправь мне текст рассылки (поддерживается HTML-разметка):",
-        reply_markup=b.as_markup(),
-        parse_mode="HTML"
-    )
-
-
-@dp.message(AdminEdit.waiting_for_broadcast, F.text)
-async def process_broadcast(message, state):
-    if message.from_user.id != OWNER_ID: return
-
-    data = await state.get_data()
-    target_chat_id = data.get("target_chat_id", 0)
-    text = message.html_text
-
-    # Кнопка, чтобы бот не удалил сообщение через 30 секунд
-    b = InlineKeyboardBuilder()
-    b.button(text="✅ Ознакомлен", callback_data="bcast_ok")
-
-    chats_to_send = []
-    if target_chat_id == 0:
-        chats_to_send = await get_known_groups()
-    else:
-        chats_to_send = [target_chat_id]
-
-    if not chats_to_send:
-        await message.answer("❌ Нет чатов для рассылки.")
-        await state.clear()
-        return
-
-    success = 0
-    errors = 0
-    status_msg = await message.answer(f"⏳ Начинаю рассылку в {len(chats_to_send)} чатов...")
-
-    for chat_id in chats_to_send:
-        try:
-            await bot.send_message(chat_id, text, reply_markup=b.as_markup(), parse_mode="HTML")
-            success += 1
-            # Пауза, чтобы не превысить лимиты Telegram (30 сообщений в секунду)
-            await asyncio.sleep(0.05)
-        except Exception as e:
-            errors += 1
-            print(f"Ошибка рассылки в {chat_id}: {e}")
-
-    await state.clear()
-    b_back = InlineKeyboardBuilder()
-    b_back.button(text="‹ В админ-панель", callback_data="admin_back")
-
-    await status_msg.edit_text(
-        f"✅ <b>РАССЫЛКА ЗАВЕРШЕНА</b>\n{DIV}\n\n"
-        f"Успешно доставлено: {success}\n"
-        f"Ошибок (бот заблокирован/кикнут): {errors}",
-        reply_markup=b_back.as_markup(),
-        parse_mode="HTML"
-    )
-
-
-# Обработчик кнопки "Ознакомлен" в рассылке (чтобы она не висела вечно)
-@dp.callback_query(F.data == "bcast_ok")
-async def cb_bcast_ok(query: types.CallbackQuery):
-    await query.answer("Спасибо за понимание! 💛", show_alert=True)
 
 
 # ==================== ГИФКИ ГАЧИ ====================

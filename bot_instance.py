@@ -13,7 +13,6 @@ class AutoDeleteSession(AiohttpSession):
         if isinstance(method, (SendMessage, SendPhoto, SendAnimation)):
             reply_markup = getattr(method, "reply_markup", None)
             if not reply_markup and result and hasattr(result, 'chat'):
-                # ИСПРАВЛЕНО: Увеличено до 300 секунд (5 минут)
                 asyncio.create_task(self.delete_later(bot, result.chat.id, result.message_id, 300))
 
         return result

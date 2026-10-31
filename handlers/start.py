@@ -2,13 +2,14 @@ from aiogram import types, F
 from aiogram.filters import Command, CommandObject
 from aiogram.types import FSInputFile
 from aiogram.fsm.context import FSMContext
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from bot_instance import bot, dp
 from callbacks import MenuCB, RegionCB, CharCB
 from config import CREATOR_USERNAME
 from db import get_user, update_user, is_character_taken, get_taken_characters, get_local_setting, get_application, \
     update_application_status
-from characters import REGIONS, get_character_image
+from characters import REGIONS, get_character_image, CHARACTERS
 from constants import DIV, PLACEHOLDER_IMAGES
 from helpers import (
     esc, user_display_name, get_placeholder_image, _ensure_user,
@@ -26,9 +27,65 @@ def format_text(text: str, name: str, div: str) -> str:
     return text.replace("{name}", name).replace("{div}", div)
 
 
+async def resend_current_question(message: types.Message, current_state: str):
+    b = InlineKeyboardBuilder()
+    if current_state == ApplyForm.age.state:
+        await message.answer(
+            "🎂 <b>Сколько вам лет?</b>\n\nПожалуйста, укажите ваш реальный возраст цифрой. Мы принимаем участников строго с 14 лет.",
+            parse_mode="HTML")
+    elif current_state == ApplyForm.age_visibility.state:
+        b.button(text="✅ Показывать", callback_data="apply_age_show")
+        b.button(text="❌ Скрыть", callback_data="apply_age_hide")
+        await message.answer(
+            "👁 <b>Показывать ваш возраст в анкете при вступлении?</b>\n\nВозраст будет виден другим участникам в приветственном сообщении.",
+            reply_markup=b.as_markup(), parse_mode="HTML")
+    elif current_state == ApplyForm.experience.state:
+        await message.answer(
+            "📖 <b>Расскажите о вашем опыте в ролевых.</b>\n\nГде вы играли раньше и как давно это было? Если вы новичок — просто напишите об этом.",
+            parse_mode="HTML")
+    elif current_state == ApplyForm.about.state:
+        await message.answer(
+            "🌟 <b>Расскажите немного о себе.</b>\n\nУвлечения, достижения, образ жизни. <i>Вся ваша анкета будет автоматически отправлена в чат при вступлении!</i>",
+            parse_mode="HTML")
+    elif current_state == ApplyForm.timezone.state:
+        await message.answer(
+            "🕒 <b>Укажите ваш часовой пояс.</b>\n\nНапример: МСК, UTC+3, UTC+5. И удобное для вас время для отыгрышей.",
+            parse_mode="HTML")
+    elif current_state == ApplyForm.triggers.state:
+        await message.answer(
+            "⚠️ <b>Есть ли у вас триггерные темы или то, что категорически неприемлемо в ролевой?</b>\n\nНапример: жестокость к животным, определенные фобии. Если таких тем нет — напишите «Нет».",
+            parse_mode="HTML")
+    elif current_state == ApplyForm.metagaming.state:
+        await message.answer(
+            "🚫 <b>Как вы относитесь к метагеймингу?</b>\n\n<i>Расшифровка: Метагейминг — это использование информации, которую ваш персонаж не знает в ролевой, но знаете вы как игрок.</i>\n\nНапишите ваше отношение.",
+            parse_mode="HTML")
+    elif current_state == ApplyForm.activity.state:
+        await message.answer(
+            "⚡ <b>Какова ваша ожидаемая активность?</b>\n\nСколько постов в неделю вы сможете писать в ролевой? (Например: 10-15 постов в неделю).",
+            parse_mode="HTML")
+    else:
+        await message.answer("⏳ Вы уже заполняете анкету. Пожалуйста, продолжите отвечать на вопросы.")
+
+
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext, command: CommandObject):
-    await state.clear()
+    current_state = await state.get_state()
+
+    if current_state and current_state.startswith("ApplyForm"):
+        data = await state.get_data()
+        old_target_chat_id = data.get("target_chat_id")
+
+        if command.args and command.args.startswith("apply_"):
+            new_target_chat_id = int(command.args.replace("apply_", ""))
+            if old_target_chat_id == new_target_chat_id:
+                await resend_current_question(message, current_state)
+                return
+
+        await message.answer("⚠️ Предыдущая анкета отменена.")
+        await state.clear()
+    else:
+        await state.clear()
+
     chat_id = message.chat.id
 
     if command.args and command.args.startswith("apply_"):
@@ -84,11 +141,17 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
         try:
             msg = await message.answer_photo(
                 FSInputFile(img) if img in PLACEHOLDER_IMAGES else img,
-                caption=text, reply_markup=gender_kb(message.from_user.id), parse_mode="HTML"
+                caption=text,
+                reply_markup=gender_kb(message.from_user.id),
+                parse_mode="HTML"
             )
             bot_state._last_bot_msg[chat_id] = msg.message_id
         except Exception:
-            msg = await message.answer(text, reply_markup=gender_kb(message.from_user.id), parse_mode="HTML")
+            msg = await message.answer(
+                text,
+                reply_markup=gender_kb(message.from_user.id),
+                parse_mode="HTML"
+            )
             bot_state._last_bot_msg[chat_id] = msg.message_id
         return
 
@@ -106,11 +169,17 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
         try:
             msg = await message.answer_photo(
                 FSInputFile(img) if img in PLACEHOLDER_IMAGES else img,
-                caption=text, reply_markup=regions_kb(message.from_user.id), parse_mode="HTML"
+                caption=text,
+                reply_markup=regions_kb(message.from_user.id),
+                parse_mode="HTML"
             )
             bot_state._last_bot_msg[chat_id] = msg.message_id
         except Exception:
-            msg = await message.answer(text, reply_markup=regions_kb(message.from_user.id), parse_mode="HTML")
+            msg = await message.answer(
+                text,
+                reply_markup=regions_kb(message.from_user.id),
+                parse_mode="HTML"
+            )
             bot_state._last_bot_msg[chat_id] = msg.message_id
         return
 
@@ -131,15 +200,25 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
     try:
         if image in PLACEHOLDER_IMAGES:
             msg = await message.answer_photo(
-                FSInputFile(image), caption=text, reply_markup=main_menu_kb(message.from_user.id), parse_mode="HTML"
+                FSInputFile(image),
+                caption=text,
+                reply_markup=main_menu_kb(message.from_user.id),
+                parse_mode="HTML"
             )
         else:
             msg = await message.answer_photo(
-                image, caption=text, reply_markup=main_menu_kb(message.from_user.id), parse_mode="HTML"
+                image,
+                caption=text,
+                reply_markup=main_menu_kb(message.from_user.id),
+                parse_mode="HTML"
             )
         bot_state._last_bot_msg[chat_id] = msg.message_id
     except Exception:
-        msg = await message.answer(text, reply_markup=main_menu_kb(message.from_user.id), parse_mode="HTML")
+        msg = await message.answer(
+            text,
+            reply_markup=main_menu_kb(message.from_user.id),
+            parse_mode="HTML"
+        )
         bot_state._last_bot_msg[chat_id] = msg.message_id
 
 
@@ -194,7 +273,6 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
 
     await update_user(query.from_user.id, chat_id, character_name=name, char_change_paid=0)
 
-    # --- ЛОГИКА ЗАВЕРШЕНИЯ АНКЕТЫ ---
     app = await get_application(query.from_user.id, chat_id)
     if app and app['status'] == 'waiting_char':
         await update_application_status(query.from_user.id, chat_id, 'joined')
@@ -219,7 +297,6 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
         await bot.send_message(chat_id, f"✅ Анкета опубликована! Добро пожаловать в игру, {esc(name)}!",
                                reply_markup=main_menu_kb(query.from_user.id))
         return
-    # -------------------------------------
 
     chat = query.message.chat
     ts = ""
@@ -247,18 +324,27 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
     try:
         if char_image in PLACEHOLDER_IMAGES:
             msg = await bot.send_photo(
-                chat_id=chat.id, photo=FSInputFile(char_image), caption=text,
-                reply_markup=main_menu_kb(query.from_user.id), parse_mode="HTML"
+                chat_id=chat.id,
+                photo=FSInputFile(char_image),
+                caption=text,
+                reply_markup=main_menu_kb(query.from_user.id),
+                parse_mode="HTML"
             )
         else:
             msg = await bot.send_photo(
-                chat_id=chat.id, photo=char_image, caption=text,
-                reply_markup=main_menu_kb(query.from_user.id), parse_mode="HTML"
+                chat_id=chat.id,
+                photo=char_image,
+                caption=text,
+                reply_markup=main_menu_kb(query.from_user.id),
+                parse_mode="HTML"
             )
         bot_state._last_bot_msg[chat.id] = msg.message_id
     except Exception:
         msg = await bot.send_photo(
-            chat_id=chat.id, photo=FSInputFile(get_placeholder_image()), caption=text,
-            reply_markup=main_menu_kb(query.from_user.id), parse_mode="HTML"
+            chat_id=chat.id,
+            photo=FSInputFile(get_placeholder_image()),
+            caption=text,
+            reply_markup=main_menu_kb(query.from_user.id),
+            parse_mode="HTML"
         )
         bot_state._last_bot_msg[chat.id] = msg.message_id

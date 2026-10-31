@@ -57,7 +57,6 @@ async def auto_register_cb(handler, event: types.CallbackQuery, data: dict):
         if event.from_user.username and u and u.get("username") != event.from_user.username:
             await update_user(event.from_user.id, chat_id, username=event.from_user.username)
 
-    # --- ИСПРАВЛЕНО: Разрешаем все префиксы анкеты, чтобы не требовало выбора персонажа ---
     allowed_prefixes = (
         "menu:gender_", "menu:regions", "reg:", "char:", "menu:tops", "top:",
         "menu:lists", "lists:", "cmd:", "apply_", "appr_", "newchar_"
@@ -70,7 +69,6 @@ async def auto_register_cb(handler, event: types.CallbackQuery, data: dict):
             if not u or not u["character_name"]:
                 await event.answer("❌ Сначала выбери персонажа: /start", show_alert=True)
                 return
-    # -------------------------------------------------------------------------------------
 
     if event.from_user.id != OWNER_ID:
         key = (event.from_user.id, chat_id)
