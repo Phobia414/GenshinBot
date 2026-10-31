@@ -34,9 +34,8 @@ async def update_chat_list(group_id: int):
             for row in await cur.fetchall():
                 taken_users[row["character_name"]] = row["search_rp_partner"] or ""
 
-    # === ГЕНЕРАЦИЯ СЖАТОГО ТЕКСТА ПО РЕГИОНАМ И СТАТУСАМ ===
-    lines = ["＿＿＿＿ [ Список ролей ] ＿＿＿＿"]
-    lines.append("☒ Занят | ⨂ Ищет сорол | Пусто = Свободен\n")
+    # === ГЕНЕРАЦИЯ ТЕКСТА ПО ТЗ ===
+    lines = ["▰▰▰ 〔 Список персонажей 〕 ▰▰▰\n"]
 
     for reg_key, reg_name in REGIONS.items():
         display_reg = reg_name.split(" ", 1)[1] if " " in reg_name else reg_name
@@ -49,7 +48,7 @@ async def update_chat_list(group_id: int):
             continue
 
         occupied = []
-        looking = []
+        searching = []
         free = []
 
         for ch in sorted(chars_in_reg):
@@ -61,25 +60,38 @@ async def update_chat_list(group_id: int):
             if ch in taken_users:
                 partner = taken_users[ch]
                 if partner:
-                    looking.append(f"{display_name} (ищет: {partner})")
+                    # Если указан сорол, выводим как в ТЗ: "Дилюк (Для Альбедо)"
+                    searching.append(f"{partner} (Для {display_name})")
                 else:
                     occupied.append(display_name)
             else:
                 free.append(display_name)
 
-        region_block = [f"<b>{display_reg}</b>"]
+        # Формируем блок для региона
+        region_lines = []
+        region_lines.append("▱▱▱▱▱▱▱▱▱▱▱")
+        region_lines.append(display_reg)
+        region_lines.append("▱▱▱▱▱▱▱▱▱▱▱")
 
         if occupied:
-            region_block.append(f"☒ <i>Заняты:</i> {', '.join(occupied)}")
-        if looking:
-            region_block.append(f"⨂ <i>Ищут сорол:</i> {', '.join(looking)}")
+            region_lines.append(f"Занятые: {', '.join(occupied)}")
+            region_lines.append("")  # Пустая строка для отступа
+
+        if searching:
+            region_lines.append(f"Нужны в соролы: {', '.join(searching)}")
+            region_lines.append("")
+
         if free:
-            region_block.append(f"<i>Свободны:</i> {', '.join(free)}")
+            region_lines.append(f"Свободные: {', '.join(free)}")
+            region_lines.append("")
 
-        if len(region_block) > 1:
-            lines.append("\n".join(region_block) + "\n")
+        # Добавляем регион в общий список (убираем лишние пустые строки в конце)
+        lines.append("\n".join(region_lines).strip())
 
-    full_text = "\n".join(lines)
+    # Объединяем все, оборачиваем в <b><code> для моноширинного жирного шрифта
+    inner_text = "\n\n".join(lines)
+    full_text = f"<b><code>{inner_text}</code></b>"
+
     custom_img = await get_local_setting("image_rolelist", group_id)
 
     # === РЕЖИМ 1: Все влезает в подпись к фото (до 1024 символов) ===
@@ -118,7 +130,7 @@ async def update_chat_list(group_id: int):
             except Exception:
                 pass
 
-        caption = "👇 <b>Полный список ролей в сообщении ниже</b> 👇"
+        caption = "👇 <b>Полный список персонажей в сообщении ниже</b> 👇"
         try:
             if custom_img:
                 photo_msg = await bot.send_photo(channel_id, custom_img, caption=caption, parse_mode="HTML")
@@ -175,10 +187,10 @@ async def cmd_setlist(message: types.Message):
             custom_img = await get_local_setting("image_rolelist", message.chat.id)
             try:
                 if custom_img:
-                    msg = await bot.send_photo(channel_id, custom_img, caption="🔄 Генерирую список ролей...")
+                    msg = await bot.send_photo(channel_id, custom_img, caption="🔄 Генерирую список...")
                 else:
                     photo = FSInputFile("images/list_banner.jpg")
-                    msg = await bot.send_photo(channel_id, photo, caption="🔄 Генерирую список ролей...")
+                    msg = await bot.send_photo(channel_id, photo, caption="🔄 Генерирую список...")
             except Exception:
                 await message.answer("❌ Ошибка: Файл images/list_banner.jpg не найден.")
                 return
