@@ -24,14 +24,15 @@ async def get_telegraph_client():
     tg = Telegraph()
 
     if token:
-        tg.access_token = token
+        # Если токен есть, создаем клиент с ним
+        tg = Telegraph(access_token=token)
     else:
         import random, string
         rand_str = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
         try:
-            # Метод create_account сам устанавливает tg.access_token
-            tg.create_account(short_name=f'Orion_{rand_str}')
-            await set_setting("telegraph_token", tg.access_token)
+            # create_account возвращает объект Account, из которого берем токен
+            account = tg.create_account(short_name=f'Orion_{rand_str}')
+            await set_setting("telegraph_token", account.access_token)
         except Exception as e:
             print(f"❌ Ошибка создания аккаунта Telegraph: {e}")
             raise e
@@ -100,9 +101,10 @@ async def update_chat_list(group_id: int):
     telegraph_url = None
     try:
         tg = await get_telegraph_client()
+        # В новых версиях библиотеки используется content_html
         page = tg.create_page(
             title='Список ролей',
-            content=html_content,  # Используем content для новых версий библиотеки
+            content_html=html_content,
             author_name='Орион'
         )
         telegraph_url = page['url']
