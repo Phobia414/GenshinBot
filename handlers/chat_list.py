@@ -7,7 +7,7 @@ from config import DB_PATH
 from bot_instance import bot, dp
 from db import (
     set_group_channel, get_group_channel, set_group_font, get_group_font,
-    set_custom_name, get_custom_names, get_local_setting
+    set_custom_name, get_custom_names, get_local_setting, set_local_setting
 )
 from characters import REGIONS, CHARACTERS, normalize_character_name
 from fonts import apply_font
@@ -19,6 +19,9 @@ async def update_chat_list(group_id: int):
     channel_id, msg_id = await get_group_channel(group_id)
     if not channel_id or not msg_id:
         return False
+
+    # Получаем ID второго сообщения (на случай, если текст превысит лимиты)
+    text_msg_id = await get_local_setting("list_text_msg", group_id)
 
     font_style = await get_group_font(group_id)
     custom_fonts = await get_custom_names(group_id)
@@ -35,7 +38,7 @@ async def update_chat_list(group_id: int):
     lines = ["＿＿＿＿ [ Список ролей ] ＿＿＿＿\n"]
     lines.append("Занят - ☒")
     lines.append("Ищет сорол - ⨂")
-    lines.append("Свободен - \n")
+    lines.append("Свободен - пусто\n")
 
     for reg_key, reg_name in REGIONS.items():
         display_reg = reg_name.split(" ", 1)[1] if " " in reg_name else reg_name
@@ -47,46 +50,109 @@ async def update_chat_list(group_id: int):
         if not chars_in_reg:
             continue
 
-        block_lines = [f"<b>{display_reg}</b>"]
-
+        # Формируем список имен с их статусами
+        char_list = []
         for ch in sorted(chars_in_reg):
             norm_name = normalize_character_name(ch)
             display_name = apply_font(norm_name, font_style) if font_style != "none" else norm_name
             if norm_name in custom_fonts:
                 display_name = custom_fonts[norm_name]
 
+            status = ""
             if ch in taken_users:
-                co_role = taken_users[ch]
-                if co_role:
-                    block_lines.append(f"{display_name} - ☒ ⨂ <i>(ищет: {co_role})</i>")
+                if taken_users[ch]:
+                    status = " - ☒ ⨂"  # Занят и ищет сорол
                 else:
-                    block_lines.append(f"{display_name} - ☒")
-            else:
-                block_lines.append(display_name)
+                    status = " - ☒"  # Просто занят
 
-        block_text = "\n".join(block_lines)
-        lines.append(f"<blockquote expandable>{block_text}</blockquote>\n")
+            # Ограничиваем длину имени, чтобы не сломать ровные колонки
+            if len(display_name) > 16:
+                display_name = display_name[:15] + "…"
+
+            char_list.append(f"{display_name}{status}")
+
+        region_lines = [f"<b>{display_reg}</b>"]
+
+        # Разбиваем список по 2 персонажа в строке
+        for i in range(0, len(char_list), 2):
+            left = char_list[i]
+            right = char_list[i + 1] if i + 1 < len(char_list) else ""
+
+            # Выравниваем с помощью пробелов и оборачиваем в <code> для моноширинного шрифта
+            if right:
+                # <20 означает, что левая колонка занимает 20 символов
+                region_lines.append(f"<code>{left:<20} {right}</code>")
+            else:
+                region_lines.append(f"<code>{left}</code>")
+
+        lines.append("\n".join(region_lines) + "\n")
 
     text = "\n".join(lines)
-
     custom_img = await get_local_setting("image_rolelist", group_id)
 
-    try:
-        if custom_img:
-            media = InputMediaPhoto(media=custom_img, caption=text, parse_mode="HTML")
-        else:
-            media = InputMediaPhoto(media=FSInputFile("images/list_banner.jpg"), caption=text, parse_mode="HTML")
-
-        await bot.edit_message_media(chat_id=channel_id, message_id=msg_id, media=media)
-        return True
-    except Exception as e:
-        print(f"❌ Ошибка при обновлении списка с фото: {e}")
+    # Если текст все еще больше 1024 (что маловероятно при двух колонках)
+    if len(text) > 1024:
         try:
-            await bot.edit_message_caption(chat_id=channel_id, message_id=msg_id, caption=text, parse_mode="HTML")
-            return True
-        except Exception as e2:
-            print(f"❌ Ошибка при обновлении подписи: {e2}")
+            await bot.delete_message(chat_id=channel_id, message_id=msg_id)
+        except Exception:
+            pass
+        if text_msg_id:
+            try:
+                await bot.delete_message(chat_id=channel_id, message_id=int(text_msg_id))
+            except Exception:
+                pass
+
+        caption = "👇 <b>Полный список ролей в сообщении ниже</b> 👇"
+        try:
+            if custom_img:
+                photo_msg = await bot.send_photo(channel_id, custom_img, caption=caption, parse_mode="HTML")
+            else:
+                photo_msg = await bot.send_photo(channel_id, FSInputFile("images/list_banner.jpg"), caption=caption,
+                                                 parse_mode="HTML")
+        except Exception as e:
+            print(f"❌ Ошибка отправки фото: {e}")
             return False
+
+        try:
+            text_msg = await bot.send_message(channel_id, text, parse_mode="HTML",
+                                              reply_to_message_id=photo_msg.message_id)
+        except Exception as e:
+            print(f"❌ Ошибка отправки текста: {e}")
+            return False
+
+        await set_group_channel(group_id, channel_id, photo_msg.message_id)
+        await set_local_setting("list_text_msg", text_msg.message_id, group_id)
+        try:
+            await bot.pin_chat_message(channel_id, photo_msg.message_id, disable_notification=True)
+        except Exception:
+            pass
+        return True
+
+    else:
+        # Если влезло в лимит, отправляем одним сообщением с фото
+        if text_msg_id:
+            try:
+                await bot.delete_message(chat_id=channel_id, message_id=int(text_msg_id))
+            except Exception:
+                pass
+            await set_local_setting("list_text_msg", "", group_id)
+
+        try:
+            if custom_img:
+                media = InputMediaPhoto(media=custom_img, caption=text, parse_mode="HTML")
+            else:
+                media = InputMediaPhoto(media=FSInputFile("images/list_banner.jpg"), caption=text, parse_mode="HTML")
+
+            await bot.edit_message_media(chat_id=channel_id, message_id=msg_id, media=media)
+            return True
+        except Exception as e:
+            print(f"❌ Ошибка при обновлении списка: {e}")
+            try:
+                await bot.edit_message_caption(chat_id=channel_id, message_id=msg_id, caption=text, parse_mode="HTML")
+                return True
+            except Exception as e2:
+                print(f"❌ Ошибка при обновлении подписи: {e2}")
+                return False
 
 
 @dp.message(Command("setlist"))
