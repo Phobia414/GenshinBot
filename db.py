@@ -484,3 +484,24 @@ async def get_application(user_id, chat_id):
 
 async def update_application_status(user_id, chat_id, status):
     await execute("UPDATE applications SET status = ? WHERE user_id = ? AND chat_id = ?", (status, user_id, chat_id))
+
+    # ============ АВТО-ЧИСТКА ============
+    async def get_cleanup_settings(chat_id):
+        row = await fetch_one("SELECT * FROM chat_cleanup_settings WHERE chat_id = ?", (chat_id,))
+        if not row:
+            # Если настроек нет, создаем дефолтные
+            await execute(
+                "INSERT OR IGNORE INTO chat_cleanup_settings (chat_id, enabled, min_messages, frequency_days, last_cleanup) VALUES (?, 0, 100, 7, 0)",
+                (chat_id,)
+            )
+            row = await fetch_one("SELECT * FROM chat_cleanup_settings WHERE chat_id = ?", (chat_id,))
+        return row
+
+    async def update_cleanup_settings(chat_id, **kwargs):
+        # На всякий случай проверяем, есть ли запись в БД
+        await get_cleanup_settings(chat_id)
+        if not kwargs:
+            return
+        fields = ", ".join(f"{k} = ?" for k in kwargs.keys())
+        values = list(kwargs.values()) + [chat_id]
+        await execute(f"UPDATE chat_cleanup_settings SET {fields} WHERE chat_id = ?", values)
