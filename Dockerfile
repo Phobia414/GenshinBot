@@ -11,7 +11,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     TZ=Europe/Moscow
 
 # ===== РАБОЧАЯ ДИРЕКТОРИЯ =====
-WORKDIR /app
+WORKDIR /usr/src/app
 
 # ===== ЗАВИСИМОСТИ =====
 COPY requirements.txt .
