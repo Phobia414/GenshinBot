@@ -1,13 +1,15 @@
 from aiogram import types
 from aiogram.filters import Command
-from aiogram.types import FSInputFile, InputMediaPhoto
+from aiogram.types import FSInputFile, InputMediaPhoto, InlineKeyboardMarkup, InlineKeyboardButton
 import aiosqlite
 from config import DB_PATH
+from telegraph import Telegraph
 
 from bot_instance import bot, dp
 from db import (
     set_group_channel, get_group_channel, set_group_font, get_group_font,
-    set_custom_name, get_custom_names, get_local_setting, set_local_setting
+    set_custom_name, get_custom_names, get_local_setting, set_local_setting,
+    get_setting, set_setting
 )
 from characters import REGIONS, CHARACTERS, normalize_character_name
 from fonts import apply_font
@@ -15,12 +17,27 @@ from helpers import is_chat_admin
 import state
 
 
+async def get_telegraph_client():
+    """Получаем или создаем клиент Telegraph (с сохранением токена)"""
+    token = await get_setting("telegraph_token")
+    tg = Telegraph()
+    if token:
+        tg.access_token = token
+    else:
+        # Создаем аккаунт один раз и сохраняем токен
+        tg.create_account(short_name='GenshinRoleBot')
+        await set_setting("telegraph_token", tg.access_token)
+    return tg
+
+
 async def update_chat_list(group_id: int):
     channel_id, msg_id = await get_group_channel(group_id)
     if not channel_id or not msg_id:
         return False
 
+    # ID старого текстового сообщения (если оно было от прошлой версии)
     text_msg_id = await get_local_setting("list_text_msg", group_id)
+
     font_style = await get_group_font(group_id)
     custom_fonts = await get_custom_names(group_id)
 
@@ -33,8 +50,8 @@ async def update_chat_list(group_id: int):
             for row in await cur.fetchall():
                 taken_users[row["character_name"]] = row["search_rp_partner"] or ""
 
-    # Собираем регионы в компактные блоки
-    block_lines = []
+    # Генерируем HTML для Telegraph
+    html_content = "<p>Занят - ☒<br>Ищет сорол - ⨂<br>Свободен - пусто</p>"
 
     for reg_key, reg_name in REGIONS.items():
         display_reg = reg_name.split(" ", 1)[1] if " " in reg_name else reg_name
@@ -56,100 +73,77 @@ async def update_chat_list(group_id: int):
             status = ""
             if ch in taken_users:
                 if taken_users[ch]:
-                    status = " - ☒ ⨂"  # Занят и ищет сорол
+                    status = " - ☒ ⨂"
                 else:
-                    status = " - ☒"  # Просто занят
-
-            if len(display_name) > 16:
-                display_name = display_name[:15] + "…"
+                    status = " - ☒"
 
             char_list.append(f"{display_name}{status}")
 
-        region_lines = [f"<b>{display_reg}</b>"]
-
-        # Разбиваем список по 2 персонажа в строке
+        # Формируем 2 колонки для Telegraph (используем &nbsp; для отступов)
+        region_text = []
         for i in range(0, len(char_list), 2):
             left = char_list[i]
             right = char_list[i + 1] if i + 1 < len(char_list) else ""
-
             if right:
-                region_lines.append(f"<code>{left:<20} {right}</code>")
+                region_text.append(f"{left} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {right}")
             else:
-                region_lines.append(f"<code>{left}</code>")
+                region_text.append(left)
 
-        block_lines.append("\n".join(region_lines))
+        html_content += f"<h3>{display_reg}</h3>"
+        html_content += f"<p>{'<br>'.join(region_text)}</p>"
 
-    # Оборачиваем ВЕСЬ список в сворачиваемую цитату (blockquote expandable)
-    # Это создаст красивый свернутый блок в сообщении.
-    inner_text = "Занят - ☒\nИщет сорол - ⨂\nСвободен - пусто\n\n" + "\n\n".join(block_lines)
-    full_text = f"📜 <b>СПИСОК РОЛЕЙ</b>\n\n<blockquote expandable>{inner_text}</blockquote>"
+    # Создаем страницу в Telegraph
+    try:
+        tg = await get_telegraph_client()
+        page = tg.create_page(
+            title='Список ролей',
+            html_content=html_content,
+            author_name='Орион',
+            author_url='https://t.me/OrionGenshin_bot'  # Можете поменять на ссылку на бота
+        )
+        telegraph_url = page['url']
+    except Exception as e:
+        print(f"❌ Ошибка при создании страницы Telegraph: {e}")
+        telegraph_url = None
 
     custom_img = await get_local_setting("image_rolelist", group_id)
 
-    # === РЕЖИМ А: Всё влезает в подпись к фото (до 1024 символов) ===
-    if len(full_text) <= 1024:
-        # Удаляем старый текстовый блок, если он был
-        if text_msg_id:
-            try:
-                await bot.delete_message(chat_id=channel_id, message_id=int(text_msg_id))
-            except Exception:
-                pass
-            await set_local_setting("list_text_msg", "", group_id)
+    # Формируем кнопку
+    kb = None
+    if telegraph_url:
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📜 Открыть полный список", url=telegraph_url)]
+        ])
 
-        try:
-            if custom_img:
-                media = InputMediaPhoto(media=custom_img, caption=full_text, parse_mode="HTML")
-            else:
-                media = InputMediaPhoto(media=FSInputFile("images/list_banner.jpg"), caption=full_text,
-                                        parse_mode="HTML")
+    caption = "＿＿＿＿ [ Список ролей ] ＿＿＿＿\n\nНажми на кнопку ниже, чтобы посмотреть всех персонажей и их статус 👇"
 
-            await bot.edit_message_media(chat_id=channel_id, message_id=msg_id, media=media)
-            return True
-        except Exception as e:
-            print(f"❌ Ошибка при обновлении в режиме А: {e}")
-            # Если произошла ошибка (например, из-за лимита на самом деле), переходим в Режим Б
-
-    # === РЕЖИМ Б: Текст слишком длинный. Картинка + Reply ===
-    # Удаляем старые сообщения
-    try:
-        await bot.delete_message(chat_id=channel_id, message_id=msg_id)
-    except Exception:
-        pass
+    # Удаляем старое длинное сообщение, если оно было
     if text_msg_id:
         try:
             await bot.delete_message(chat_id=channel_id, message_id=int(text_msg_id))
         except Exception:
             pass
+        await set_local_setting("list_text_msg", "", group_id)
 
-    # 1. Отправляем картинку с короткой подписью
-    caption = "👇 <b>Полный список ролей в сообщении ниже</b> 👇"
+    # Обновляем или отправляем сообщение с фото и кнопкой
     try:
         if custom_img:
-            photo_msg = await bot.send_photo(channel_id, custom_img, caption=caption, parse_mode="HTML")
+            media = InputMediaPhoto(media=custom_img, caption=caption, parse_mode="HTML")
         else:
-            photo_msg = await bot.send_photo(channel_id, FSImageFile("images/list_banner.jpg"), caption=caption,
-                                             parse_mode="HTML")
+            media = InputMediaPhoto(media=FSInputFile("images/list_banner.jpg"), caption=caption, parse_mode="HTML")
+
+        await bot.edit_message_media(chat_id=channel_id, message_id=msg_id, media=media, reply_markup=kb)
+        return True
     except Exception as e:
-        print(f"❌ Ошибка отправки фото в режиме Б: {e}")
-        return False
-
-    # 2. Отправляем текст как ОТВЕТ (reply) на картинку
-    try:
-        text_msg = await bot.send_message(channel_id, full_text, parse_mode="HTML",
-                                          reply_to_message_id=photo_msg.message_id)
-    except Exception as e:
-        print(f"❌ Ошибка отправки текста в режиме Б: {e}")
-        return False
-
-    # Сохраняем ID
-    await set_group_channel(group_id, channel_id, photo_msg.message_id)
-    await set_local_setting("list_text_msg", text_msg.message_id, group_id)
-
-    try:
-        await bot.pin_chat_message(channel_id, photo_msg.message_id, disable_notification=True)
-    except Exception:
-        pass
-    return True
+        print(f"❌ Ошибка при обновлении списка с фото: {e}")
+        # Если не удалось отредактировать, пробуем просто изменить подпись
+        try:
+            await bot.edit_message_caption(chat_id=channel_id, message_id=msg_id, caption=caption, parse_mode="HTML",
+                                           reply_markup=kb)
+            return True
+        except Exception as e2:
+            print(f"❌ Ошибка при обновлении подписи: {e2}")
+            return False
 
 
 @dp.message(Command("setlist"))
