@@ -52,7 +52,7 @@ async def set_bot_commands():
         BotCommand(command="give", description="Передать примогемы"),
         BotCommand(command="cleanup", description="🧹 Настройки авто-чистки (для админов)"),
         BotCommand(command="cleanup_list", description="🛡 Кто купил защиту от чистки"),
-        BotCommand(command="applylink", description="🔗 Создать ссылку для набора (для админов)"),  # <--- ДОБАВЛЕНО
+        BotCommand(command="applylink", description="🔗 Создать ссылку для набора (для админов)"),
     ]
     try:
         await bot.set_my_commands(user_commands, scope=BotCommandScopeDefault())
@@ -77,6 +77,27 @@ async def set_bot_commands():
         await bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(chat_id=OWNER_ID))
     except Exception as e:
         log.error(f"set_my_commands (owner) error: {e}")
+
+
+async def restore_chat_lists():
+    """Автоматически обновляет списки ролей во всех привязанных каналах при запуске бота"""
+    try:
+        # Получаем все группы, у которых есть привязанный канал
+        groups = await fetch_all(
+            "SELECT group_id FROM group_channels WHERE channel_id IS NOT NULL AND message_id IS NOT NULL")
+
+        # Импорт внутри функции, чтобы избежать циклического импорта
+        from handlers.chat_list import update_chat_list
+
+        for g in groups:
+            try:
+                await update_chat_list(g['group_id'])
+            except Exception as e:
+                log.error(f"Ошибка авто-обновления списка для группы {g['group_id']}: {e}")
+
+        log.info(f"✅ Списки ролей обновлены в {len(groups)} каналах.")
+    except Exception as e:
+        log.error(f"Ошибка при восстановлении списков: {e}")
 
 
 async def rotate_bosses():
@@ -165,7 +186,7 @@ async def auto_cleanup_job():
                     admin_ids = {a.user.id for a in admins}
                 except Exception as e:
                     log.warning(f"Не удалось получить админов чата {chat_id}: {e}")
-                    continue  # ИСПРАВЛЕНО: Пропускаем чат, если не удалось получить админов
+                    continue
 
                 users_to_kick = await fetch_all(
                     "SELECT user_id FROM users WHERE chat_id = ? AND messages_count < ? AND (rest_active = 0 OR rest_active IS NULL) AND (clean_exempt = 0 OR clean_exempt IS NULL)",
@@ -243,6 +264,9 @@ async def main():
             now_ts = int(datetime.now(timezone.utc).timestamp())
             await set_world_boss(chat_id, boss_name, boss["hp"], now_ts)
             await set_guild_boss(chat_id, boss_name, boss["hp"], now_ts)
+
+    # ВОССТАНАВЛИВАЕМ СПИСКИ РОЛЕЙ ПРИ ЗАПУСКЕ
+    await restore_chat_lists()
 
     await set_bot_commands()
 
