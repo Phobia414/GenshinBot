@@ -169,7 +169,8 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
             f"{DIV}\n\n"
             f"Выбери регион:"
         )
-        img = await get_section_image("menu")
+
+        img = await get_section_image("regions", chat_id=chat_id)
         try:
             msg = await message.answer_photo(
                 FSInputFile(img) if img in PLACEHOLDER_IMAGES else img,
@@ -199,7 +200,7 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
     text = format_text(raw_menu, name, DIV)
 
     fallback = get_character_image(user["character_name"]) if user["character_name"] else None
-    image = await get_section_image("menu", fallback)
+    image = await get_section_image("menu", fallback, chat_id)
 
     try:
         if image in PLACEHOLDER_IMAGES:
@@ -260,7 +261,15 @@ async def cb_region(query: types.CallbackQuery, callback_data: RegionCB):
     taken = await get_taken_characters(chat_id)
     region_name = REGIONS[callback_data.region]
     text = f"🎭 ГЕРОИ РЕГИОНА {region_name}\n{DIV}\n\nВыбери того, кто станет\nтвоим воплощением ✨"
-    await edit_or_send(query, text, characters_kb(query.from_user.id, callback_data.region, taken))
+
+    # Пытаемся загрузить картинку конкретного региона
+    image = await get_section_image(f"region_{callback_data.region}", chat_id=chat_id)
+
+    # Если для региона картинки нет, грузим общую картинку регионов
+    if image == get_placeholder_image():
+        image = await get_section_image("regions", chat_id=chat_id)
+
+    await edit_or_send(query, text, characters_kb(query.from_user.id, callback_data.region, taken), image_url=image)
 
 
 @dp.callback_query(CharCB.filter())

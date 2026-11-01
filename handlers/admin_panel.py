@@ -30,7 +30,7 @@ def get_media_file_id(message):
     if message.video: return message.video.file_id
     if message.document:
         if message.document.mime_type and (message.document.mime_type.startswith(
-            "image/") or message.document.mime_type == "video/mp4"): return message.document.file_id
+                "image/") or message.document.mime_type == "video/mp4"): return message.document.file_id
     return None
 
 
@@ -41,11 +41,12 @@ EDITABLE_TEXTS = {
     "text_tops": "🏆 Топы", "text_reputation": "🎖 Репутация",
 }
 
+# Базовые картинки
 EDITABLE_PHOTOS = {
     "start": "✨ Приветствие (/start)",
     "menu": "🌟 Главное меню",
     "gender": "🚻 Выбор пола",
-    "regions": "🌍 Выбор региона",
+    "regions": "🌍 Выбор региона (общее меню)",
     "profile": "👤 Профиль",
     "shop": "🛒 Лавка Тейвата",
     "relations": "💕 Отношения",
@@ -64,6 +65,11 @@ EDITABLE_PHOTOS = {
     "lists_commands": "📜 Список команд",
     "rolelist": "📜 Баннер списка ролей (в канале)"
 }
+
+# Автоматически добавляем кнопки для каждого региона
+for reg_key, reg_name in REGIONS.items():
+    clean_name = reg_name.split(" ", 1)[1] if " " in reg_name else reg_name
+    EDITABLE_PHOTOS[f"region_{reg_key}"] = f"🗺 Регион: {clean_name}"
 
 
 async def render_admin_menu(message, state):
@@ -285,7 +291,7 @@ async def process_gacha_photo(message, state):
     data = await state.get_data()
     file_id = get_media_file_id(message)
     if not file_id: return await message.answer("❌ Отправь фото.")
-    await save_gacha_image(data["gacha_img_name"], file_id)
+    await save_gacha_image(data["gacha_image_name"], file_id)
     await state.set_state(None)
     b = InlineKeyboardBuilder()
     b.button(text="🎨 Ещё", callback_data=f"admin_gimg_cat_{data['gimg_cat']}_page_0")
@@ -465,7 +471,9 @@ async def cb_edit_photos(query):
     b = InlineKeyboardBuilder()
     for key, name in EDITABLE_PHOTOS.items(): b.button(text=f"⊱ {name} ⊰", callback_data=f"admin_photo_{key}")
     b.button(text="⊱ ‹ Назад ⊰", callback_data="admin_back")
-    b.adjust(2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1)
+
+    # Настраиваем вывод кнопок, чтобы не было каши (по 2 штуки в ряд)
+    b.adjust(1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2)
     await query.message.edit_text("🖼 **Выбери раздел:**", reply_markup=b.as_markup())
 
 
