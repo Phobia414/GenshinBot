@@ -35,7 +35,7 @@ async def update_chat_list(group_id: int):
                 taken_users[row["character_name"]] = row["search_rp_partner"] or ""
 
     # === ГЕНЕРАЦИЯ ТЕКСТА ПО ТЗ ===
-    lines = ["▰▰▰▰ 〔 Список ролей 〕 ▰▰▰▰\n"]
+    lines = ["▰▰▰ 〔 Список ролей 〕 ▰▰▰\n"]
 
     for reg_key, reg_name in REGIONS.items():
         display_reg = reg_name.split(" ", 1)[1] if " " in reg_name else reg_name
