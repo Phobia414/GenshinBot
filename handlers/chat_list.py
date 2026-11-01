@@ -88,7 +88,7 @@ async def update_chat_list(group_id: int):
     full_text = f"<b><code>{inner_text}</code></b>"
 
     # Минималистичная подпись для фото
-    caption = "▰▰▰ 〔 Список персонажей 〕 ▰▰▰"
+    caption = "▰▰▰▰ 〔 Список ролей 〕 ▰▰▰▰"
 
     # === РЕЖИМ 1: Текст короткий (помещается в подпись к фото) ===
     if len(full_text) <= 1024:
