@@ -7,7 +7,7 @@ from callbacks import MenuCB, TaskCB
 from config import BOARD_COOLDOWN
 from constants import DIV, TASKS, REP_PER_BOARD_TASK
 from db import get_user, update_user
-from helpers import esc, user_display_name, generate_tasks, edit_or_send
+from helpers import esc, user_display_name, generate_tasks, edit_or_send, get_section_image
 from keyboards import board_kb
 
 
@@ -39,7 +39,9 @@ async def cb_board(query: types.CallbackQuery, callback_data: MenuCB):
             f"Нажми «📌 Принять» на задании,\nпотом выполняй его.\n"
             f"Монеты и репутация зачислятся\nавтоматически ✨\n\n"
             f"{DIV}\n\n🎖️ Награда за задание: +{REP_PER_BOARD_TASK} репутации")
-    await edit_or_send(query, text, board_kb(query.from_user.id, user, tasks, accepted, claimed))
+
+    image = await get_section_image("board", chat_id=chat_id)
+    await edit_or_send(query, text, board_kb(query.from_user.id, user, tasks, accepted, claimed), image_url=image)
 
 
 @dp.callback_query(TaskCB.filter())
@@ -74,4 +76,6 @@ async def cb_task(query: types.CallbackQuery, callback_data: TaskCB):
     user = await get_user(query.from_user.id, chat_id)
     tasks = user["board_tasks"].split(";") if user["board_tasks"] else []
     text = f"📋 ДОСКА ЗАНЯТОСТИ\n{DIV}\n\nЗадание принято!"
-    await edit_or_send(query, text, board_kb(query.from_user.id, user, tasks, accepted, claimed))
+
+    image = await get_section_image("board", chat_id=chat_id)
+    await edit_or_send(query, text, board_kb(query.from_user.id, user, tasks, accepted, claimed), image_url=image)

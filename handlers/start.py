@@ -137,7 +137,11 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
         raw_text = await get_local_setting("text_start", chat_id, default_text)
         text = format_text(raw_text, "", DIV)
 
-        img = await get_section_image("menu")
+        # ГРУЗИМ КАРТИНКУ ДЛЯ СТАРТА
+        img = await get_section_image("start", chat_id=chat_id)
+        if img == get_placeholder_image():
+            img = await get_section_image("menu", chat_id=chat_id)
+
         try:
             msg = await message.answer_photo(
                 FSInputFile(img) if img in PLACEHOLDER_IMAGES else img,
@@ -231,7 +235,9 @@ async def cb_gender(query: types.CallbackQuery, callback_data: MenuCB):
     g = "male" if callback_data.action == "gender_male" else "female"
     await update_user(query.from_user.id, chat_id, gender=g)
     text = f"💖 ОТЛИЧНО!\n{DIV}\n\nТеперь выбери регион,\nоткуда родом твой герой 🎭"
-    await edit_or_send(query, text, regions_kb(query.from_user.id))
+
+    image = await get_section_image("regions", chat_id=chat_id)
+    await edit_or_send(query, text, regions_kb(query.from_user.id), image_url=image)
 
 
 @dp.callback_query(MenuCB.filter(F.action == "regions"))
@@ -240,7 +246,9 @@ async def cb_regions(query: types.CallbackQuery, callback_data: MenuCB):
         await query.answer("⚠️ Это чужое меню!", show_alert=True)
         return
     text = f"🌍 ВЫБОР РЕГИОНА\n{DIV}\n\nВыбери регион, Путешественник:"
-    await edit_or_send(query, text, regions_kb(query.from_user.id))
+
+    image = await get_section_image("regions", chat_id=query.message.chat.id)
+    await edit_or_send(query, text, regions_kb(query.from_user.id), image_url=image)
 
 
 @dp.callback_query(RegionCB.filter())
@@ -273,10 +281,8 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
 
     await update_user(query.from_user.id, chat_id, character_name=name, char_change_paid=0)
 
-    # ====================================================
-    # ТУТ САМОЕ ГЛАВНОЕ: МГНОВЕННОЕ ОБНОВЛЕНИЕ СПИСКА
+    # МГНОВЕННОЕ ОБНОВЛЕНИЕ СПИСКА
     await update_chat_list(chat_id)
-    # ====================================================
 
     app = await get_application(query.from_user.id, chat_id)
     if app and app['status'] == 'waiting_char':

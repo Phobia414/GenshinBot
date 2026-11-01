@@ -42,11 +42,26 @@ EDITABLE_TEXTS = {
 }
 
 EDITABLE_PHOTOS = {
-    "menu": "🌟 Главное меню", "profile": "👤 Профиль", "shop": "🛒 Лавка Тейвата",
-    "relations": "💕 Отношения", "adventurers": "🏛 Гильдия искателей", "dungeons": "⚔️ Подземелья",
-    "guild": "🏰 Гильдии", "reputation": "🎖 Репутация", "tops": "🏆 Топы (общее)",
-    "tops_balance": "💰 Топ по балансу", "tops_messages": "💬 Топ по сообщениям",
-    "tops_rep": "⭐ Топ по репутации", "tops_guilds": "🏰 Топ по гильдиям", "fun": "⚔ Дуэль (Развлечения)",
+    "start": "✨ Приветствие (/start)",
+    "menu": "🌟 Главное меню",
+    "gender": "🚻 Выбор пола",
+    "regions": "🌍 Выбор региона",
+    "profile": "👤 Профиль",
+    "shop": "🛒 Лавка Тейвата",
+    "relations": "💕 Отношения",
+    "adventurers": "🏛 Гильдия искателей",
+    "dungeons": "⚔️ Подземелья",
+    "board": "📋 Доска занятости",
+    "guild": "🏰 Гильдии",
+    "reputation": "🎖 Репутация",
+    "tops": "🏆 Топы (общее)",
+    "tops_balance": "💰 Топ по балансу",
+    "tops_messages": "💬 Топ по сообщениям",
+    "tops_rep": "⭐ Топ по репутации",
+    "tops_guilds": "🏰 Топ по гильдиям",
+    "fun": "⚔ Дуэль (Развлечения)",
+    "lists": "📖 Списки (общее)",
+    "lists_commands": "📜 Список команд",
     "rolelist": "📜 Баннер списка ролей (в канале)"
 }
 
@@ -450,7 +465,7 @@ async def cb_edit_photos(query):
     b = InlineKeyboardBuilder()
     for key, name in EDITABLE_PHOTOS.items(): b.button(text=f"⊱ {name} ⊰", callback_data=f"admin_photo_{key}")
     b.button(text="⊱ ‹ Назад ⊰", callback_data="admin_back")
-    b.adjust(2, 2, 2, 2, 2, 2, 2, 1)
+    b.adjust(2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1)
     await query.message.edit_text("🖼 **Выбери раздел:**", reply_markup=b.as_markup())
 
 

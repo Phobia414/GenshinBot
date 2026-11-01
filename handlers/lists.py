@@ -5,7 +5,7 @@ from bot_instance import dp
 from callbacks import MenuCB, ListsCB, CmdCatCB
 from config import OWNER_ID
 from constants import DIV, PLAYER_COMMANDS
-from helpers import esc, edit_or_send, get_characters_status, is_chat_admin
+from helpers import esc, edit_or_send, get_characters_status, is_chat_admin, get_section_image
 from keyboards import lists_kb, commands_cats_kb
 
 
@@ -15,7 +15,9 @@ async def cb_lists(query: types.CallbackQuery, callback_data: MenuCB):
         await query.answer("⚠️ Чужое меню!", show_alert=True)
         return
     text = f"📖 СПИСКИ\n{DIV}\n\n• 📜 Команды\n• 🎭 Персонажи"
-    await edit_or_send(query, text, lists_kb(query.from_user.id))
+
+    image = await get_section_image("lists", chat_id=query.message.chat.id)
+    await edit_or_send(query, text, lists_kb(query.from_user.id), image_url=image)
 
 
 @dp.callback_query(ListsCB.filter(F.action == "commands"))
@@ -33,7 +35,9 @@ async def cb_lists_cmds(query: types.CallbackQuery, callback_data: ListsCB):
         is_admin = True
 
     text = f"📜 СПИСОК КОМАНД\n{DIV}\n\nВыбери категорию:"
-    await edit_or_send(query, text, commands_cats_kb(query.from_user.id, is_admin))
+
+    image = await get_section_image("lists_commands", chat_id=chat_id)
+    await edit_or_send(query, text, commands_cats_kb(query.from_user.id, is_admin), image_url=image)
 
 
 @dp.callback_query(CmdCatCB.filter())
@@ -113,7 +117,6 @@ async def cb_lists_chars(query: types.CallbackQuery, callback_data: ListsCB):
 
     text = "\n".join(lines)
 
-    # Уменьшен лимит до 3500 символов для защиты от ошибки "Message is too long"
     if len(text) > 3500:
         lines_short = [f"🎭 СПИСОК ПЕРСОНАЖЕЙ\n{DIV}\n"]
         lines_short.append(f"🔴 Занятые ({len(occ)}):")
