@@ -35,6 +35,7 @@ async def update_chat_list(group_id: int):
                 taken_users[row["character_name"]] = row["search_rp_partner"] or ""
 
     # === ГЕНЕРАЦИЯ ТЕКСТА ПО ТЗ ===
+    lines = ["▰▰▰ 〔 Список персонажей 〕 ▰▰▰\n"]
 
     for reg_key, reg_name in REGIONS.items():
         display_reg = reg_name.split(" ", 1)[1] if " " in reg_name else reg_name
@@ -87,12 +88,8 @@ async def update_chat_list(group_id: int):
     inner_text = "\n\n".join(lines)
     full_text = f"<b><code>{inner_text}</code></b>"
 
-    # Минималистичная подпись для фото
-    caption = "▰▰▰▰ 〔 Список ролей 〕 ▰▰▰▰"
-
     # === РЕЖИМ 1: Текст короткий (помещается в подпись к фото) ===
     if len(full_text) <= 1024:
-        # Если есть отдельное текстовое сообщение от прошлых версий - удаляем его
         if text_msg_id:
             try:
                 await bot.delete_message(chat_id=channel_id, message_id=int(text_msg_id))
@@ -111,7 +108,6 @@ async def update_chat_list(group_id: int):
         except TelegramBadRequest as e:
             if "message is not modified" in str(e):
                 return True
-            # Если не удалось отредактировать (например, сменили картинку), то обновляем медиа
             try:
                 custom_img = await get_local_setting("image_rolelist", group_id)
                 media = InputMediaPhoto(media=custom_img or FSInputFile("images/list_banner.jpg"), caption=full_text,
@@ -124,17 +120,17 @@ async def update_chat_list(group_id: int):
 
     # === РЕЖИМ 2: Текст длинный (Редактируем фото и текст отдельно) ===
     else:
+        # ВОТ ТУТ МЫ УБРАЛИ ЗАГОЛОВОК С ВЕНЗЕЛЯМИ, ОСТАВИЛИ ТОЛЬКО СТРЕЛОЧКУ
+        caption = ""
+
         if text_msg_id:
-            # Сообщения уже существуют, просто РЕДАКТИРУЕМ ИХ!
             try:
-                # 1. Обновляем текст в ответе
                 await bot.edit_message_text(
                     chat_id=channel_id,
                     message_id=int(text_msg_id),
                     text=full_text,
                     parse_mode="HTML"
                 )
-                # 2. Обновляем подпись у фото (на случай, если она изменилась)
                 try:
                     await bot.edit_message_caption(
                         chat_id=channel_id,
@@ -143,13 +139,11 @@ async def update_chat_list(group_id: int):
                         parse_mode="HTML"
                     )
                 except TelegramBadRequest:
-                    pass  # Игнорируем, если подпись не изменилась
+                    pass
                 return True
             except Exception as e:
                 print(f"⚠️ Не удалось отредактировать старые сообщения, создаем новые: {e}")
-                # Если пользователь удалил сообщение вручную, идем дальше и создаем новые
 
-        # Если сообщений нет (или их удалили), создаем новые
         try:
             await bot.delete_message(chat_id=channel_id, message_id=msg_id)
         except Exception:
