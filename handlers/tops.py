@@ -8,7 +8,7 @@ from db import (
     get_top_balance, get_top_messages, get_top_reputation,
     get_all_guilds, get_rep_level,
 )
-from helpers import esc, edit_or_send
+from helpers import esc, edit_or_send, get_section_image
 from keyboards import tops_kb
 
 
@@ -18,7 +18,10 @@ async def cb_tops(query: types.CallbackQuery, callback_data: MenuCB):
         await query.answer("⚠️ Чужое меню!", show_alert=True)
         return
     text = f"🏆 ТОПЫ\n{DIV}\n\nВыбери категорию:"
-    await edit_or_send(query, text, tops_kb(query.from_user.id))
+    chat_id = query.message.chat.id
+    # Тут картинка ОСТАЕТСЯ
+    image = await get_section_image("tops", chat_id=chat_id)
+    await edit_or_send(query, text, tops_kb(query.from_user.id), image_url=image)
 
 
 def _render_top(users, value_key, title):
@@ -30,7 +33,6 @@ def _render_top(users, value_key, title):
         val = u.get(value_key, 0)
         lines.append(f"{medal} {name} — {val}")
     text = "\n".join(lines)
-    # Защита от превышения лимита Telegram (4096 символов)
     if len(text) > 3800:
         text = text[:3800] + "\n\n… (список обрезан из-за лимита Telegram)"
     return text
@@ -42,12 +44,13 @@ async def cb_top_bal(query: types.CallbackQuery, callback_data: TopCB):
         await query.answer("⚠️ Чужое меню!", show_alert=True)
         return
     chat_id = query.message.chat.id
-    # Запрашиваем Топ-50
     top = await get_top_balance(chat_id, 50)
     text = _render_top(top, "balance", "ТОП-50 ПО БАЛАНСУ")
     b = InlineKeyboardBuilder()
     b.button(text="‹ Назад", callback_data=MenuCB(action="tops", owner_id=query.from_user.id))
-    await edit_or_send(query, text, b.as_markup())
+
+    # Убрали картинку, передаем image_url="" (только текст)
+    await edit_or_send(query, text, b.as_markup(), image_url="")
 
 
 @dp.callback_query(TopCB.filter(F.action == "messages"))
@@ -60,7 +63,9 @@ async def cb_top_msg(query: types.CallbackQuery, callback_data: TopCB):
     text = _render_top(top, "messages_count", "ТОП-50 ПО СООБЩЕНИЯМ")
     b = InlineKeyboardBuilder()
     b.button(text="‹ Назад", callback_data=MenuCB(action="tops", owner_id=query.from_user.id))
-    await edit_or_send(query, text, b.as_markup())
+
+    # Убрали картинку
+    await edit_or_send(query, text, b.as_markup(), image_url="")
 
 
 @dp.callback_query(TopCB.filter(F.action == "reputation"))
@@ -83,7 +88,9 @@ async def cb_top_rep(query: types.CallbackQuery, callback_data: TopCB):
 
     b = InlineKeyboardBuilder()
     b.button(text="‹ Назад", callback_data=MenuCB(action="tops", owner_id=query.from_user.id))
-    await edit_or_send(query, text, b.as_markup())
+
+    # Убрали картинку
+    await edit_or_send(query, text, b.as_markup(), image_url="")
 
 
 @dp.callback_query(TopCB.filter(F.action == "guilds"))
@@ -108,4 +115,6 @@ async def cb_top_guilds(query: types.CallbackQuery, callback_data: TopCB):
 
     b = InlineKeyboardBuilder()
     b.button(text="‹ Назад", callback_data=MenuCB(action="tops", owner_id=query.from_user.id))
-    await edit_or_send(query, text, b.as_markup())
+
+    # Убрали картинку
+    await edit_or_send(query, text, b.as_markup(), image_url="")

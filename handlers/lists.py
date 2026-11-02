@@ -5,6 +5,7 @@ from bot_instance import dp
 from callbacks import MenuCB, ListsCB, CmdCatCB
 from config import OWNER_ID
 from constants import DIV, PLAYER_COMMANDS
+# Добавлен импорт get_section_image
 from helpers import esc, edit_or_send, get_characters_status, is_chat_admin, get_section_image
 from keyboards import lists_kb, commands_cats_kb
 
@@ -15,7 +16,6 @@ async def cb_lists(query: types.CallbackQuery, callback_data: MenuCB):
         await query.answer("⚠️ Чужое меню!", show_alert=True)
         return
     text = f"📖 СПИСКИ\n{DIV}\n\n• 📜 Команды\n• 🎭 Персонажи"
-
     image = await get_section_image("lists", chat_id=query.message.chat.id)
     await edit_or_send(query, text, lists_kb(query.from_user.id), image_url=image)
 
@@ -35,7 +35,6 @@ async def cb_lists_cmds(query: types.CallbackQuery, callback_data: ListsCB):
         is_admin = True
 
     text = f"📜 СПИСОК КОМАНД\n{DIV}\n\nВыбери категорию:"
-
     image = await get_section_image("lists_commands", chat_id=chat_id)
     await edit_or_send(query, text, commands_cats_kb(query.from_user.id, is_admin), image_url=image)
 
@@ -130,4 +129,6 @@ async def cb_lists_chars(query: types.CallbackQuery, callback_data: ListsCB):
             lines_short.append(f"{rn}: {len(chs)} чел.")
         text = "\n".join(lines_short)
 
-    await edit_or_send(query, text, b.as_markup(), image_url="")
+    # ИЗМЕНЕНИЕ: подгружаем картинку для списка персонажей в боте
+    image = await get_section_image("lists_chars", chat_id=chat_id)
+    await edit_or_send(query, text, b.as_markup(), image_url=image)

@@ -82,7 +82,8 @@ async def cb_shop_buy(query: types.CallbackQuery, callback_data: ShopCB, user: d
         b.button(text="⊱ ‹ В меню ⊰", callback_data=MenuCB(action="menu", owner_id=query.from_user.id))
         b.adjust(1)
         text = f"✅ СМЕНА КУПЛЕНА\n{DIV}\n\nОстаток: {nb}\n\n⚠️ Нажми кнопку ниже, чтобы выбрать нового героя!"
-        await edit_or_send(query, text, b.as_markup())
+        # Оставляем без картинки
+        await edit_or_send(query, text, b.as_markup(), image_url="")
         return
 
     elif callback_data.item == "rest":
@@ -117,4 +118,6 @@ async def cb_shop_buy(query: types.CallbackQuery, callback_data: ShopCB, user: d
     b.button(text="⊱ ‹ В меню ⊰", callback_data=MenuCB(action="menu", owner_id=query.from_user.id))
     b.adjust(1)
     text = f"✅ ПОКУПКА\n{DIV}\n\n{msg}\n\n💰 Остаток: {nb}"
-    await edit_or_send(query, text, b.as_markup())
+
+    # ИЗМЕНЕНИЕ: передаем image_url="", чтобы не было картинки-заглушки при покупке
+    await edit_or_send(query, text, b.as_markup(), image_url="")
