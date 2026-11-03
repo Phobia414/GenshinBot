@@ -1,7 +1,7 @@
 from aiogram import types, F
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.filters import StateFilter # <--- ДОБАВЛЕН ИМПОРТ
+from aiogram.filters import StateFilter
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 import time
 
@@ -53,11 +53,11 @@ async def process_age(message: types.Message, state: FSMContext):
 
 @dp.callback_query(F.data == "apply_age_show", StateFilter(ApplyForm.age_visibility))
 async def cb_age_show(query: types.CallbackQuery, state: FSMContext):
-    await query.answer() # Мгновенно убираем "часики"
+    await query.answer()
     try:
         await query.message.edit_text("👁 Возраст будет отображаться в анкете.")
     except Exception:
-        pass # Игнорируем ошибку, если сообщение уже изменено
+        pass
     await ask_experience(query, state)
 
 
@@ -175,11 +175,27 @@ async def process_activity(message: types.Message, state: FSMContext):
     try:
         admins = await bot.get_chat_administrators(data["target_chat_id"])
         for admin in admins:
-            if not admin.user.is_bot:
-                try:
-                    await bot.send_message(admin.user.id, text, reply_markup=b.as_markup(), parse_mode="HTML")
-                except Exception:
-                    pass
+            if admin.user.is_bot:
+                continue
+
+            # === НОВАЯ ПРОВЕРКА ===
+            # Пропускаем тех, кто получил права только для титула (управление видео)
+            if admin.status == "administrator":
+                real_rights = (
+                        admin.can_restrict_members or
+                        admin.can_delete_messages or
+                        admin.can_invite_users or
+                        admin.can_pin_messages or
+                        admin.can_change_info or
+                        admin.can_promote_members
+                )
+                if not real_rights:
+                    continue  # Это просто игрок с титулом, не отправляем ему анкету
+
+            try:
+                await bot.send_message(admin.user.id, text, reply_markup=b.as_markup(), parse_mode="HTML")
+            except Exception:
+                pass
     except Exception as e:
         print(f"Ошибка при рассылке админам: {e}")
         try:
@@ -195,7 +211,25 @@ async def is_admin_of_chat(user_id: int, chat_id: int) -> bool:
         return True
     try:
         member = await bot.get_chat_member(chat_id, user_id)
-        return member.status in ("administrator", "creator")
+
+        # Создатель группы всегда может принимать
+        if member.status == "creator":
+            return True
+
+        # Админ может принимать ТОЛЬКО если у него есть реальные права
+        if member.status == "administrator":
+            real_rights = (
+                    member.can_restrict_members or
+                    member.can_delete_messages or
+                    member.can_invite_users or
+                    member.can_pin_messages or
+                    member.can_change_info or
+                    member.can_promote_members
+            )
+            if real_rights:
+                return True
+
+        return False
     except Exception:
         return False
 
@@ -206,7 +240,7 @@ async def cb_appr_accept(query: types.CallbackQuery):
     user_id, chat_id = int(parts[0]), int(parts[1])
 
     if not await is_admin_of_chat(query.from_user.id, chat_id):
-        await query.answer("❌ Вы не являетесь админом этой группы.", show_alert=True)
+        await query.answer("❌ Вы не являетесь администратором этой группы.", show_alert=True)
         return
 
     try:
@@ -239,7 +273,7 @@ async def cb_appr_decline(query: types.CallbackQuery):
     user_id, chat_id = int(parts[0]), int(parts[1])
 
     if not await is_admin_of_chat(query.from_user.id, chat_id):
-        await query.answer("❌ Вы не являетесь админом этой группы.", show_alert=True)
+        await query.answer("❌ Вы не являетесь администратором этой группы.", show_alert=True)
         return
 
     await update_application_status(user_id, chat_id, "rejected")
