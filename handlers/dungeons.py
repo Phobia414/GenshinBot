@@ -1,6 +1,5 @@
 import random
 from datetime import datetime, timezone
-
 from aiogram import types, F
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
@@ -38,15 +37,18 @@ async def cb_dungeons(query: types.CallbackQuery, callback_data: MenuCB, user: d
         last = user["last_resin_update"] or now
         tt = f"⏱️ След. смола: {format_resin_time(RESIN_REGEN_SECONDS - (now - last) % RESIN_REGEN_SECONDS)}"
 
-    default_text = (f"⚔️ ПОДЗЕМЕЛЬЯ\n{{div}}\n\n"
-                    f"💧 Смола: {{resin}} / {{resin_max}}\n{{time_to_next}}\n\n"
-                    f"{{div}}\n\n"
-                    f"💰 Баланс: {{balance}}\n"
-                    f"💧 Вход: {{resin_cost}} смолы\n"
-                    f"🎖️ За заход: {{rep_reward}} репутации\n"
-                    f"🎁 Награды: монеты + артефакты\n\n"
-                    f"{{div}}\n\n"
-                    f"Куда отправимся?")
+    default_text = (
+        f"─ [ ⚔️ ПОДЗЕМЕЛЬЯ ] ─\n\n"
+        f"╭ 💧 Смола: {{resin}} / {{resin_max}}\n"
+        f"├ {{time_to_next}}\n"
+        f"┆\n"
+        f"├ 💰 Баланс: {{balance}}\n"
+        f"├ 💧 Вход: {{resin_cost}} смолы\n"
+        f"├ 🎖️ За заход: {{rep_reward}} репутации\n"
+        f"├ 🎁 Награды: монеты + артефакты\n"
+        f"┆\n"
+        f"╰ Куда отправимся?"
+    )
 
     raw_text = await get_local_setting("text_dungeons", chat_id, default_text)
 
@@ -58,8 +60,8 @@ async def cb_dungeons(query: types.CallbackQuery, callback_data: MenuCB, user: d
         .replace("{rep_reward}", str(REP_PER_DUNGEON)) \
         .replace("{div}", DIV)
 
-    image = await get_section_image("dungeons", chat_id=chat_id)
-    await edit_or_send(query, text, dungeons_kb(query.from_user.id), image_url=image)
+    custom_img = await get_local_setting("image_dungeons", chat_id)
+    await edit_or_send(query, text, dungeons_kb(query.from_user.id), image_url=custom_img or "")
 
 
 @dp.callback_query(DungeonCB.filter())
@@ -111,7 +113,7 @@ async def cb_dungeon_enter(query: types.CallbackQuery, callback_data: DungeonCB,
             ca = await get_artifact(cur)
             if ca and rarity > ca["rarity"]:
                 await update_user(query.from_user.id, chat_id, **{field: art_id})
-        artifacts_text += f"\n{stars} {name}"
+        artifacts_text += f"\n  {stars} {name}"
 
     await update_user(query.from_user.id, chat_id, balance=user["balance"] + reward)
     await _gain_rep(query.from_user.id, chat_id, REP_PER_DUNGEON, query.from_user.first_name)
@@ -124,13 +126,18 @@ async def cb_dungeon_enter(query: types.CallbackQuery, callback_data: DungeonCB,
 
     name = esc(user_display_name(user))
     fl = f"\n🍳 Бафф еды: +{food_value}%" if food_value else ""
-    text = (f"⚔️ {d['name'].upper()}\n{DIV}\n\n"
-            f"✨ Отличная работа, {name}!\n\n"
-            f"💰 Монет: {reward}\n"
-            f"💧 Смола: {new_resin} / {RESIN_MAX}\n"
-            f"🎖️ Репутация: +{REP_PER_DUNGEON}{fl}\n\n"
-            f"{DIV}\n\n"
-            f"🎁 ДОБЫЧА\n({set_name}){artifacts_text}")
+    text = (
+        f"─ [ ⚔️ {d['name'].upper()} ] ─\n\n"
+        f"╭ ✨ Отличная работа, {name}!\n"
+        f"┆\n"
+        f"├ 💰 Монет: {reward}\n"
+        f"├ 💧 Смола: {new_resin} / {RESIN_MAX}\n"
+        f"├ 🎖️ Репутация: +{REP_PER_DUNGEON}{fl}\n"
+        f"┆\n"
+        f"├ 🎁 ДОБЫЧА\n"
+        f"├ ({set_name}){artifacts_text}\n"
+        f"╰"
+    )
     img = DUNGEON_IMAGES.get(callback_data.dungeon) or ""
     await edit_or_send(query, text, b.as_markup(), image_url=img)
 
@@ -149,16 +156,19 @@ async def cb_artifacts(query: types.CallbackQuery, callback_data: MenuCB, user: 
 
     total_earn = earn_b + rep_earn + fv
     total_drop = drop_b + rep_drop
-    text = (f"🎒 АРТЕФАКТЫ\n{DIV}\n\n"
-            f"💰 Баланс: {user['balance']}\n"
-            f"🎒 В инвентаре: {len(arts)} шт.\n\n"
-            f"{DIV}\n\n"
-            f"📊 БОНУСЫ\n\n"
-            f"⚡ К заработку: +{total_earn}%\n"
-            f"💎 К дропу 5★: +{total_drop}%\n\n"
-            f"{DIV}\n\n"
-            f"Артефакты падают из подземелий.")
-    await edit_or_send(query, text, artifacts_menu_kb(query.from_user.id, bool(arts)))
+    text = (
+        f"─ [ 🎒 АРТЕФАКТЫ ] ─\n\n"
+        f"╭ 💰 Баланс: {user['balance']}\n"
+        f"├ 🎒 В инвентаре: {len(arts)} шт.\n"
+        f"┆\n"
+        f"├ 📊 БОНУСЫ\n"
+        f"├ ⚡ К заработку: +{total_earn}%\n"
+        f"├ 💎 К дропу 5★: +{total_drop}%\n"
+        f"┆\n"
+        f"╰ Артефакты падают из подземелий."
+    )
+    custom_img = await get_local_setting("image_artifacts", chat_id)
+    await edit_or_send(query, text, artifacts_menu_kb(query.from_user.id, bool(arts)), image_url=custom_img or "")
 
 
 @dp.callback_query(ArtCB.filter(F.action == "inventory"))
@@ -173,8 +183,8 @@ async def cb_artifacts_inv(query: types.CallbackQuery, callback_data: ArtCB, use
         await query.answer("❌ Инвентарь пуст.", show_alert=True)
         return
 
-    text = f"🎒 ИНВЕНТАРЬ ({len(arts)} шт.)\n{DIV}"
-    await edit_or_send(query, text, inventory_kb(query.from_user.id, arts))
+    text = f"─ [ 🎒 ИНВЕНТАРЬ ({len(arts)} шт.) ] ─"
+    await edit_or_send(query, text, inventory_kb(query.from_user.id, arts), image_url="")
 
 
 @dp.callback_query(ArtifactCB.filter(F.action == "view"))
@@ -193,10 +203,15 @@ async def cb_art_view(query: types.CallbackQuery, callback_data: ArtifactCB, use
     bn = "заработку" if art["bonus_type"] == "earn" else "дропу 5★"
     stars = "⭐" * art["rarity"]
     eq_line = "\n✅ Экипирован" if eq else ""
-    text = (f"🎒 {art['name']}\n{DIV}\n\n{stars}\n\n"
-            f"💎 Бонус: +{art['bonus_value']}% к {bn}\n"
-            f"💰 Цена: {SELL_PRICE[art['rarity']]} монет{eq_line}")
-    await edit_or_send(query, text, artifact_view_kb(query.from_user.id, art["artifact_id"], eq))
+    text = (
+        f"─ [ 🎒 {art['name']} ]─\n\n"
+        f"╭ {stars}\n"
+        f"┆\n"
+        f"├ 💎 Бонус: +{art['bonus_value']}% к {bn}\n"
+        f"├ 💰 Цена: {SELL_PRICE[art['rarity']]} монет\n"
+        f"╰{eq_line}"
+    )
+    await edit_or_send(query, text, artifact_view_kb(query.from_user.id, art["artifact_id"], eq), image_url="")
 
 
 @dp.callback_query(ArtifactCB.filter(F.action == "equip"))
@@ -213,7 +228,7 @@ async def cb_art_equip(query: types.CallbackQuery, callback_data: ArtifactCB, us
 
     await update_user(query.from_user.id, chat_id, **{f"equip_{art['slot']}": art["artifact_id"]})
     await query.answer("✅ Экипировано!", show_alert=True)
-    await cb_art_view(query, ArtifactCB(action="view", art_id=art["artifact_id"], owner_id=query.from_user.id))
+    await cb_art_view(query, ArtifactCB(action="view", art_id=art["artifact_id"], owner_id=query.from_user.id), user, chat_id)
 
 
 @dp.callback_query(ArtifactCB.filter(F.action == "unequip"))
@@ -230,7 +245,7 @@ async def cb_art_unequip(query: types.CallbackQuery, callback_data: ArtifactCB, 
 
     await update_user(query.from_user.id, chat_id, **{f"equip_{art['slot']}": 0})
     await query.answer("✅ Снято", show_alert=True)
-    await cb_art_view(query, ArtifactCB(action="view", art_id=art["artifact_id"], owner_id=query.from_user.id))
+    await cb_art_view(query, ArtifactCB(action="view", art_id=art["artifact_id"], owner_id=query.from_user.id), user, chat_id)
 
 
 @dp.callback_query(ArtifactCB.filter(F.action == "sell"))
@@ -263,10 +278,10 @@ async def cb_art_sell(query: types.CallbackQuery, callback_data: ArtifactCB, use
 
     arts = await get_user_artifacts(query.from_user.id, chat_id)
     if arts:
-        text = f"🎒 ИНВЕНТАРЬ ({len(arts)} шт.)\n{DIV}"
-        await edit_or_send(query, text, inventory_kb(query.from_user.id, arts))
+        text = f"─ [ 🎒 ИНВЕНТАРЬ ({len(arts)} шт.) ] ─"
+        await edit_or_send(query, text, inventory_kb(query.from_user.id, arts), image_url="")
     else:
         b = InlineKeyboardBuilder()
         b.button(text="‹ К артефактам", callback_data=MenuCB(action="artifacts", owner_id=query.from_user.id))
-        text = f"🎒 ИНВЕНТАРЬ\n{DIV}\n\nПусто."
-        await edit_or_send(query, text, b.as_markup())
+        text = f"─ [ 🎒 ИНВЕНТАРЬ ] ─\n\n╭ Пусто.\n╰"
+        await edit_or_send(query, text, b.as_markup(), image_url="")

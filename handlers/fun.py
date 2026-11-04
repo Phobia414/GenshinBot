@@ -9,7 +9,7 @@ from bot_instance import bot, dp
 from callbacks import MenuCB, FunCB, DuelCB
 from config import OWNER_ID, PROPOSE_COOLDOWN
 from constants import DIV
-from db import get_user, update_user, get_setting
+from db import get_user, update_user, get_setting, get_local_setting
 from helpers import (
     esc, edit_or_send, _ensure_user, extract_target, resolve_user_id, _now_ts, get_section_image
 )
@@ -29,12 +29,17 @@ async def cb_fun(query: types.CallbackQuery, callback_data: MenuCB):
     from helpers import user_display_name
     name = esc(user_display_name(user))
 
-    default_text = f"🎲 РАЗВЛЕЧЕНИЯ\n{{div}}\n\n{{name}}, чем займёмся?\n\n{{div}}\n\n⚔ Дуэль"
-    raw_text = await get_setting("text_fun", default_text)
+    default_text = (
+        f"─ [ 🎲 РАЗВЛЕЧЕНИЯ ] ─\n\n"
+        f"╭ 🍃 {name}, чем займёмся?\n"
+        f"┆\n"
+        f"╰ ⚔ Дуэль"
+    )
+    raw_text = await get_local_setting("text_fun", chat_id, default_text)
     text = raw_text.replace("{name}", name).replace("{div}", DIV)
 
-    image = await get_section_image("fun")
-    await edit_or_send(query, text, fun_menu_kb(query.from_user.id), image_url=image)
+    custom_img = await get_local_setting("image_fun", chat_id)
+    await edit_or_send(query, text, fun_menu_kb(query.from_user.id), image_url=custom_img or "")
 
 
 @dp.callback_query(FunCB.filter(F.action == "duel_help"))
@@ -46,17 +51,18 @@ async def cb_duel_help(query: types.CallbackQuery, callback_data: FunCB):
     b.button(text="‹ Назад", callback_data=MenuCB(action="fun", owner_id=query.from_user.id))
 
     default_text = (
-        f"⚔️ ДУЭЛЬ\n{{div}}\n\n"
-        f"Ответь на сообщение игрока и напиши:\n"
-        f"<code>/duel Сумма</code> или <code>Вызвать на дуэль Сумма</code>\n\n"
-        f"Или укажи его @username:\n"
-        f"<code>/duel @user Сумма</code>"
+        f"─ [ ⚔️ ДУЭЛЬ ] ─\n\n"
+        f"╭ Ответь на сообщение игрока и напиши:\n"
+        f"├ <code>/duel Сумма</code> или <code>Вызвать на дуэль Сумма</code>\n"
+        f"┆\n"
+        f"├ Или укажи его @username:\n"
+        f"╰ <code>/duel @user Сумма</code>"
     )
-    raw_text = await get_setting("text_duel_help", default_text)
+    raw_text = await get_local_setting("text_duel_help", query.message.chat.id, default_text)
     text = raw_text.replace("{div}", DIV)
 
-    image = await get_section_image("fun")
-    await edit_or_send(query, text, b.as_markup(), image_url=image)
+    custom_img = await get_local_setting("image_fun", query.message.chat.id)
+    await edit_or_send(query, text, b.as_markup(), image_url=custom_img or "")
 
 
 async def start_duel_logic(message: types.Message, target_ref, display: str, bet: int):
@@ -119,7 +125,11 @@ async def start_duel_logic(message: types.Message, target_ref, display: str, bet
     ch = f'<a href="tg://user?id={message.from_user.id}">{esc(message.from_user.first_name)}</a>'
 
     await message.answer(
-        f"⚔️ ВЫЗОВ НА ДУЭЛЬ\n{DIV}\n\n{mention}, {ch}\nвызывает тебя на дуэль!\n\n💰 Ставка: {bet}",
+        f"─ [ ⚔️ ВЫЗОВ НА ДУЭЛЬ ] ─\n\n"
+        f"╭ {mention}, {ch}\n"
+        f"├ вызывает тебя на дуэль!\n"
+        f"┆\n"
+        f"╰ 💰 Ставка: {bet}",
         reply_markup=b.as_markup(), parse_mode="HTML")
 
 
@@ -151,8 +161,8 @@ async def cb_duel(query: types.CallbackQuery, callback_data: DuelCB):
         return
     chat_id = query.message.chat.id
     if callback_data.action == "decline":
-        text = f"🕊️ ОТКЛОНЕНО\n{DIV}\n\nМирное решение!"
-        await query.message.edit_text(text, reply_markup=back_kb(query.from_user.id))
+        text = f"─ [ 🕊️ ОТКЛОНЕНО ] ─\n\n╭ Мирное решение!\n╰"
+        await query.message.edit_text(text, reply_markup=back_kb(query.from_user.id), parse_mode="HTML")
         return
     ch = await get_user(callback_data.challenger_id, chat_id)
     tg = await get_user(callback_data.target_id, chat_id)
@@ -165,9 +175,18 @@ async def cb_duel(query: types.CallbackQuery, callback_data: DuelCB):
     if r1 > r2:
         await update_user(callback_data.challenger_id, chat_id, balance=ch["balance"] + callback_data.bet)
         await update_user(callback_data.target_id, chat_id, balance=tg["balance"] - callback_data.bet)
+        winner_text = f"Победитель: {esc(ch['character_name'])}!"
     else:
         await update_user(callback_data.target_id, chat_id, balance=tg["balance"] + callback_data.bet)
         await update_user(callback_data.challenger_id, chat_id, balance=ch["balance"] - callback_data.bet)
-    text = f"⚔️ ДУЭЛЬ ЗАВЕРШЕНА\n{DIV}\n\n🎲 {r1} vs {r2}\n\n🏆 Победитель забирает {callback_data.bet}!"
-    # ИСПРАВЛЕНО: Добавлена кнопка "Назад", чтобы сообщение не исчезло
-    await query.message.edit_text(text, reply_markup=back_kb(query.from_user.id))
+        winner_text = f"Победитель: {esc(tg['character_name'])}!"
+
+    text = (
+        f"─ [ ⚔️ ДУЭЛЬ ЗАВЕРШЕНА ] ─\n\n"
+        f"╭ 🎲 {r1} vs {r2}\n"
+        f"┆\n"
+        f"├ 🏆 {winner_text}\n"
+        f"┆\n"
+        f"╰ 💰 Забирает {callback_data.bet} монет!"
+    )
+    await query.message.edit_text(text, reply_markup=back_kb(query.from_user.id), parse_mode="HTML")

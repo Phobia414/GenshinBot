@@ -5,7 +5,8 @@ from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from bot_instance import bot, dp
 from callbacks import MenuCB
-from db import get_user, update_user, update_primogems, get_gacha_gif, add_gacha_item, get_gacha_inventory
+from db import get_user, update_user, update_primogems, get_gacha_gif, add_gacha_item, get_gacha_inventory, \
+    get_local_setting
 from gacha_data import POOL_3_STAR, POOL_4_STAR, POOL_5_STAR
 from helpers import edit_or_send, inject_user
 import state
@@ -110,11 +111,10 @@ async def render_gacha_menu(message_or_query, user_id, chat_id, is_edit=True):
     b.adjust(1)
 
     text = (
-        f"╭──────────────────────────╮\n"
-        f"   🔮 МОЛИТВЫ\n"
-        f"╰──────────────────────────╯\n\n"
-        f"🎰 Баннер: <b>{b_info['name']}</b>\n\n"
-        f"╭ 💎 Примогемы: <b>{user.get('primogems', 0)}</b>\n"
+        f"─ [ 🔮 МОЛИТВЫ ] ─\n\n"
+        f"╭ 🎰 Баннер: <b>{b_info['name']}</b>\n"
+        f"┆\n"
+        f"├ 💎 Примогемы: <b>{user.get('primogems', 0)}</b>\n"
         f"┆\n"
         f"├ 🔮 До гаранта 5★: <b>{b_info['pity_max'] - p5}</b>\n"
         f"┆\n"
@@ -122,10 +122,16 @@ async def render_gacha_menu(message_or_query, user_id, chat_id, is_edit=True):
         f"┆\n"
         f"╰ 🎯 Гарант: <b>{'Да' if g5 else 'Нет (50/50)'}</b>"
     )
+
+    custom_img = await get_local_setting("image_gacha", chat_id)
+
     if is_edit:
-        await edit_or_send(message_or_query, text, b.as_markup(), image_url=None)
+        await edit_or_send(message_or_query, text, b.as_markup(), image_url=custom_img or "")
     else:
-        await message_or_query.answer(text, reply_markup=b.as_markup(), parse_mode="HTML")
+        if custom_img:
+            await message_or_query.answer_photo(custom_img, caption=text, reply_markup=b.as_markup(), parse_mode="HTML")
+        else:
+            await message_or_query.answer(text, reply_markup=b.as_markup(), parse_mode="HTML")
 
 
 @dp.message(Command("gacha"))
@@ -147,8 +153,8 @@ async def cb_gacha_change_banner(query):
                                               callback_data=f"gacha_set_banner_{key}")
     b.button(text="⊱ ‹ Назад ⊰", callback_data="gacha_back")
     b.adjust(1)
-    text = f"╭──────────────────────────╮\n   🔄 ВЫБОР БАННЕРА\n╰──────────────────────────╯\n\n🎭 Ивентовый — 50/50.\n💠 Стандартный — только стандартные.\n⚔️ Оружейный — 75/25.\n\nВыбери баннер:"
-    await edit_or_send(query, text, b.as_markup())
+    text = f"─ [ 🔄 ВЫБОР БАННЕРА ] ─\n\n╭ 🎭 Ивентовый — 50/50.\n├ 💠 Стандартный — только стандартные.\n├ ⚔️ Оружейный — 75/25.\n╰ Выбери баннер:"
+    await edit_or_send(query, text, b.as_markup(), image_url="")
 
 
 @dp.callback_query(F.data.startswith("gacha_set_banner_"))
@@ -164,9 +170,19 @@ async def cb_set_banner(query, user, chat_id):
 @inject_user
 async def cb_gacha_info(query, user, chat_id):
     b_info = BANNERS[user.get("gacha_banner", "event_char")]
-    text = f"╭──────────────────────────╮\n   📜 ИНФОРМАЦИЯ\n╰──────────────────────────╯\n\nТекущий: {b_info['icon']} <b>{b_info['name']}</b>\n📝 {b_info['desc']}\n\n🔴 <b>5★</b>: 0.6% (Гарант {b_info['pity_max']})\n🟡 <b>4★</b>: 5.1% (Гарант 10)\n\n💖 Розовая анимация — выигрыш 50/50 или гарант!"
+    text = (
+        f"─ [ 📜 ИНФОРМАЦИЯ ] ─\n\n"
+        f"╭ Текущий: {b_info['icon']} <b>{b_info['name']}</b>\n"
+        f"┆\n"
+        f"├ 📝 {b_info['desc']}\n"
+        f"┆\n"
+        f"├ 🔴 <b>5★</b>: 0.6% (Гарант {b_info['pity_max']})\n"
+        f"├ 🟡 <b>4★</b>: 5.1% (Гарант 10)\n"
+        f"┆\n"
+        f"╰ 💖 Розовая анимация — выигрыш 50/50 или гарант!"
+    )
     b = InlineKeyboardBuilder().button(text="⊱ ‹ Назад ⊰", callback_data="gacha_back")
-    await edit_or_send(query, text, b.as_markup())
+    await edit_or_send(query, text, b.as_markup(), image_url="")
 
 
 @dp.callback_query(F.data == "gacha_inv")
@@ -174,10 +190,19 @@ async def cb_gacha_info(query, user, chat_id):
 async def cb_gacha_inv(query, user, chat_id):
     items = await get_gacha_inventory(query.from_user.id, chat_id)
     if not items: return await query.answer("Инвентарь пуст!", show_alert=True)
-    lines = [f"╭──────────────────────────╮\n   🎒 ИНВЕНТАРЬ\n╰──────────────────────────╯\n"]
-    for it in items[:20]: lines.append(f"{'⭐' * it['rarity']} {it['item_name']}")
+
+    lines = [f"─ [ 🎒 ИНВЕНТАРЬ ] ─\n"]
+    for it in items[:20]:
+        lines.append(f"╭ {'⭐' * it['rarity']} {it['item_name']}")
+
+    if len(items) > 20:
+        lines.append(f"╰ ... и еще {len(items) - 20} шт.")
+    else:
+        lines.append("╰")
+
     b = InlineKeyboardBuilder().button(text="⊱ ‹ Назад ⊰", callback_data="gacha_back")
-    await edit_or_send(query, "\n".join(lines), b.as_markup())
+    custom_img = await get_local_setting("image_gacha_inv", chat_id)
+    await edit_or_send(query, "\n".join(lines), b.as_markup(), image_url=custom_img or "")
 
 
 @dp.callback_query(F.data == "gacha_back")
@@ -192,11 +217,14 @@ async def cb_do_pull(query, user, chat_id):
     pulls = 1 if query.data == "gacha_1" else 10
     cost = COST_1 if pulls == 1 else COST_10
     if user.get("primogems", 0) < cost: return await query.answer(f"❌ Нужно {cost} 💎", show_alert=True)
+
     await query.answer("Крутим...")
     await update_primogems(query.from_user.id, chat_id, -cost)
 
     banner = user.get("gacha_banner", "event_char")
-    p4, p5, g5, l50 = user.get("gacha_pity_4", 0), user.get("gacha_pity_5", 0), user.get("gacha_guaranteed_5", 0), user.get("gacha_lost_50_50", 0)
+    p4, p5, g5, l50 = user.get("gacha_pity_4", 0), user.get("gacha_pity_5", 0), user.get("gacha_guaranteed_5",
+                                                                                         0), user.get(
+        "gacha_lost_50_50", 0)
     results, max_rarity, is_pink, best_item = [], 3, False, None
 
     for _ in range(pulls):
@@ -211,7 +239,8 @@ async def cb_do_pull(query, user, chat_id):
         elif best_item is None:
             best_item = item
 
-    await update_user(query.from_user.id, chat_id, gacha_pity_4=p4, gacha_pity_5=p5, gacha_guaranteed_5=g5, gacha_lost_50_50=l50)
+    await update_user(query.from_user.id, chat_id, gacha_pity_4=p4, gacha_pity_5=p5, gacha_guaranteed_5=g5,
+                      gacha_lost_50_50=l50)
     gif_type = "blue" if max_rarity == 3 else ("purple" if max_rarity == 4 else ("pink" if is_pink else "gold"))
 
     try:
@@ -229,16 +258,23 @@ async def cb_do_pull(query, user, chat_id):
             pass
 
     lines = [f"{'⭐' * rar} {it['name']}" for rar, it in results]
-    text = f"🌟 <b>РЕЗУЛЬТАТЫ (x{pulls})</b>\n\n" + "\n".join(lines) + f"\n\n💎 Остаток: {user.get('primogems', 0) - cost}\n🔮 До гаранта: {BANNERS[banner]['pity_max'] - p5}"
+    text = (
+            f"─ [ 🌟 РЕЗУЛЬТАТЫ (x{pulls}) ] ─\n\n"
+            f"╭ " + "\n├ ".join(lines) + "\n"
+                                         f"┆\n"
+                                         f"├ 💎 Остаток: {user.get('primogems', 0) - cost}\n"
+                                         f"╰ 🔮 До гаранта: {BANNERS[banner]['pity_max'] - p5}"
+    )
 
     kb = InlineKeyboardBuilder().button(text="⊱ 🔮 К молитвам ⊰", callback_data="gacha_back")
     kb.adjust(1)
 
-    if best_item:
+    if best_item and max_rarity > 3:
         best_img = state._gacha_images.get(best_item["name"], best_item["image"])
         caption = text + f"\n\n✨ Лучшее: {'⭐' * max_rarity} <b>{best_item['name']}</b>"
         try:
-            await bot.send_photo(chat_id=chat_id, photo=best_img, caption=caption, reply_markup=kb.as_markup(), parse_mode="HTML")
+            await bot.send_photo(chat_id=chat_id, photo=best_img, caption=caption, reply_markup=kb.as_markup(),
+                                 parse_mode="HTML")
         except:
             await bot.send_message(chat_id, text, reply_markup=kb.as_markup(), parse_mode="HTML")
     else:

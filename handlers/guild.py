@@ -70,9 +70,9 @@ async def cb_guild(query: types.CallbackQuery, callback_data: MenuCB, user: dict
         default_text = (
             f"─ [ 🏰 ГИЛЬДИИ ] ─\n\n"
             f"╭ 🍃 {esc(user_display_name(user))}, ты пока без гильдии.\n"
-            f"├\n"
+            f"┆\n"
             f"├ Создай за {GUILD_CREATE_PRICE} монет или вступи в существующую.\n"
-            f"├\n"
+            f"┆\n"
             f"╰ 🎖️ За создание: +{REP_PER_GUILD_CREATE} репутации"
         )
         raw_text = await get_local_setting("text_guild", chat_id, default_text)
@@ -90,7 +90,7 @@ async def render_guild_manage(query: types.CallbackQuery, user: dict, chat_id: i
     text = (
         f"─ [ ⚙️ УПРАВЛЕНИЕ ] ─\n\n"
         f"╭ 🛡 <b>{esc(g['name'])}</b>\n"
-        f"├\n"
+        f"┆\n"
         f"├ 💡 /disbandguild — распустить\n"
         f"├ 💡 /donate Сумма — пополнить казну\n"
         f"╰ 💡 /transfer_ally Сумма — передать союзу"
@@ -150,9 +150,9 @@ async def render_gmem_view(query: types.CallbackQuery, user: dict, chat_id: int,
     text = (
         f"─ [ 👤 УЧАСТНИК ] ─\n\n"
         f"╭ 🎭 <b>{esc(target['character_name'])}</b>\n"
-        f"├\n"
+        f"┆\n"
         f"├ 👑 Ранг: <b>{esc(target['guild_rank'])}</b>\n"
-        f"├\n"
+        f"┆\n"
         f"╰ 💰 Вклад: <b>{target['guild_contribution']}</b>"
     )
     await edit_or_send(query, text, guild_member_manage_kb(query.from_user.id, target_id, is_owner, target['guild_rank']), image_url="")
@@ -218,13 +218,13 @@ async def render_guild_craft(query: types.CallbackQuery, user: dict, chat_id: in
     text = (
         f"─ [ ⚒ КРАФТ БАФФОВ ] ─\n\n"
         f"╭ Скрафти награду для всех участников (сгорает через 14 дней).\n"
-        f"├\n"
+        f"┆\n"
         f"├ 💬 Сообщения: {stats['m']} / {req_m}\n"
         f"├ 🎭 Стикеры: {stats['s']} / {req_s}\n"
         f"├ ↩️ Ответы: {stats['r']} / {req_r}\n"
         f"├ 🖼 Фото: {stats['p']} / {req_p}\n"
         f"├ 🐉 Убито боссов: {stats['b']} / {req_b}\n"
-        f"├\n"
+        f"┆\n"
         f"├ 🎁 Награда: Баффы на 14 дней + 500-1000 монет в казну + 50-100 💎\n"
         f"╰ <i>(Любой 1 участник может нафармить это сам)</i>"
     )
@@ -459,13 +459,13 @@ async def cb_guild_info(query: types.CallbackQuery, callback_data: GuildCB, user
     text = (
         f"─ [ 🏰 ГИЛЬДИЯ «{esc(g['name']).upper()}» ] ─\n\n"
         f"╭ 👑 Лидер: {esc(g['owner_name'])}\n"
-        f"├\n"
+        f"┆\n"
         f"├ 📅 Создана: {created}\n"
-        f"├\n"
+        f"┆\n"
         f"├ 👥 Участники: {len(members)}/{g.get('max_members', 5)}\n"
-        f"├\n"
+        f"┆\n"
         f"├ 💰 Казна: {g['treasury']}\n"
-        f"├\n"
+        f"┆\n"
         f"╰ 📊 Очки недели: {g['week_points']}"
     )
     await edit_or_send(query, text, guild_menu_kb(query.from_user.id, True, g["owner_id"] == query.from_user.id), image_url="")
@@ -480,12 +480,12 @@ async def cb_guild_treasury(query: types.CallbackQuery, callback_data: GuildCB, 
     text = (
         f"─ [ 💰 КАЗНА ГИЛЬДИИ ] ─\n\n"
         f"╭ «{esc(g['name'])}»\n"
-        f"├\n"
+        f"┆\n"
         f"├ В казне: {g['treasury']} монет\n"
-        f"├\n"
+        f"┆\n"
         f"├ Пополнить:\n"
         f"├ /donate Сумма\n"
-        f"├\n"
+        f"┆\n"
         f"╰ 🎖️ За каждые {REP_PER_DONATE_UNIT} монет: +1 репутации"
     )
     b = InlineKeyboardBuilder()

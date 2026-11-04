@@ -6,7 +6,7 @@ from callbacks import MenuCB, TopCB
 from constants import DIV
 from db import (
     get_top_balance, get_top_messages, get_top_reputation,
-    get_all_guilds, get_rep_level,
+    get_all_guilds, get_rep_level, get_local_setting
 )
 from helpers import esc, edit_or_send, get_section_image
 from keyboards import tops_kb
@@ -17,21 +17,24 @@ async def cb_tops(query: types.CallbackQuery, callback_data: MenuCB):
     if query.from_user.id != callback_data.owner_id:
         await query.answer("⚠️ Чужое меню!", show_alert=True)
         return
-    text = f"🏆 ТОПЫ\n{DIV}\n\nВыбери категорию:"
+    text = f"─ [ 🏆 ТОПЫ ] ─\n\n╭ Выбери категорию:\n╰"
     chat_id = query.message.chat.id
-    # Тут картинка ОСТАЕТСЯ
-    image = await get_section_image("tops", chat_id=chat_id)
-    await edit_or_send(query, text, tops_kb(query.from_user.id), image_url=image)
+
+    custom_img = await get_local_setting("image_tops", chat_id)
+    await edit_or_send(query, text, tops_kb(query.from_user.id), image_url=custom_img or "")
 
 
 def _render_top(users, value_key, title):
     medals = {1: "🥇", 2: "🥈", 3: "🥉"}
-    lines = [f"🏆 {title}\n{DIV}\n"]
+    lines = [f"─ [ 🏆 {title} ] ─\n"]
     for i, u in enumerate(users, 1):
         medal = medals.get(i, f"{i}.")
         name = esc(u.get("character_name") or "?")
         val = u.get(value_key, 0)
-        lines.append(f"{medal} {name} — {val}")
+        lines.append(f"╭ {medal} {name} — {val}")
+    if lines:
+        lines.append("╰")
+
     text = "\n".join(lines)
     if len(text) > 3800:
         text = text[:3800] + "\n\n… (список обрезан из-за лимита Telegram)"
@@ -49,7 +52,7 @@ async def cb_top_bal(query: types.CallbackQuery, callback_data: TopCB):
     b = InlineKeyboardBuilder()
     b.button(text="‹ Назад", callback_data=MenuCB(action="tops", owner_id=query.from_user.id))
 
-    # Убрали картинку, передаем image_url="" (только текст)
+    # Убрали картинку, передаем image_url=""
     await edit_or_send(query, text, b.as_markup(), image_url="")
 
 
@@ -64,7 +67,6 @@ async def cb_top_msg(query: types.CallbackQuery, callback_data: TopCB):
     b = InlineKeyboardBuilder()
     b.button(text="‹ Назад", callback_data=MenuCB(action="tops", owner_id=query.from_user.id))
 
-    # Убрали картинку
     await edit_or_send(query, text, b.as_markup(), image_url="")
 
 
@@ -76,12 +78,16 @@ async def cb_top_rep(query: types.CallbackQuery, callback_data: TopCB):
     chat_id = query.message.chat.id
     top = await get_top_reputation(chat_id, 50)
     medals = {1: "🥇", 2: "🥈", 3: "🥉"}
-    lines = [f"🏆 ТОП-50 ПО РЕПУТАЦИИ\n{DIV}\n"]
+
+    lines = [f"─ [ 🏆 ТОП-50 ПО РЕПУТАЦИИ ] ─\n"]
     for i, u in enumerate(top, 1):
         medal = medals.get(i, f"{i}.")
         name = esc(u.get("character_name") or "?")
         lvl = get_rep_level(u.get("reputation") or 0)
-        lines.append(f"{medal} {name} — ур. {lvl}")
+        lines.append(f"╭ {medal} {name} — ур. {lvl}")
+    if lines:
+        lines.append("╰")
+
     text = "\n".join(lines)
     if len(text) > 3800:
         text = text[:3800] + "\n\n… (список обрезан)"
@@ -89,7 +95,6 @@ async def cb_top_rep(query: types.CallbackQuery, callback_data: TopCB):
     b = InlineKeyboardBuilder()
     b.button(text="‹ Назад", callback_data=MenuCB(action="tops", owner_id=query.from_user.id))
 
-    # Убрали картинку
     await edit_or_send(query, text, b.as_markup(), image_url="")
 
 
@@ -100,15 +105,19 @@ async def cb_top_guilds(query: types.CallbackQuery, callback_data: TopCB):
         return
     chat_id = query.message.chat.id
     guilds = await get_all_guilds(chat_id, 50)
+
     if not guilds:
-        text = f"🏰 ТОП-50 ГИЛЬДИЙ\n{DIV}\n\n(пока никого)"
+        text = f"─ [ 🏰 ТОП-50 ГИЛЬДИЙ ] ─\n\n╭ (пока никого)\n╰"
     else:
         medals = {1: "🥇", 2: "🥈", 3: "🥉"}
-        lines = [f"🏰 ТОП-50 ГИЛЬДИЙ\n{DIV}\n"]
+        lines = [f"─ [ 🏰 ТОП-50 ГИЛЬДИЙ ] ─\n"]
         for i, g in enumerate(guilds, 1):
             medal = medals.get(i, f"{i}.")
-            lines.append(f"{medal} {esc(g['name'])}")
-            lines.append(f"   💰 {g['treasury']} · 👥 {g['members']}")
+            lines.append(f"╭ {medal} {esc(g['name'])}")
+            lines.append(f"├ 💰 {g['treasury']} · 👥 {g['members']}")
+            lines.append("├")
+        lines.append("╰")
+
         text = "\n".join(lines)
         if len(text) > 3800:
             text = text[:3800] + "\n\n… (список обрезан)"
@@ -116,5 +125,4 @@ async def cb_top_guilds(query: types.CallbackQuery, callback_data: TopCB):
     b = InlineKeyboardBuilder()
     b.button(text="‹ Назад", callback_data=MenuCB(action="tops", owner_id=query.from_user.id))
 
-    # Убрали картинку
     await edit_or_send(query, text, b.as_markup(), image_url="")

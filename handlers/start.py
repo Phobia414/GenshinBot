@@ -87,10 +87,10 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
                 f"─ [ ✨ ПРИВЕТСТВИЕ ] ─\n\n"
                 f"╭ Я — Орион, твой верный\n"
                 f"├ спутник в этом мире 🧭\n"
-                f"├\n"
+                f"┆\n"
                 f"├ 🌸 Мой создатель — {CREATOR_USERNAME}\n"
-                f"├ Без него я бы не существовал!\n"
-                f"├\n"
+                f"┆ Без него я бы не существовал!\n"
+                f"┆\n"
                 f"╰ Прежде чем мы отправимся в путь, скажи:"
             )
             raw_text = await get_local_setting("text_start", chat_id, default_text)
@@ -109,11 +109,11 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
         text = (
             f"─ [ 🌸 ВЫБОР ПЕРСОНАЖА ] ─\n\n"
             f"╭ Рад снова тебя видеть,\n"
-            f"├ Путешественник!\n"
-            f"├\n"
+            f"┆ Путешественник!\n"
+            f"┆\n"
             f"├ Пришло время выбрать, кем\n"
-            f"├ ты будешь в этом мире 🎭\n"
-            f"├\n"
+            f"┆ ты будешь в этом мире 🎭\n"
+            f"┆\n"
             f"╰ Выбери регион:"
         )
         custom_img = await get_local_setting("image_regions", chat_id)
@@ -130,9 +130,9 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
     default_menu = (
         f"─ [ 🌟 ГЛАВНОЕ МЕНЮ ] ─\n\n"
         f"╭ 🍃 Привет, <b>{{name}}</b>!\n"
-        f"├\n"
+        f"┆\n"
         f"├ Куда отправимся сегодня?\n"
-        f"├\n"
+        f"┆\n"
         f"╰ 🧭 Меня создал {CREATOR_USERNAME}"
     )
     raw_menu = await get_local_setting("text_menu", chat_id, default_menu)
@@ -187,7 +187,7 @@ async def cb_region(query: types.CallbackQuery, callback_data: RegionCB):
     chat_id = query.message.chat.id
     taken = await get_taken_characters(chat_id)
     region_name = REGIONS[callback_data.region]
-    text = f"── 〔 🎭 РЕГИОН: {region_name.upper()} 〕 ──\n\n╭ Выбери того, кто станет\n╰ твоим воплощением ✨"
+    text = f"─ [ 🎭 РЕГИОН: {region_name.upper()} ] ─\n\n╭ Выбери того, кто станет\n╰ твоим воплощением ✨"
 
     custom_img = await get_local_setting(f"image_region_{callback_data.region}", chat_id)
     if not custom_img:

@@ -20,13 +20,13 @@ async def cb_shop(query: types.CallbackQuery, callback_data: MenuCB, user: dict,
     _, _, disc = get_reputation_bonuses(user["reputation"])
 
     default_text = (
-        f"── 〔 🛒 ЛАВКА ТЕЙВАТА 〕 ──\n\n"
+        f"─ [ 🛒 ЛАВКА ТЕЙВАТА ] ─\n\n"
         f"╭ 🍃 <b>{{name}}</b>, загляни!\n"
-        f"├\n"
+        f"┆\n"
         f"├ 💰 Баланс: <b>{{balance}}</b>\n"
-        f"├\n"
+        f"┆\n"
         f"├ 🎖️ Скидка: <b>{{discount}}</b>\n"
-        f"├\n"
+        f"┆\n"
         f"├ 🎭 Смена персонажа: {{price_role}}\n"
         f"├ 😴 Рест: {{price_rest}}\n"
         f"├ 🧹 Чистка: {{price_clean}}\n"
@@ -71,7 +71,7 @@ async def cb_shop_buy(query: types.CallbackQuery, callback_data: ShopCB, user: d
         b.button(text="⊱ 🎭 Сменить персонажа ⊰", callback_data=MenuCB(action="regions", owner_id=query.from_user.id))
         b.button(text="⊱ ‹ В меню ⊰", callback_data=MenuCB(action="menu", owner_id=query.from_user.id))
         b.adjust(1)
-        text = f"── 〔 ✅ СМЕНА КУПЛЕНА 〕 ──\n\n╭ 💰 Остаток: {nb}\n├\n╰ ⚠️ Нажми кнопку ниже, чтобы выбрать нового героя!"
+        text = f"─ [ ✅ СМЕНА КУПЛЕНА ] ─\n\n╭ 💰 Остаток: {nb}\n├\n╰ ⚠️ Нажми кнопку ниже, чтобы выбрать нового героя!"
         await edit_or_send(query, text, b.as_markup(), image_url="")
         return
 
@@ -103,5 +103,5 @@ async def cb_shop_buy(query: types.CallbackQuery, callback_data: ShopCB, user: d
     b.button(text="⊱ ‹ В меню ⊰", callback_data=MenuCB(action="menu", owner_id=query.from_user.id))
     b.adjust(1)
 
-    text = f"── 〔 ✅ ПОКУПКА 〕 ──\n\n╭ {msg}\n├\n╰ 💰 Остаток: {nb}"
+    text = f"─ [ ✅ ПОКУПКА ] ─\n\n╭ {msg}\n├\n╰ 💰 Остаток: {nb}"
     await edit_or_send(query, text, b.as_markup(), image_url="")
