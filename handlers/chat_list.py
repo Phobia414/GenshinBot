@@ -17,6 +17,7 @@ import state
 
 
 async def update_chat_list(group_id: int):
+    return False # Отключение списка вручную
     channel_id, msg_id = await get_group_channel(group_id)
     if not channel_id or not msg_id:
         return False
