@@ -33,7 +33,7 @@ async def resend_current_question(message: types.Message, current_state: str):
         b.button(text="🚫 Отменить заполнение", callback_data="apply_cancel")
         await message.answer(
             "🎂 <b>Сколько вам лет?</b>\n\nПожалуйста, укажите ваш реальный возраст цифрой. Мы принимаем участников строго с 14 лет.",
-            parse_mode="HTML", reply_markup=b.as_markup())
+            reply_markup=b.as_markup(), parse_mode="HTML")
     elif current_state == ApplyForm.age_visibility.state:
         b.button(text="✅ Показывать", callback_data="apply_age_show")
         b.button(text="❌ Скрыть", callback_data="apply_age_hide")
@@ -42,7 +42,30 @@ async def resend_current_question(message: types.Message, current_state: str):
         await message.answer(
             "👁 <b>Показывать ваш возраст в анкете при вступлении?</b>\n\nВозраст будет виден другим участникам в приветственном сообщении.",
             reply_markup=b.as_markup(), parse_mode="HTML")
-    # ... (остальные шаги анкеты)
+    elif current_state == ApplyForm.experience.state:
+        await message.answer(
+            "📖 <b>Расскажите о вашем опыте в ролевых.</b>\n\nГде вы играли раньше и как давно это было? Если вы новичок — просто напишите об этом.",
+            parse_mode="HTML")
+    elif current_state == ApplyForm.about.state:
+        await message.answer(
+            "🌟 <b>Расскажите немного о себе.</b>\n\nУвлечения, достижения, образ жизни. <i>Вся ваша анкета будет автоматически отправлена в чат при вступлении!</i>",
+            parse_mode="HTML")
+    elif current_state == ApplyForm.timezone.state:
+        await message.answer(
+            "🕒 <b>Укажите ваш часовой пояс.</b>\n\nНапример: МСК, UTC+3, UTC+5. И удобное для вас время для отыгрышей.",
+            parse_mode="HTML")
+    elif current_state == ApplyForm.triggers.state:
+        await message.answer(
+            "⚠️ <b>Есть ли у вас триггерные темы или то, что категорически неприемлемо в ролевой?</b>\n\nНапример: жестокость к животным, определенные фобии. Если таких тем нет — напишите «Нет».",
+            parse_mode="HTML")
+    elif current_state == ApplyForm.metagaming.state:
+        await message.answer(
+            "🚫 <b>Как вы относитесь к метагеймингу?</b>\n\n<i>Расшифровка: Метагейминг — это использование информации, которую ваш персонаж не знает в ролевой, но знаете вы как игрок.</i>\n\nНапишите ваше отношение.",
+            parse_mode="HTML")
+    elif current_state == ApplyForm.activity.state:
+        await message.answer(
+            "⚡ <b>Какова ваша ожидаемая активность?</b>\n\nСколько постов в неделю вы сможете писать в ролевой? (Например: 10-15 постов в неделю).",
+            parse_mode="HTML")
     else:
         await message.answer("⏳ Вы уже заполняете анкету. Пожалуйста, продолжите отвечать на вопросы.")
 
@@ -51,7 +74,6 @@ async def resend_current_question(message: types.Message, current_state: str):
 async def cmd_start(message: types.Message, state: FSMContext, command: CommandObject):
     current_state = await state.get_state()
 
-    # 1. Обработка, если игрок уже заполняет анкету
     if current_state and current_state.startswith("ApplyForm"):
         data = await state.get_data()
         old_target_chat_id = data.get("target_chat_id")
@@ -70,22 +92,23 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
     chat_id = message.chat.id
     user = await _ensure_user(message.from_user.id, chat_id)
 
-    # 2. Обработка перехода по ссылке-приглашению
+    # --- ОБРАБОТКА ССЫЛКИ-ПРИГЛАШЕНИЯ (apply_) ---
     if command.args and command.args.startswith("apply_"):
         target_chat_id = int(command.args.replace("apply_", ""))
 
-        # Если уже есть персонаж - не запускаем анкету!
+        # Если он уже зарегистрирован в этой ролевой, не запускаем анкету
         if user and user["character_name"]:
-            await message.answer(f"✅ Вы уже зарегистрированы как <b>{esc(user['character_name'])}</b>!",
+            await message.answer(f"✅ Вы уже зарегистрированы в этой ролевой как <b>{esc(user['character_name'])}</b>!",
                                  parse_mode="HTML")
             return
 
         app = await get_application(message.from_user.id, target_chat_id)
         if app:
-            if app['status'] in ('pending', 'waiting_char'):
+            status = app['status']
+            if status in ('pending', 'waiting_char'):
                 return await message.answer("⏳ Ваша анкета уже на рассмотрении или одобрена. Ожидайте.")
-            elif app['status'] == 'joined':
-                return await message.answer("✅ Вы уже приняты в эту ролевую!")
+            elif status == 'rejected':
+                pass  # Разрешаем подать заново
 
         await state.update_data(target_chat_id=target_chat_id)
         await state.set_state(ApplyForm.age)
@@ -100,7 +123,7 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
         )
         return
 
-    # 3. Стандартный старт игры (без ссылок)
+    # --- ОБЫЧНЫЙ /START БЕЗ ССЫЛКИ ---
     try:
         await message.delete()
     except Exception:
@@ -112,38 +135,46 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
         except Exception:
             pass
 
-    if not user["gender"]:
-        default_text = (
-            f"✨ ДОБРО ПОЖАЛОВАТЬ В ТЕЙВАТ\n{{div}}\n\n"
-            f"Я — Орион, твой верный\n"
-            f"спутник в этом мире 🧭\n\n"
-            f"🌸 Мой создатель — {CREATOR_USERNAME}\n"
-            f"Без него я бы не существовал!\n\n"
-            f"{{div}}\n\n"
-            f"Прежде чем мы отправимся\n"
-            f"в путь, скажи:"
-        )
-        raw_text = await get_local_setting("text_start", chat_id, default_text)
-        text = format_text(raw_text, "", DIV)
-
-        img = await get_section_image("start", chat_id=chat_id)
-        if img == get_placeholder_image():
-            img = await get_section_image("menu", chat_id=chat_id)
-
-        try:
-            msg = await message.answer_photo(
-                FSInputFile(img) if img in PLACEHOLDER_IMAGES else img,
-                caption=text,
-                reply_markup=gender_kb(message.from_user.id),
-                parse_mode="HTML"
-            )
-            bot_state._last_bot_msg[chat_id] = msg.message_id
-        except Exception:
-            msg = await message.answer(text, reply_markup=gender_kb(message.from_user.id), parse_mode="HTML")
-            bot_state._last_bot_msg[chat_id] = msg.message_id
-        return
-
+    # ИСПРАВЛЕННАЯ ЛОГИКА: Сначала проверяем персонажа
     if not user["character_name"] or user.get("char_change_paid") == 1:
+
+        # Если нет персонажа и нет пола -> выбор пола
+        if not user["gender"]:
+            default_text = (
+                f"✨ ДОБРО ПОЖАЛОВАТЬ В ТЕЙВАТ\n{{div}}\n\n"
+                f"Я — Орион, твой верный\n"
+                f"спутник в этом мире 🧭\n\n"
+                f"🌸 Мой создатель — {CREATOR_USERNAME}\n"
+                f"Без него я бы не существовал!\n\n"
+                f"{{div}}\n\n"
+                f"Прежде чем мы отправимся\n"
+                f"в путь, скажи:"
+            )
+            raw_text = await get_local_setting("text_start", chat_id, default_text)
+            text = format_text(raw_text, "", DIV)
+
+            img = await get_section_image("start", chat_id=chat_id)
+            if img == get_placeholder_image():
+                img = await get_section_image("menu", chat_id=chat_id)
+
+            try:
+                msg = await message.answer_photo(
+                    FSInputFile(img) if img in PLACEHOLDER_IMAGES else img,
+                    caption=text,
+                    reply_markup=gender_kb(message.from_user.id),
+                    parse_mode="HTML"
+                )
+                bot_state._last_bot_msg[chat_id] = msg.message_id
+            except Exception:
+                msg = await message.answer(
+                    text,
+                    reply_markup=gender_kb(message.from_user.id),
+                    parse_mode="HTML"
+                )
+                bot_state._last_bot_msg[chat_id] = msg.message_id
+            return
+
+        # Если пол есть, но нет персонажа -> выбор региона
         text = (
             f"🌸 ВЫБОР ПЕРСОНАЖА\n{DIV}\n\n"
             f"Рад снова тебя видеть,\n"
@@ -153,7 +184,6 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
             f"{DIV}\n\n"
             f"Выбери регион:"
         )
-
         img = await get_section_image("regions", chat_id=chat_id)
         try:
             msg = await message.answer_photo(
@@ -164,10 +194,15 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
             )
             bot_state._last_bot_msg[chat_id] = msg.message_id
         except Exception:
-            msg = await message.answer(text, reply_markup=regions_kb(message.from_user.id), parse_mode="HTML")
+            msg = await message.answer(
+                text,
+                reply_markup=regions_kb(message.from_user.id),
+                parse_mode="HTML"
+            )
             bot_state._last_bot_msg[chat_id] = msg.message_id
         return
 
+    # Если персонаж уже есть -> ГЛАВНОЕ МЕНЮ
     name = esc(user_display_name(user))
     default_menu = (
         f"🌟 ГЛАВНОЕ МЕНЮ\n{{div}}\n\n"
@@ -185,15 +220,25 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
     try:
         if image in PLACEHOLDER_IMAGES:
             msg = await message.answer_photo(
-                FSInputFile(image), caption=text, reply_markup=main_menu_kb(message.from_user.id), parse_mode="HTML"
+                FSInputFile(image),
+                caption=text,
+                reply_markup=main_menu_kb(message.from_user.id),
+                parse_mode="HTML"
             )
         else:
             msg = await message.answer_photo(
-                image, caption=text, reply_markup=main_menu_kb(message.from_user.id), parse_mode="HTML"
+                image,
+                caption=text,
+                reply_markup=main_menu_kb(message.from_user.id),
+                parse_mode="HTML"
             )
         bot_state._last_bot_msg[chat_id] = msg.message_id
     except Exception:
-        msg = await message.answer(text, reply_markup=main_menu_kb(message.from_user.id), parse_mode="HTML")
+        msg = await message.answer(
+            text,
+            reply_markup=main_menu_kb(message.from_user.id),
+            parse_mode="HTML"
+        )
         bot_state._last_bot_msg[chat_id] = msg.message_id
 
 
@@ -205,10 +250,17 @@ async def cb_gender(query: types.CallbackQuery, callback_data: MenuCB):
     chat_id = query.message.chat.id
     g = "male" if callback_data.action == "gender_male" else "female"
     await update_user(query.from_user.id, chat_id, gender=g)
-    text = f"💖 ОТЛИЧНО!\n{DIV}\n\nТеперь выбери регион,\nоткуда родом твой герой 🎭"
 
-    image = await get_section_image("regions", chat_id=chat_id)
-    await edit_or_send(query, text, regions_kb(query.from_user.id), image_url=image)
+    # Проверяем, есть ли уже персонаж
+    user = await get_user(query.from_user.id, chat_id)
+
+    if user and user.get("character_name"):
+        text = f"💖 ОТЛИЧНО!\n{DIV}\n\nПол успешно обновлен.\nТвой персонаж: <b>{esc(user['character_name'])}</b>"
+        await edit_or_send(query, text, main_menu_kb(query.from_user.id))
+    else:
+        text = f"💖 ОТЛИЧНО!\n{DIV}\n\nТеперь выбери регион,\nоткуда родом твой герой 🎭"
+        image = await get_section_image("regions", chat_id=chat_id)
+        await edit_or_send(query, text, regions_kb(query.from_user.id), image_url=image)
 
 
 @dp.callback_query(MenuCB.filter(F.action == "regions"))
@@ -257,6 +309,7 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
 
     await update_user(query.from_user.id, chat_id, character_name=name, char_change_paid=0)
 
+    # МГНОВЕННОЕ ОБНОВЛЕНИЕ СПИСКА
     await update_chat_list(chat_id)
 
     app = await get_application(query.from_user.id, chat_id)
@@ -289,8 +342,9 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
     # ИСПРАВЛЕННАЯ ВЫДАЧА ТИТУЛА
     if chat.type in ("group", "supergroup"):
         try:
+            # Проверяем, есть ли у бота право давать админку
             bot_member = await bot.get_chat_member(chat.id, bot.id)
-            if getattr(bot_member, 'can_promote_members', False):
+            if bot_member.can_promote_members:
                 await bot.promote_chat_member(
                     chat_id=chat.id, user_id=query.from_user.id,
                     can_change_info=False, can_delete_messages=False, can_invite_users=False,
@@ -318,18 +372,27 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
     try:
         if char_image in PLACEHOLDER_IMAGES:
             msg = await bot.send_photo(
-                chat_id=chat.id, photo=FSInputFile(char_image), caption=text,
-                reply_markup=main_menu_kb(query.from_user.id), parse_mode="HTML"
+                chat_id=chat.id,
+                photo=FSInputFile(char_image),
+                caption=text,
+                reply_markup=main_menu_kb(query.from_user.id),
+                parse_mode="HTML"
             )
         else:
             msg = await bot.send_photo(
-                chat_id=chat.id, photo=char_image, caption=text, reply_markup=main_menu_kb(query.from_user.id),
+                chat_id=chat.id,
+                photo=char_image,
+                caption=text,
+                reply_markup=main_menu_kb(query.from_user.id),
                 parse_mode="HTML"
             )
         bot_state._last_bot_msg[chat.id] = msg.message_id
     except Exception:
         msg = await bot.send_photo(
-            chat_id=chat.id, photo=FSInputFile(get_placeholder_image()), caption=text,
-            reply_markup=main_menu_kb(query.from_user.id), parse_mode="HTML"
+            chat_id=chat.id,
+            photo=FSInputFile(get_placeholder_image()),
+            caption=text,
+            reply_markup=main_menu_kb(query.from_user.id),
+            parse_mode="HTML"
         )
         bot_state._last_bot_msg[chat.id] = msg.message_id

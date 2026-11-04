@@ -53,13 +53,12 @@ async def process_age(message: types.Message, state: FSMContext):
     )
 
 
-@dp.callback_query(F.data == "apply_cancel")
+@dp.callback_query(F.data == "apply_cancel", StateFilter(ApplyForm))
 async def cb_apply_cancel(query: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
-    target_chat_id = data.get("target_chat_id")
-
-    if target_chat_id:
-        await update_application_status(query.from_user.id, target_chat_id, "rejected")
+    chat_id = data.get("target_chat_id")
+    if chat_id:
+        await update_application_status(query.from_user.id, chat_id, "rejected")
 
     await state.clear()
     await query.message.edit_text("🚫 Заполнение анкеты отменено. Вы можете начать заново в любой момент.")
@@ -203,6 +202,8 @@ async def process_activity(message: types.Message, state: FSMContext):
             pass
 
 
+# --- Обработчики для владельца и админов ---
+
 async def is_admin_of_chat(user_id: int, chat_id: int) -> bool:
     if user_id == OWNER_ID:
         return True
@@ -240,7 +241,7 @@ async def cb_appr_accept(query: types.CallbackQuery):
         await bot.send_message(user_id,
                                f"🎉 <b>Поздравляем! Ваша анкета одобрена!</b>\n\n"
                                f"🔗 <b>Ссылка для вступления в группу (живет 24 часа):</b>\n{invite_link}\n\n"
-                               f"<i>Как только вы зайдете в группу, бот попросит вас выбрать персонажа.</i>",
+                               f"<i>Как только вы зайдете в группу, бот попросит вас выбрать персонажа, и ваша анкета появится в чате.</i>",
                                parse_mode="HTML")
     except Exception:
         pass
