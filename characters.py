@@ -10,6 +10,7 @@ REGIONS = {
     "natlan": "🔥 Натлан",
     "nodkrai": "🌙 Нод-Край",
     "snezhnaya": "❄️ Снежная",
+    "fatui": "🎭 Фатуи",
     "other": "✨ Другие",
 }
 
@@ -64,6 +65,7 @@ CHARACTERS = {
     "Ка Мин": {"region": "liyue", "image": "https://avatars.mds.yandex.net/i?id=57bf2c02e9b58310b44c0565ac448fa0_l-10241101-images-thumbs&n=13"},
     "Лань Янь": {"region": "liyue", "image": "https://avatars.mds.yandex.net/i?id=179ada77538095709cf08c3f496e6dd2_l-10756139-images-thumbs&n=13"},
     "Сянь Юнь": {"region": "liyue", "image": "https://i.pinimg.com/originals/ac/1c/01/ac1c0147de6b85c397ed398b7ec4b93b.jpg"},
+    "Цзы Бай": {"region": "liyue", "image": "https://avatars.mds.yandex.net/i?id=d8700db8b5995eff33d318d13b68b59d_l-5485739-images-thumbs&n=13"},
 
     # ===== Инадзума =====
     "Аяка Камисато": {"region": "inazuma", "image": "https://upload-os-bbs.hoyolab.com/upload/2023/03/20/160526120/0103999477aa7373d945ac9bd9c96d55_8877000270073418861.jpg"},
@@ -131,39 +133,40 @@ CHARACTERS = {
     # ===== Нод-Край =====
     "Айно": {"region": "nodkrai", "image": "https://rbkgames.com/wp-content/uploads/2025/07/gamestatic-e4e1295a4068b5fc63244a989dbfdf0f.jpg"},
     "Иллуга": {"region": "nodkrai", "image": "https://avatars.mds.yandex.net/i?id=3becda62fc503b9393907524fc9264b5_l-5504462-images-thumbs&n=13"},
-    "Коломбина": {"region": "nodkrai", "image": "https://wotpack.ru/wp-content/uploads/2023/03/word-image-220170-14.jpg"},
     "Лаума": {"region": "nodkrai", "image": "https://avatars.mds.yandex.net/i?id=23cc3b35d7ef56fdfc5a895f99a18cc3_l-12472935-images-thumbs&n=13"},
     "Нефер": {"region": "nodkrai", "image": "https://avatars.mds.yandex.net/i?id=faef8e3b716b3a82403a26bfcde322b5_l-4417533-images-thumbs&n=13"},
     "Флинс": {"region": "nodkrai", "image": "https://i.pinimg.com/originals/7b/a5/2e/7ba52ea63b5d379feeabc1052e9400bc.jpg"},
     "Ягода": {"region": "nodkrai", "image": "https://avatars.mds.yandex.net/i?id=f523a872f766a9db3c38e0001f98f48c_l-9151250-images-thumbs&n=13"},
     "Инеффа": {"region": "nodkrai", "image": "https://avatars.mds.yandex.net/i?id=8f3cf1c7f299c28642645cb4a315e92b_l-3553471-images-thumbs&n=13"},
     "Линнея": {"region": "nodkrai", "image": "https://avatars.mds.yandex.net/i?id=5b7b66fa522266b23917a5675265bd2a_l-3793502-images-thumbs&n=13"},
+    "Скирк": {"region": "nodkrai", "image": "https://i.pinimg.com/originals/8d/d9/b2/8dd9b23eb424f80efde68d940dcb7e77.jpg"},
 
     # ===== Снежная =====
     "Алёша": {"region": "snezhnaya", "image": "https://i.pinimg.com/originals/e3/15/41/e315411f884980ecc476d55b6e6b2032.jpg?nii=t"},
-    "Арлекино": {"region": "snezhnaya", "image": "https://avatars.mds.yandex.net/i?id=68adc0eb0cf1798a5fdec547049d44dd_l-8797427-images-thumbs&n=13"},
     "Одетта": {"region": "snezhnaya", "image": "https://avatars.mds.yandex.net/i?id=5a6b4533ce63b79370c549bd4776df4f_l-5235953-images-thumbs&n=13"},
-    "Сандроне": {"region": "snezhnaya", "image": "https://i.pinimg.com/originals/bd/4d/60/bd4d60dba93ba531069e1367b25b1471.png"},
-    "Тарталья": {"region": "snezhnaya", "image": "https://avatars.mds.yandex.net/i?id=e64a8909f8dd516b29adb5447a4ef8c1_l-5024131-images-thumbs&n=13"},
-    "Пульчинелла": {"region": "snezhnaya", "image": "https://avatars.mds.yandex.net/i?id=2fa8e8b73619ffd535109db180ae5925_l-5150842-images-thumbs&n=13"},
-    "Панталоне": {"region": "snezhnaya", "image": "https://avatars.mds.yandex.net/i?id=de3fef51dab808f74c3357384291d0bbc7e02d01-8129946-images-thumbs&n=13"},
-    "Дотторе": {"region": "snezhnaya", "image": "https://avatars.mds.yandex.net/i?id=450a11395d951cde3b88ed96dc018ef9_l-4356414-images-thumbs&n=13"},
-    "Капитано": {"region": "snezhnaya", "image": "https://avatars.mds.yandex.net/i?id=2cc985d18d5c398a75aabd1642f81486_l-9269009-images-thumbs&n=13"},
-    "Пьеро": {"region": "snezhnaya", "image": "https://avatars.mds.yandex.net/i?id=7403e1fb95bd7958060de118150e3349_l-4576013-images-thumbs&n=13"},
-    "Синьора": {"region": "snezhnaya", "image": "https://avatars.mds.yandex.net/i?id=27a09bed8a8ed2f57cb63d8e081985eb_l-5284089-images-thumbs&n=13"},
     "Царица": {"region": "snezhnaya", "image": "https://avatars.mds.yandex.net/i?id=db2a6708ea7303ce3aae534e6dd84e16_l-10303547-images-thumbs&n=13"},
     "Весна": {"region": "snezhnaya", "image": "https://avatars.mds.yandex.net/i?id=ae9583b77b4920b8a5a52b3c3c609025_l-5714596-images-thumbs&n=13"},
     "Водяница": {"region": "snezhnaya", "image": "https://avatars.mds.yandex.net/i?id=3a037def437c3c83babacca9d97679c1_l-8221351-images-thumbs&n=13"},
-    "Цзы Бай": {"region": "snezhnaya", "image": "https://avatars.mds.yandex.net/i?id=d8700db8b5995eff33d318d13b68b59d_l-5485739-images-thumbs&n=13"},
     "Валерий": {"region": "snezhnaya", "image": "https://wotpack.ru/wp-content/uploads/2026/06/litso-valeriya-vblizi-genshin-impact-1536x864.jpg"},
     "Митя": {"region": "snezhnaya", "image": "https://avatars.mds.yandex.net/i?id=0a742c3c56117b4098fb93a80d441418_l-5287068-images-thumbs&n=13"},
+
+    # ===== Фатуи =====
+    "Арлекино": {"region": "fatui", "image": "https://avatars.mds.yandex.net/i?id=68adc0eb0cf1798a5fdec547049d44dd_l-8797427-images-thumbs&n=13"},
+    "Сандроне": {"region": "fatui", "image": "https://i.pinimg.com/originals/bd/4d/60/bd4d60dba93ba531069e1367b25b1471.png"},
+    "Тарталья": {"region": "fatui", "image": "https://avatars.mds.yandex.net/i?id=e64a8909f8dd516b29adb5447a4ef8c1_l-5024131-images-thumbs&n=13"},
+    "Пульчинелла": {"region": "fatui", "image": "https://avatars.mds.yandex.net/i?id=2fa8e8b73619ffd535109db180ae5925_l-5150842-images-thumbs&n=13"},
+    "Панталоне": {"region": "fatui", "image": "https://avatars.mds.yandex.net/i?id=de3fef51dab808f74c3357384291d0bbc7e02d01-8129946-images-thumbs&n=13"},
+    "Дотторе": {"region": "fatui", "image": "https://avatars.mds.yandex.net/i?id=450a11395d951cde3b88ed96dc018ef9_l-4356414-images-thumbs&n=13"},
+    "Капитано": {"region": "fatui", "image": "https://avatars.mds.yandex.net/i?id=2cc985d18d5c398a75aabd1642f81486_l-9269009-images-thumbs&n=13"},
+    "Пьеро": {"region": "fatui", "image": "https://avatars.mds.yandex.net/i?id=7403e1fb95bd7958060de118150e3349_l-4576013-images-thumbs&n=13"},
+    "Синьора": {"region": "fatui", "image": "https://avatars.mds.yandex.net/i?id=27a09bed8a8ed2f57cb63d8e081985eb_l-5284089-images-thumbs&n=13"},
+    "Коломбина": {"region": "fatui", "image": "https://wotpack.ru/wp-content/uploads/2023/03/word-image-220170-14.jpg"},
 
     # ===== Другие =====
     "Дайнслейф": {"region": "other", "image": "https://avatars.mds.yandex.net/i?id=7c1d18512691e709a240628ca6e41424_l-9862264-images-thumbs&n=13"},
     "Итэр": {"region": "other", "image": "https://i.pinimg.com/originals/36/18/bf/3618bfd1c265bd0a7ddab009288939f2.jpg"},
     "Люмин": {"region": "other", "image": "https://i.pinimg.com/originals/5f/a0/63/5fa063f5218f5a27a3479c97da917561.jpg"},
     "Паймон": {"region": "other", "image": "https://genshin.jmp.blue/characters/paimon/portrait"},
-    "Скирк": {"region": "other", "image": "https://i.pinimg.com/originals/8d/d9/b2/8dd9b23eb424f80efde68d940dcb7e77.jpg"},
     "Элой": {"region": "other", "image": "https://avatars.mds.yandex.net/i?id=8564e7b7366a0072463effa4c571d486_l-4146308-images-thumbs&n=13"},
 }
 

@@ -34,7 +34,6 @@ async def cb_menu(query, callback_data, user, chat_id):
         if r_key and r_key in REGIONS and r_key != "other":
             region_display = REGIONS[r_key].split(" ", 1)[1] if " " in REGIONS[r_key] else REGIONS[r_key]
 
-    # --- ИСПРАВЛЕННЫЙ КОД: Получаем ранг репутации для статуса ---
     rep = user.get("reputation", 0) or 0
     reg_info = find_region_by_character(user.get("character_name"))
     reg_name_for_title = reg_info[1] if reg_info else "Тейват"
@@ -43,12 +42,11 @@ async def cb_menu(query, callback_data, user, chat_id):
         reg_name_for_title = reg_name_for_title.split(" ", 1)[1]
 
     rep_title = get_reputation_title(rep, reg_name_for_title)
-    # ------------------------------------------------------
 
     text = (
-        f"╓───────────────────────╖\n"
+        f"╓────────────────────╖\n"
         f"   🎴 ГЛАВНОЕ МЕНЮ\n"
-        f"╙───────────────────────╜\n\n"
+        f"╙────────────────────╜\n\n"
         f"╭ 🍃 <b>{name}</b> · {region_display}\n"
         f"┆\n"
         f"├ 📊 Статус: {rep_title}\n"
@@ -72,22 +70,31 @@ async def cb_profile(query, callback_data, user, chat_id):
     name = esc(user_display_name(user))
     g = await get_guild(user["guild_id"]) if user["guild_id"] else None
     guild_line = f"🏰 {esc(g['name'])}" if g else "🏰 Без гильдии"
-    partner_line = f"❤️ {esc(user['partner_name'])}" if user["partner_id"] else "❤️ Свободен(а)"
+
+    # ИСПРАВЛЕНИЕ: Склонение слова "Свободен" в зависимости от пола
+    if user["partner_id"]:
+        partner_line = f"❤️ {esc(user['partner_name'])}"
+    else:
+        if user["gender"] == "male":
+            partner_line = "❤️ Свободен"
+        elif user["gender"] == "female":
+            partner_line = "❤️ Свободна"
+        else:
+            partner_line = "❤️ Свободен(а)"
+
     resin = await update_resin(query.from_user.id, chat_id)
 
-    # --- ИСПРАВЛЕННЫЙ КОД: Ранг для профиля ---
     rep = user["reputation"] or 0
     reg_info = find_region_by_character(user.get("character_name"))
     reg_name_for_title = reg_info[1] if reg_info else "Тейват"
     if " " in reg_name_for_title:
         reg_name_for_title = reg_name_for_title.split(" ", 1)[1]
     rep_title = get_reputation_title(rep, reg_name_for_title)
-    # ------------------------------------
 
     text = (
-        f"╓───────────────────────╖\n"
+        f"╓────────────────────╖\n"
         f"   🎴 ПРОФИЛЬ\n"
-        f"╙───────────────────────╜\n\n"
+        f"╙────────────────────╜\n\n"
         f"🍃 {name}\n\n"
         f"╭ 💰 Баланс: <b>{user['balance']}</b>\n"
         f"┆\n"
@@ -121,7 +128,7 @@ async def cb_freerole(query, callback_data, user, chat_id):
 @inject_user
 async def cb_adventurers(query, callback_data, user, chat_id):
     if query.from_user.id != callback_data.owner_id: return
-    text = f"╓───────────────────────╖\n   🏛 ГИЛЬДИЯ ИСКАТЕЛЕЙ\n╙───────────────────────╜\n\n🍃 Добро пожаловать, <b>{esc(user_display_name(user))}</b>!\n\n╞═══════════════════════╡\n\nВыбери направление:"
+    text = f"╓────────────────────╖\n   🏛 ГИЛЬДИЯ ИСКАТЕЛЕЙ\n╙────────────────────╜\n\n🍃 Добро пожаловать, <b>{esc(user_display_name(user))}</b>!\n\n╞═══════════════════════╡\n\nВыбери направление:"
     await edit_or_send(query, text, adventurers_kb(query.from_user.id),
                        image_url=await get_section_image("adventurers", chat_id=chat_id))
 
@@ -142,9 +149,9 @@ async def cb_reputation(query, callback_data, user, chat_id):
     pt = "Максимум!" if level >= 10 else f"{'█' * (cur * 10 // 500)}{'░' * (10 - (cur * 10 // 500))} {cur}/500"
 
     text = (
-        f"╓───────────────────────╖\n"
+        f"╓───────────────────╖\n"
         f"   🎖️ РЕПУТАЦИЯ\n"
-        f"╙───────────────────────╜\n\n"
+        f"╙───────────────────╜\n\n"
         f"{title}\n\n"
         f"╭ 📊 Уровень: <b>{level} / 10</b>\n"
         f"┆\n"

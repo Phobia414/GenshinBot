@@ -103,25 +103,36 @@ async def track_text(message: types.Message, user: dict, chat_id: int):
 
     quiz = state._active_quizzes.get(message.chat.id)
     if quiz:
-        correct_answer = quiz.get("answer", "")
+        correct_answers = quiz.get("answers", [])
         is_correct = False
-        if correct_answer:
-            if text_lower == correct_answer:
+
+        for answer in correct_answers:
+            if not answer:
+                continue
+
+            if text_lower == answer:
                 is_correct = True
-            elif text_lower in correct_answer:
+                break
+            elif text_lower in answer:
                 is_correct = True
-            elif correct_answer in text_lower:
+                break
+            elif answer in text_lower:
                 is_correct = True
+                break
             else:
-                for word in correct_answer.split():
+                for word in answer.split():
                     if len(word) > 2 and word in text_lower:
                         is_correct = True
                         break
+            if is_correct:
+                break
 
         if is_correct:
-            reward = quiz.get("reward", QUIZ_REWARD)
-            await update_user(message.from_user.id, chat_id, balance=user["balance"] + reward)
-            await update_primogems(message.from_user.id, chat_id, 40)
+            reward_coins = quiz.get("coins", 50)
+            reward_primo = quiz.get("primo", 10)
+
+            await update_user(message.from_user.id, chat_id, balance=user["balance"] + reward_coins)
+            await update_primogems(message.from_user.id, chat_id, reward_primo)
 
             mention = f'<a href="tg://user?id={message.from_user.id}">{esc(message.from_user.first_name)}</a>'
 
@@ -129,7 +140,7 @@ async def track_text(message: types.Message, user: dict, chat_id: int):
                 chat_id=chat_id,
                 text=f"🎉 <b>ПРАВИЛЬНЫЙ ОТВЕТ!</b>\n\n"
                      f"{mention} быстрее всех ответил и получает "
-                     f"<b>{reward} монет</b> и <b>40 Примогемов</b>! 💰💎",
+                     f"<b>{reward_coins} монет</b> и <b>{reward_primo} Примогемов</b>! 💰💎",
                 parse_mode="HTML",
                 reply_markup=back_kb(message.from_user.id)
             )
@@ -344,11 +355,19 @@ async def handle_interaction(message, user, text_lower, chat_id):
 async def show_user_card(message, user, tg_user, chat_id):
     name = esc(user["character_name"] or "Не выбран")
     gtext = "Мужской" if user["gender"] == "male" else ("Женский" if user["gender"] == "female" else "Не указан")
+
+    # ИСПРАВЛЕНИЕ: Склонение в карточке
     if user["partner_id"]:
         status = "💍 В браке" if user["is_married"] else "💕 В отношениях"
         partner_line = f"❤️ {esc(user['partner_name'])} · {status}"
     else:
-        partner_line = "❤️ Свободен(а)"
+        if user["gender"] == "male":
+            partner_line = "❤️ Свободен"
+        elif user["gender"] == "female":
+            partner_line = "❤️ Свободна"
+        else:
+            partner_line = "❤️ Свободен(а)"
+
     child_line = ""
     if user["child_id"]:
         child_line = f"\n👶 {esc(user['child_name'])}"
