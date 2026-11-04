@@ -21,15 +21,13 @@ async def cb_shop(query: types.CallbackQuery, callback_data: MenuCB, user: dict,
     dt = f"\n🎖️ Скидка: -{disc}%" if disc else ""
 
     default_text = (
-        f"╓───────────────────────╖\n"
-        f"   🛒 ЛАВКА ТЕЙВАТА\n"
-        f"╙───────────────────────╜\n\n"
+        f"  ─ [ 🛒 ЛАВКА ТЕЙВАТА ] ─\n"
         f"🍃 <b>{{name}}</b>, загляни!\n\n"
-        f"╞═══════════════════════╡\n\n"
+        f"╞═══════════╡\n\n"
         f"╭ 💰 Баланс: <b>{{balance}}</b>\n"
         f"│\n"
         f"╰ 🎖️ Скидка: <b>{{discount}}</b>\n\n"
-        f"╞═══════════════════════╡\n\n"
+        f"╞═══════════╡\n\n"
         f"🎭 Смена персонажа: {{price_role}}\n"
         f"😴 Рест: {{price_rest}}\n"
         f"🧹 Чистка: {{price_clean}}\n"
