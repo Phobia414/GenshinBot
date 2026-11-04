@@ -172,7 +172,7 @@ async def cb_gacha_info(query, user, chat_id):
     b_info = BANNERS[user.get("gacha_banner", "event_char")]
     text = (
         f"─ [ 📜 ИНФОРМАЦИЯ ] ─\n\n"
-        f"╭ Текущий: {b_info['icon']} <b>{b_info['name']}</b>\n"
+        f"╭ Текущий баннер: {b_info['icon']} <b>{b_info['name']}</b>\n"
         f"┆\n"
         f"├ 📝 {b_info['desc']}\n"
         f"┆\n"
