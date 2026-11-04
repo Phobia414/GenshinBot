@@ -10,7 +10,7 @@ PLACEHOLDER_IMAGES = [
 
 PLACEHOLDER_IMAGE = random.choice(PLACEHOLDER_IMAGES)
 
-DIV = "══════════════"
+DIV = "════════════"
 
 DUNGEON_IMAGES = {
     "midsummer": "https://avatars.mds.yandex.net/i?id=06e947b6f94dc9485db176cf6b16cc7d_l-12190868-images-thumbs&n=13",
