@@ -25,6 +25,7 @@ async def update_chat_list(group_id: int):
     font_style = await get_group_font(group_id)
     custom_fonts = await get_custom_names(group_id)
 
+    # ИСПРАВЛЕНИЕ 1: Нормализуем имена из БД, чтобы они точно совпадали с базой персонажей
     taken_users = {}
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
@@ -32,9 +33,9 @@ async def update_chat_list(group_id: int):
                 "SELECT character_name, search_rp_partner FROM users WHERE character_name IS NOT NULL AND character_name != '' AND chat_id = ?",
                 (group_id,)) as cur:
             for row in await cur.fetchall():
-                taken_users[row["character_name"]] = row["search_rp_partner"] or ""
+                norm_db_name = normalize_character_name(row["character_name"])
+                taken_users[norm_db_name] = row["search_rp_partner"] or ""
 
-    # === ГЕНЕРАЦИЯ ТЕКСТА ПО ТЗ ===
     lines = ["▰▰▰ 〔 Список ролей 〕 ▰▰▰\n"]
 
     for reg_key, reg_name in REGIONS.items():
@@ -57,8 +58,9 @@ async def update_chat_list(group_id: int):
             if norm_name in custom_fonts:
                 display_name = custom_fonts[norm_name]
 
-            if ch in taken_users:
-                partner = taken_users[ch]
+            # ИСПРАВЛЕНИЕ 2: Проверяем наличие нормализованного имени в базе
+            if norm_name in taken_users:
+                partner = taken_users[norm_name]
                 if partner:
                     searching.append(f"{partner} (Для {display_name})")
                 else:
@@ -74,11 +76,9 @@ async def update_chat_list(group_id: int):
         if occupied:
             region_lines.append(f"Занятые: {', '.join(occupied)}")
             region_lines.append("")
-
         if searching:
             region_lines.append(f"Нужны в соролы: {', '.join(searching)}")
             region_lines.append("")
-
         if free:
             region_lines.append(f"Свободные: {', '.join(free)}")
             region_lines.append("")
@@ -88,8 +88,9 @@ async def update_chat_list(group_id: int):
     inner_text = "\n\n".join(lines)
     full_text = f"<b><code>{inner_text}</code></b>"
 
-    # === РЕЖИМ 1: Текст короткий (помещается в подпись к фото) ===
+    # === РЕЖИМ 1: Текст короткий (до 1024 символов) ===
     if len(full_text) <= 1024:
+        # Если есть старое текстовое сообщение от длинного списка, удаляем его
         if text_msg_id:
             try:
                 await bot.delete_message(chat_id=channel_id, message_id=int(text_msg_id))
@@ -108,6 +109,7 @@ async def update_chat_list(group_id: int):
         except TelegramBadRequest as e:
             if "message is not modified" in str(e):
                 return True
+            # Если отредактировать не вышло (например, сменилось фото), пытаемся обновить медиа
             try:
                 custom_img = await get_local_setting("image_rolelist", group_id)
                 media = InputMediaPhoto(media=custom_img or FSInputFile("images/list_banner.jpg"), caption=full_text,
@@ -115,39 +117,44 @@ async def update_chat_list(group_id: int):
                 await bot.edit_message_media(chat_id=channel_id, message_id=msg_id, media=media)
                 return True
             except Exception as e2:
-                print(f"❌ Ошибка при редактировании: {e2}")
+                print(f"❌ Ошибка при редактировании фото: {e2}")
                 return False
 
-    # === РЕЖИМ 2: Текст длинный (Редактируем фото и текст отдельно) ===
+    # === РЕЖИМ 2: Текст длинный (больше 1024 символов) ===
     else:
-        # ВОТ ТУТ МЫ УБРАЛИ ЗАГОЛОВОК С ВЕНЗЕЛЯМИ, ОСТАВИЛИ ТОЛЬКО СТРЕЛОЧКУ
-        caption = ""
+        caption = "👇 Список персонажей ниже 👇"
 
+        # ИСПРАВЛЕНИЕ 3: Пытаемся отредактировать существующие сообщения, а не удаляем их
         if text_msg_id:
             try:
+                # Сначала редактируем подпись у фото
+                try:
+                    await bot.edit_message_caption(chat_id=channel_id, message_id=msg_id, caption=caption,
+                                                   parse_mode="HTML")
+                except TelegramBadRequest:
+                    pass  # Игнорируем, если подпись не изменилась
+
+                # Затем редактируем сам текст
                 await bot.edit_message_text(
                     chat_id=channel_id,
                     message_id=int(text_msg_id),
                     text=full_text,
                     parse_mode="HTML"
                 )
-                try:
-                    await bot.edit_message_caption(
-                        chat_id=channel_id,
-                        message_id=msg_id,
-                        caption=caption,
-                        parse_mode="HTML"
-                    )
-                except TelegramBadRequest:
-                    pass
                 return True
             except Exception as e:
-                print(f"⚠️ Не удалось отредактировать старые сообщения, создаем новые: {e}")
+                print(f"⚠️ Не удалось отредактировать старые сообщения (возможно, удалены), создаем новые: {e}")
 
+        # Если отредактировать не удалось (сообщений нет), создаем с нуля
         try:
             await bot.delete_message(chat_id=channel_id, message_id=msg_id)
         except Exception:
             pass
+        if text_msg_id:
+            try:
+                await bot.delete_message(chat_id=channel_id, message_id=int(text_msg_id))
+            except Exception:
+                pass
 
         custom_img = await get_local_setting("image_rolelist", group_id)
         try:
