@@ -1,7 +1,5 @@
 from datetime import datetime, timezone
-
 from aiogram import types, F
-
 from bot_instance import dp
 from callbacks import MenuCB, TaskCB
 from config import BOARD_COOLDOWN
@@ -35,13 +33,21 @@ async def cb_board(query: types.CallbackQuery, callback_data: MenuCB):
     accepted = user["board_accepted"].split(";") if user["board_accepted"] else []
     claimed = user["board_claimed"].split(";") if user["board_claimed"] else []
     name = esc(user_display_name(user))
-    text = (f"📋 ДОСКА ЗАНЯТОСТИ\n{DIV}\n\nПривет, {name}!\n\n"
-            f"Нажми «📌 Принять» на задании,\nпотом выполняй его.\n"
-            f"Монеты и репутация зачислятся\nавтоматически ✨\n\n"
-            f"{DIV}\n\n🎖️ Награда за задание: +{REP_PER_BOARD_TASK} репутации")
+    text = (
+        f"─ [ 📋 ДОСКА ЗАНЯТОСТИ ] ─\n\n"
+        f"╭ 🍃 Привет, {name}!\n"
+        f"├\n"
+        f"├ Нажми «📌 Принять» на задании,\n"
+        f"├ потом выполняй его.\n"
+        f"├ Монеты и репутация зачислятся\n"
+        f"├ автоматически ✨\n"
+        f"├\n"
+        f"╰ 🎖️ Награда за задание: +{REP_PER_BOARD_TASK} репутации"
+    )
 
-    image = await get_section_image("board", chat_id=chat_id)
-    await edit_or_send(query, text, board_kb(query.from_user.id, user, tasks, accepted, claimed), image_url=image)
+    custom_img = await get_local_setting("image_board", chat_id)
+    await edit_or_send(query, text, board_kb(query.from_user.id, user, tasks, accepted, claimed),
+                       image_url=custom_img or "")
 
 
 @dp.callback_query(TaskCB.filter())
@@ -75,7 +81,9 @@ async def cb_task(query: types.CallbackQuery, callback_data: TaskCB):
     await query.answer("✅ Задание принято!", show_alert=True)
     user = await get_user(query.from_user.id, chat_id)
     tasks = user["board_tasks"].split(";") if user["board_tasks"] else []
-    text = f"📋 ДОСКА ЗАНЯТОСТИ\n{DIV}\n\nЗадание принято!"
 
-    image = await get_section_image("board", chat_id=chat_id)
-    await edit_or_send(query, text, board_kb(query.from_user.id, user, tasks, accepted, claimed), image_url=image)
+    text = f"─ [ 📋 ДОСКА ЗАНЯТОСТИ ] ─\n\n╭ Задание принято!\n├\n╰ Удачи в выполнении ✨"
+
+    custom_img = await get_local_setting("image_board", chat_id)
+    await edit_or_send(query, text, board_kb(query.from_user.id, user, tasks, accepted, claimed),
+                       image_url=custom_img or "")

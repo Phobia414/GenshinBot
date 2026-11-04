@@ -18,20 +18,19 @@ async def cb_shop(query: types.CallbackQuery, callback_data: MenuCB, user: dict,
         return
 
     _, _, disc = get_reputation_bonuses(user["reputation"])
-    dt = f"\n🎖️ Скидка: -{disc}%" if disc else ""
 
     default_text = (
-        f"  ─ [ 🛒 ЛАВКА ТЕЙВАТА ] ─\n"
-        f"🍃 <b>{{name}}</b>, загляни!\n\n"
-        f"╞═══════════╡\n\n"
-        f"╭ 💰 Баланс: <b>{{balance}}</b>\n"
-        f"│\n"
-        f"╰ 🎖️ Скидка: <b>{{discount}}</b>\n\n"
-        f"╞═══════════╡\n\n"
-        f"🎭 Смена персонажа: {{price_role}}\n"
-        f"😴 Рест: {{price_rest}}\n"
-        f"🧹 Чистка: {{price_clean}}\n"
-        f"🧪 Эликсир Любви: {{price_elixir}}"
+        f"── 〔 🛒 ЛАВКА ТЕЙВАТА 〕 ──\n\n"
+        f"╭ 🍃 <b>{{name}}</b>, загляни!\n"
+        f"├\n"
+        f"├ 💰 Баланс: <b>{{balance}}</b>\n"
+        f"├\n"
+        f"├ 🎖️ Скидка: <b>{{discount}}</b>\n"
+        f"├\n"
+        f"├ 🎭 Смена персонажа: {{price_role}}\n"
+        f"├ 😴 Рест: {{price_rest}}\n"
+        f"├ 🧹 Чистка: {{price_clean}}\n"
+        f"╰ 🧪 Эликсир Любви: {{price_elixir}}"
     )
 
     raw_text = await get_local_setting("text_shop", chat_id, default_text)
@@ -44,8 +43,8 @@ async def cb_shop(query: types.CallbackQuery, callback_data: MenuCB, user: dict,
         .replace("{price_clean}", str(PRICE_CLEAN)) \
         .replace("{price_elixir}", str(PRICE_ELIXIR))
 
-    image = await get_section_image("shop", chat_id=chat_id)
-    await edit_or_send(query, text, shop_kb(query.from_user.id, disc), image_url=image)
+    custom_img = await get_local_setting("image_shop", chat_id)
+    await edit_or_send(query, text, shop_kb(query.from_user.id, disc), image_url=custom_img or "")
 
 
 @dp.callback_query(ShopCB.filter())
@@ -56,14 +55,7 @@ async def cb_shop_buy(query: types.CallbackQuery, callback_data: ShopCB, user: d
         return
 
     _, _, disc = get_reputation_bonuses(user["reputation"])
-
-    prices = {
-        "role": PRICE_ROLE_CHANGE,
-        "rest": PRICE_REST,
-        "clean": PRICE_CLEAN,
-        "elixir": PRICE_ELIXIR
-    }
-
+    prices = {"role": PRICE_ROLE_CHANGE, "rest": PRICE_REST, "clean": PRICE_CLEAN, "elixir": PRICE_ELIXIR}
     base = prices.get(callback_data.item, 0)
     price = int(base * (100 - disc) / 100) if disc else base
 
@@ -79,30 +71,25 @@ async def cb_shop_buy(query: types.CallbackQuery, callback_data: ShopCB, user: d
         b.button(text="⊱ 🎭 Сменить персонажа ⊰", callback_data=MenuCB(action="regions", owner_id=query.from_user.id))
         b.button(text="⊱ ‹ В меню ⊰", callback_data=MenuCB(action="menu", owner_id=query.from_user.id))
         b.adjust(1)
-        text = f"✅ СМЕНА КУПЛЕНА\n{DIV}\n\nОстаток: {nb}\n\n⚠️ Нажми кнопку ниже, чтобы выбрать нового героя!"
-        # Оставляем без картинки
+        text = f"── 〔 ✅ СМЕНА КУПЛЕНА 〕 ──\n\n╭ 💰 Остаток: {nb}\n├\n╰ ⚠️ Нажми кнопку ниже, чтобы выбрать нового героя!"
         await edit_or_send(query, text, b.as_markup(), image_url="")
         return
 
     elif callback_data.item == "rest":
         await update_user(query.from_user.id, chat_id, balance=nb, rest_active=1)
         msg = "😴 Рест активирован."
-
     elif callback_data.item == "clean":
         await update_user(query.from_user.id, chat_id, balance=nb, clean_exempt=1)
         msg = "🧹 Освобождение от чистки активировано."
-
     elif callback_data.item == "elixir":
         if not user.get("partner_id"):
             await query.answer("❌ У тебя нет партнера, эликсир не подействует!", show_alert=True)
             return
-
         partner = await get_user(user["partner_id"], chat_id)
         if partner:
             new_xp = (user.get("rel_xp", 0) + 50)
             await update_user(query.from_user.id, chat_id, balance=nb, rel_xp=new_xp)
             await update_user(partner["user_id"], chat_id, rel_xp=partner.get("rel_xp", 0) + 50)
-
             level = min(new_xp // XP_PER_LEVEL, MAX_LEVEL)
             msg = f"🧪 Эликсир выпит! Вы с {esc(partner['partner_name'])} получили +50 XP.\n📊 Текущий уровень: {level} / {MAX_LEVEL}"
         else:
@@ -115,7 +102,6 @@ async def cb_shop_buy(query: types.CallbackQuery, callback_data: ShopCB, user: d
     b.button(text="⊱ 🛒 В лавку ⊰", callback_data=MenuCB(action="shop", owner_id=query.from_user.id))
     b.button(text="⊱ ‹ В меню ⊰", callback_data=MenuCB(action="menu", owner_id=query.from_user.id))
     b.adjust(1)
-    text = f"✅ ПОКУПКА\n{DIV}\n\n{msg}\n\n💰 Остаток: {nb}"
 
-    # ИЗМЕНЕНИЕ: передаем image_url="", чтобы не было картинки-заглушки при покупке
+    text = f"── 〔 ✅ ПОКУПКА 〕 ──\n\n╭ {msg}\n├\n╰ 💰 Остаток: {nb}"
     await edit_or_send(query, text, b.as_markup(), image_url="")
