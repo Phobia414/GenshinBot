@@ -90,7 +90,7 @@ async def cb_profile(query, callback_data, user, chat_id):
     rep_title = get_reputation_title(rep, reg_name_for_title)
 
     text = (
-        f"  ─ [ 🎴 ПРОФИЛЬ ] ─\n"
+        f"  ─ [ 🎴 ПРОФИЛЬ ] ─\n\n"
         f"🍃 {name}\n\n"
         f"╭ 💰 Баланс: <b>{user['balance']}</b>\n"
         f"┆\n"
@@ -124,7 +124,7 @@ async def cb_freerole(query, callback_data, user, chat_id):
 @inject_user
 async def cb_adventurers(query, callback_data, user, chat_id):
     if query.from_user.id != callback_data.owner_id: return
-    text = f"─ [ 🏛 ГИЛЬДИЯ ИСКАТЕЛЕЙ ] ─\n\n🍃 Добро пожаловать, <b>{esc(user_display_name(user))}</b>!\n\n╞═══════════╡\n\nВыбери направление:"
+    text = f"[ 🏛 ГИЛЬДИЯ ИСКАТЕЛЕЙ ]\n\n🍃 Добро пожаловать, <b>{esc(user_display_name(user))}</b>!\n\n╞═══════════╡\n\nВыбери направление:"
     await edit_or_send(query, text, adventurers_kb(query.from_user.id),
                        image_url=await get_section_image("adventurers", chat_id=chat_id))
 
