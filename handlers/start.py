@@ -205,7 +205,7 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
     # Если персонаж уже есть -> ГЛАВНОЕ МЕНЮ
     name = esc(user_display_name(user))
     default_menu = (
-        f"🌟 ГЛАВНОЕ МЕНЮ\n{{div}}\n\n"
+        f"────── [ 🌟 ГЛАВНОЕ МЕНЮ ] ──────\n{{div}}\n\n"
         f"Привет, {{name}}!\n"
         f"Куда отправимся сегодня?\n\n"
         f"{{div}}\n\n"
