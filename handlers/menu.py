@@ -100,9 +100,9 @@ async def cb_profile(query, callback_data, user, chat_id):
         f"┆\n"
         f"├ 🎖️ Репутация: <b>{rep_title}</b>\n"
         f"┆\n"
-        f"├ {partner_line}\n"
+        f"├ Партнер: {partner_line}\n"
         f"┆\n"
-        f"╰ {guild_line}"
+        f"╰ Гильдия: {guild_line}"
     )
     fallback = get_character_image(user["character_name"]) if user["character_name"] else None
     await edit_or_send(query, text, profile_kb(query.from_user.id),
