@@ -61,7 +61,7 @@ CHARACTERS = {
     "Юнь Цзинь": {"region": "liyue", "image": "https://i.pinimg.com/originals/3b/11/c5/3b11c5a72f2cb89cd8bdf2117e147405.jpg"},
     "Янь Фэй": {"region": "liyue", "image": "https://storage.respawn.media/zaaur7A9gaEvcOoxejsog.webp"},
     "Яо Яо": {"region": "liyue", "image": "https://avatars.mds.yandex.net/i?id=d1f506c59aa52e4ee3f1b5fea6a5b011_l-8071172-images-thumbs&n=13"},
-    "Га Мин": {"region": "liyue", "image": "https://avatars.mds.yandex.net/i?id=57bf2c02e9b58310b44c0565ac448fa0_l-10241101-images-thumbs&n=13"},
+    "Ка Мин": {"region": "liyue", "image": "https://avatars.mds.yandex.net/i?id=57bf2c02e9b58310b44c0565ac448fa0_l-10241101-images-thumbs&n=13"},
     "Лань Янь": {"region": "liyue", "image": "https://avatars.mds.yandex.net/i?id=179ada77538095709cf08c3f496e6dd2_l-10756139-images-thumbs&n=13"},
     "Сянь Юнь": {"region": "liyue", "image": "https://i.pinimg.com/originals/ac/1c/01/ac1c0147de6b85c397ed398b7ec4b93b.jpg"},
 
@@ -218,7 +218,7 @@ EN_TO_RU = {
     "xiao": "Сяо", "hutao": "Ху Тао", "hu-tao": "Ху Тао", "qiqi": "Цици",
     "zhongli": "Чжун Ли", "zhong-li": "Чжун Ли", "chongyun": "Чунь Юнь",
     "shenhe": "Шэнь Хэ", "yunjin": "Юнь Цзинь", "yanfei": "Янь Фэй",
-    "yaoyao": "Яо Яо", "gaming": "Га Мин", "lanyan": "Лань Янь", "xianyun": "Сянь Юнь",
+    "yaoyao": "Яо Яо", "kaming": "Ка Мин", "lanyan": "Лань Янь", "xianyun": "Сянь Юнь",
     "ayaka": "Аяка Камисато", "kamisatoayaka": "Аяка Камисато",
     "ayato": "Аято Камисато", "kamisatoayato": "Аято Камисато",
     "gorou": "Горо", "yoimiya": "Ёимия", "itto": "Итто", "aratakiitto": "Итто",
