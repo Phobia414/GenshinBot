@@ -54,13 +54,13 @@ async def cb_guild(query: types.CallbackQuery, callback_data: MenuCB, user: dict
         default_text = (
             f"─ [ 🏰 ГИЛЬДИЯ ] ─\n\n"
             f"╭ 🛡 <b>{esc(g['name']).upper()}</b>{title_line}\n"
-            f"├\n"
+            f"┆\n"
             f"├ 👑 Ранг: <b>{esc(user['guild_rank'])}</b>\n"
-            f"├\n"
+            f"┆\n"
             f"├ 💰 Вклад: <b>{user['guild_contribution']}</b>\n"
-            f"├\n"
+            f"┆\n"
             f"├ 📊 Уровень: <b>{g.get('level', 1)}</b>\n"
-            f"├\n"
+            f"┆\n"
             f"╰ 👥 Слоты: <b>{members_count} / {max_slots}</b>{desc_text}"
         )
         raw_text = await get_local_setting("text_guild", chat_id, default_text)

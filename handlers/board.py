@@ -4,7 +4,8 @@ from bot_instance import dp
 from callbacks import MenuCB, TaskCB
 from config import BOARD_COOLDOWN
 from constants import DIV, TASKS, REP_PER_BOARD_TASK
-from db import get_user, update_user
+# ИСПРАВЛЕНИЕ: Добавлен импорт get_local_setting
+from db import get_user, update_user, get_local_setting
 from helpers import esc, user_display_name, generate_tasks, edit_or_send, get_section_image
 from keyboards import board_kb
 
@@ -36,15 +37,16 @@ async def cb_board(query: types.CallbackQuery, callback_data: MenuCB):
     text = (
         f"─ [ 📋 ДОСКА ЗАНЯТОСТИ ] ─\n\n"
         f"╭ 🍃 Привет, {name}!\n"
-        f"├\n"
+        f"┆\n"
         f"├ Нажми «📌 Принять» на задании,\n"
         f"├ потом выполняй его.\n"
         f"├ Монеты и репутация зачислятся\n"
         f"├ автоматически ✨\n"
-        f"├\n"
+        f"┆\n"
         f"╰ 🎖️ Награда за задание: +{REP_PER_BOARD_TASK} репутации"
     )
 
+    # Теперь get_local_setting работает
     custom_img = await get_local_setting("image_board", chat_id)
     await edit_or_send(query, text, board_kb(query.from_user.id, user, tasks, accepted, claimed),
                        image_url=custom_img or "")
