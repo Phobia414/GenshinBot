@@ -376,7 +376,6 @@ async def show_user_card(message, user, tg_user, chat_id):
     from db import get_rep_level
     rep_level = get_rep_level(user["reputation"])
 
-    # НОВОЕ ОФОРМЛЕНИЕ
     text = (
         f"─ [ КАРТОЧКА ПУТЕШЕСТВЕННИКА ] ─\n\n"
         f"╭ 🎭 {name} · ⚧ {gtext}\n"
@@ -468,6 +467,10 @@ async def _check_board_auto_locked(message):
 @dp.chat_member()
 async def on_chat_member_update(event: types.ChatMemberUpdated):
     try:
+        # ИСПРАВЛЕНИЕ: Игнорируем каналы. Бот должен работать только в группах/супергруппах.
+        if event.chat.type not in ("group", "supergroup"):
+            return
+
         affected_user = event.new_chat_member.user
         if affected_user.is_bot:
             return
@@ -486,10 +489,8 @@ async def on_chat_member_update(event: types.ChatMemberUpdated):
                 await update_user(affected_user.id, event.chat.id, character_name="", char_change_paid=0,
                                   search_rp_partner="")
 
-                # ИСПРАВЛЕНИЕ: Меняем статус анкеты, чтобы можно было зайти снова
                 await update_application_status(affected_user.id, event.chat.id, "rejected")
 
-                # Снимаем тег (если бот имеет права)
                 try:
                     await bot.set_chat_member_tag(
                         chat_id=event.chat.id,
