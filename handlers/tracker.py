@@ -356,7 +356,6 @@ async def show_user_card(message, user, tg_user, chat_id):
     name = esc(user["character_name"] or "Не выбран")
     gtext = "Мужской" if user["gender"] == "male" else ("Женский" if user["gender"] == "female" else "Не указан")
 
-    # ИСПРАВЛЕНИЕ: Склонение в карточке
     if user["partner_id"]:
         status = "💍 В браке" if user["is_married"] else "💕 В отношениях"
         partner_line = f"❤️ {esc(user['partner_name'])} · {status}"
@@ -489,6 +488,18 @@ async def on_chat_member_update(event: types.ChatMemberUpdated):
                 old_name = user["character_name"]
                 await update_user(affected_user.id, event.chat.id, character_name="", char_change_paid=0,
                                   search_rp_partner="")
+
+                # ПРИНУДИТЕЛЬНО СНИМАЕМ ПРАВА ПРИ ВЫХОДЕ (чтобы титул не завис)
+                try:
+                    await bot.promote_chat_member(
+                        chat_id=event.chat.id, user_id=affected_user.id,
+                        can_change_info=False, can_delete_messages=False, can_invite_users=False,
+                        can_restrict_members=False, can_pin_messages=False, can_promote_members=False,
+                        can_manage_chat=False, can_manage_video_chats=False
+                    )
+                except Exception:
+                    pass
+
                 try:
                     await bot.send_message(
                         event.chat.id,
@@ -509,5 +520,16 @@ async def on_chat_member_update(event: types.ChatMemberUpdated):
                     reply_markup=regions_kb(affected_user.id), parse_mode="HTML"
                 )
                 await update_application_status(affected_user.id, event.chat.id, 'waiting_char')
+            else:
+                # Если зашел без анкеты - сразу предлагаем выбрать пол
+                user = await get_user(affected_user.id, event.chat.id)
+                if not user or not user["character_name"]:
+                    mention = f'<a href="tg://user?id={affected_user.id}">{esc(affected_user.first_name)}</a>'
+                    await bot.send_message(
+                        event.chat.id,
+                        f"👋 {mention}, добро пожаловать в Тейват!\n\n"
+                        f"Чтобы начать играть, выбери свой пол:",
+                        reply_markup=gender_kb(affected_user.id), parse_mode="HTML"
+                    )
     except Exception as e:
         print(f"ChatMemberUpdate error: {e}")

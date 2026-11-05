@@ -7,7 +7,6 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from bot_instance import bot, dp
 from callbacks import MenuCB, RegionCB, CharCB
 from config import CREATOR_USERNAME
-# ОБЯЗАТЕЛЬНО добавили fetch_all для проверки анкет
 from db import get_user, update_user, is_character_taken, get_taken_characters, get_local_setting, get_application, \
     update_application_status, fetch_all
 from characters import REGIONS, get_character_image, CHARACTERS
@@ -51,7 +50,6 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
     chat_id = message.chat.id
     user = await _ensure_user(message.from_user.id, chat_id)
 
-    # --- ОБРАБОТКА ССЫЛКИ-ПРИГЛАШЕНИЯ (apply_) ---
     if command.args and command.args.startswith("apply_"):
         target_chat_id = int(command.args.replace("apply_", ""))
 
@@ -72,29 +70,17 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
         await send_step(message.chat.id, 0, state)
         return
 
-    # --- НОВАЯ ПРОВЕРКА: ЕСЛИ АНКЕТА УЖЕ ОДОБРЕНА (На случай сбоя события входа) ---
+    # НОВОЕ: Проверка, если человек одобрен, но зашел в ЛС бота
     if not user["character_name"]:
         apps = await fetch_all("SELECT chat_id FROM applications WHERE user_id = ? AND status = 'accepted'",
                                (message.from_user.id,))
         if apps:
             target_chat_id = apps[0]["chat_id"]
             await update_application_status(message.from_user.id, target_chat_id, 'waiting_char')
-
-            text = (
-                f"─ [ 🎉 АНКЕТА ОДОБРЕНА ] ─\n\n"
-                f"╭ Ваша заявка была принята!\n"
-                f"├ Пожалуйста, выбери регион,\n"
-                f"╰ откуда родом твой персонаж:"
-            )
-            custom_img = await get_local_setting("image_regions", target_chat_id)
-            if custom_img:
-                await message.answer_photo(custom_img, caption=text, reply_markup=regions_kb(message.from_user.id),
-                                           parse_mode="HTML")
-            else:
-                await message.answer(text, reply_markup=regions_kb(message.from_user.id), parse_mode="HTML")
+            await message.answer("🎉 Ваша анкета одобрена!\nПожалуйста, выбери регион, откуда твой персонаж:",
+                                 reply_markup=regions_kb(message.from_user.id))
             return
 
-    # --- ОБЫЧНЫЙ /START БЕЗ ССЫЛКИ ---
     try:
         await message.delete()
     except Exception:
@@ -267,8 +253,21 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
 
     if chat.type in ("group", "supergroup"):
         try:
+            # 1. Сначала ПРИНУДИТЕЛЬНО снимаем старые права и титул
+            try:
+                await bot.promote_chat_member(
+                    chat_id=chat.id, user_id=query.from_user.id,
+                    can_change_info=False, can_delete_messages=False, can_invite_users=False,
+                    can_restrict_members=False, can_pin_messages=False, can_promote_members=False,
+                    can_manage_chat=False, can_manage_video_chats=False
+                )
+            except Exception:
+                pass
+
+            # 2. Проверяем права бота
             bot_member = await bot.get_chat_member(chat.id, bot.id)
             if bot_member.can_promote_members:
+                # 3. Выдаем права заново и ставим новый титул
                 await bot.promote_chat_member(
                     chat_id=chat.id, user_id=query.from_user.id,
                     can_change_info=False, can_delete_messages=False, can_invite_users=False,
@@ -278,9 +277,12 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
                 await bot.set_chat_administrator_custom_title(
                     chat_id=chat.id, user_id=query.from_user.id, custom_title=name[:16]
                 )
-                ts = "\n\n🏷️ Тег участника установлен!"
+                ts = "\n\n👑 Титул установлен!"
+            else:
+                ts = "\n\n⚠️ Бот не может выдать титул (нет прав)."
         except Exception as e:
             print(f"❌ Ошибка выдачи титула: {e}")
+            ts = "\n\n⚠️ Не удалось установить титул."
 
     text = f"─ [ 🎉 ДОБРО ПОЖАЛОВАТЬ! ] ─\n\n╭ Теперь ты — <b>{esc(name)}</b>!{ts}\n├\n╰ Орион рад за тебя! 💛"
 
@@ -303,3 +305,14 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
                                      parse_mode="HTML")
 
     bot_state._last_bot_msg[chat.id] = msg.message_id
+
+
+@dp.message(Command("freerole"))
+async def cmd_freerole(message):
+    chat_id = message.chat.id
+    user = await _ensure_user(message.from_user.id, chat_id)
+    if not user["character_name"]: return await message.answer("У тебя нет персонажа.")
+    old = user["character_name"]
+    await update_user(message.from_user.id, chat_id, character_name="")
+    await message.answer(f"✅ Роль «{esc(old)}» освобождена.\n\n⚠️ Вернуть можно за 25000 монет.", parse_mode="HTML")
+    await update_chat_list(chat_id)
