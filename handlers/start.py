@@ -238,6 +238,28 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
     await update_user(query.from_user.id, chat_id, character_name=name, char_change_paid=0)
     await update_chat_list(chat_id)
 
+    # ИСПРАВЛЕНИЕ: ВЫДАЧА ТЕГА ПЕРЕНЕСЕНА ВЫШЕ ПРОВЕРКИ АНКЕТЫ
+    chat = query.message.chat
+    ts = ""
+
+    if chat.type in ("group", "supergroup"):
+        try:
+            result = await bot.set_chat_member_tag(
+                chat_id=chat.id,
+                user_id=query.from_user.id,
+                tag=name[:16]
+            )
+            print(f"DEBUG: Результат set_chat_member_tag: {result}")
+
+            if result:
+                ts = "\n\n👑 Тег установлен!"
+            else:
+                ts = f"\n\n⚠️ <b>Тег не выдан.</b> Telegram ответил: {result}"
+
+        except Exception as e:
+            print(f"Ошибка установки тега: {e}")
+            ts = f"\n\n⚠️ <b>Ошибка:</b> <code>{e}</code>"
+
     app = await get_application(query.from_user.id, chat_id)
     if app and app['status'] == 'waiting_char':
         await update_application_status(query.from_user.id, chat_id, 'joined')
@@ -255,32 +277,10 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
             await query.message.delete()
         except:
             pass
-        await bot.send_message(chat_id, f"✅ Анкета опубликована! Добро пожаловать в игру, {esc(name)}!",
+        # Добавляем статус тега в сообщение о публикации
+        await bot.send_message(chat_id, f"✅ Анкета опубликована! Добро пожаловать в игру, {esc(name)}!{ts}",
                                reply_markup=main_menu_kb(query.from_user.id))
         return
-
-    chat = query.message.chat
-    ts = ""
-
-    if chat.type in ("group", "supergroup"):
-        try:
-            # ИСПРАВЛЕНИЕ: Ловим результат выполнения метода
-            result = await bot.set_chat_member_tag(
-                chat_id=chat.id,
-                user_id=query.from_user.id,
-                tag=name[:16]
-            )
-            print(f"DEBUG: Результат set_chat_member_tag: {result}")
-
-            if result:
-                ts = "\n\n👑 Тег установлен!"
-            else:
-                ts = f"\n\n⚠️ <b>Тег не выдан.</b> Telegram ответил: {result}"
-
-        except Exception as e:
-            print(f"Ошибка установки тега: {e}")
-            # Выводим ошибку прямо в чат
-            ts = f"\n\n⚠️ <b>Ошибка:</b> <code>{e}</code>"
 
     text = f"─ [ ДОБРО ПОЖАЛОВАТЬ! ] ─\n\n╭ Теперь ты — <b>{esc(name)}</b>!{ts}\n├\n╰ Орион рад за тебя! 💛"
 
