@@ -19,4 +19,4 @@ from . import gacha
 from . import daily
 from . import economy
 from . import apply
-from . import stats
+from . import stats  # <--- Должно быть в самом конце
