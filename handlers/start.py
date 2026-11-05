@@ -54,7 +54,6 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
     if command.args and command.args.startswith("apply_"):
         target_chat_id = int(command.args.replace("apply_", ""))
 
-        # Проверяем, есть ли у него персонаж в этой конкретной ролевой
         group_user = await get_user(message.from_user.id, target_chat_id)
         if group_user and group_user["character_name"]:
             try:
@@ -77,7 +76,6 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
             if status == 'pending':
                 return await message.answer("⏳ Ваша анкета уже на рассмотрении. Ожидайте.")
             elif status in ('accepted', 'waiting_char', 'joined'):
-                # Если анкета была принята, но он вышел и не имеет персонажа — сбрасываем
                 await update_application_status(message.from_user.id, target_chat_id, 'rejected')
 
         await state.update_data(target_chat_id=target_chat_id)
@@ -266,19 +264,17 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
 
     if chat.type in ("group", "supergroup"):
         try:
-            try:
-                await bot.set_chat_member_tag(
-                    chat_id=chat.id,
-                    user_id=query.from_user.id,
-                    tag=name[:16]
-                )
-                ts = "\n\n👑 Тег установлен!"
-            except Exception as e:
-                print(f"Ошибка установки тега: {e}")
-                ts = "\n\n⚠️ Не удалось установить тег (проверьте права бота)."
+            # ПЫТАЕМСЯ ВЫДАТЬ ТЕГ И ВЫВОДИМ ОШИБКУ, ЕСЛИ НЕ ПОЛУЧИЛОСЬ
+            await bot.set_chat_member_tag(
+                chat_id=chat.id,
+                user_id=query.from_user.id,
+                tag=name[:16]
+            )
+            ts = "\n\n👑 Тег установлен!"
         except Exception as e:
-            print(f"Глобальная ошибка: {e}")
-            ts = ""
+            print(f"Ошибка установки тега: {e}")
+            # Выводим ошибку прямо в чат, чтобы понять причину
+            ts = f"\n\n⚠️ <b>Ошибка тега:</b> <code>{e}</code>"
 
     text = f"─ [ ДОБРО ПОЖАЛОВАТЬ! ] ─\n\n╭ Теперь ты — <b>{esc(name)}</b>!{ts}\n├\n╰ Орион рад за тебя! 💛"
 

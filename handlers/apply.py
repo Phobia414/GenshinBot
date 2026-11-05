@@ -242,12 +242,12 @@ async def process_activity(message: types.Message, state: FSMContext):
         b.button(text="💬 Связаться", url=f"tg://user?id={message.from_user.id}")
         b.adjust(2, 1)
 
-        # РАССЫЛАЕМ ТОЛЬКО ДОВЕРЕННЫМ АДМИНАМ
-        admins = await get_trusted_admins()
-        if not admins:
-            admins = [OWNER_ID]
+        # ИСПРАВЛЕНИЕ: Владелец ВСЕГДА получает анкету, остальные - только если они в списке доверенных
+        admins_to_send = set([OWNER_ID])
+        trusted = await get_trusted_admins()
+        admins_to_send.update(trusted)
 
-        for admin_id in admins:
+        for admin_id in admins_to_send:
             try:
                 await bot.send_message(admin_id, text, reply_markup=b.as_markup(), parse_mode="HTML")
             except Exception as e:
