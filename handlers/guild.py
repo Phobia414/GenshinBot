@@ -8,7 +8,7 @@ import aiosqlite
 import random
 
 from bot_instance import bot, dp
-from callbacks import MenuCB, GuildCB
+from callbacks import MenuCB, GuildCB, GuildInviteCB
 from config import DB_PATH
 from constants import DIV, GUILD_CREATE_PRICE, REP_PER_GUILD_CREATE, REP_PER_DONATE_UNIT, REP_PER_DONATE_MAX, \
     ARTIFACT_SLOTS, RARITY_BONUS, SLOT_SHORT
@@ -17,7 +17,10 @@ from db import (
     update_guild, get_all_guilds, get_guild_members, get_setting, get_local_setting,
     add_artifact, update_primogems, get_guild_craft_stats
 )
-from helpers import esc, user_display_name, edit_or_send, _ensure_user, _gain_rep, get_section_image, inject_user
+from helpers import (
+    esc, user_display_name, edit_or_send, _ensure_user, _gain_rep,
+    get_section_image, inject_user, extract_target, resolve_user_id
+)
 from keyboards import (
     guild_menu_kb, guild_list_kb, back_kb, guild_manage_kb, guild_shop_kb,
     guild_craft_kb, guild_members_kb, guild_member_manage_kb
@@ -54,13 +57,13 @@ async def cb_guild(query: types.CallbackQuery, callback_data: MenuCB, user: dict
         default_text = (
             f"─ [ 🏰 ГИЛЬДИЯ ] ─\n\n"
             f"╭ 🛡 <b>{esc(g['name']).upper()}</b>{title_line}\n"
-            f"┆\n"
+            f"├\n"
             f"├ 👑 Ранг: <b>{esc(user['guild_rank'])}</b>\n"
-            f"┆\n"
+            f"├\n"
             f"├ 💰 Вклад: <b>{user['guild_contribution']}</b>\n"
-            f"┆\n"
+            f"├\n"
             f"├ 📊 Уровень: <b>{g.get('level', 1)}</b>\n"
-            f"┆\n"
+            f"├\n"
             f"╰ 👥 Слоты: <b>{members_count} / {max_slots}</b>{desc_text}"
         )
         raw_text = await get_local_setting("text_guild", chat_id, default_text)
@@ -70,9 +73,9 @@ async def cb_guild(query: types.CallbackQuery, callback_data: MenuCB, user: dict
         default_text = (
             f"─ [ 🏰 ГИЛЬДИИ ] ─\n\n"
             f"╭ 🍃 {esc(user_display_name(user))}, ты пока без гильдии.\n"
-            f"┆\n"
+            f"├\n"
             f"├ Создай за {GUILD_CREATE_PRICE} монет или вступи в существующую.\n"
-            f"┆\n"
+            f"├\n"
             f"╰ 🎖️ За создание: +{REP_PER_GUILD_CREATE} репутации"
         )
         raw_text = await get_local_setting("text_guild", chat_id, default_text)
@@ -90,7 +93,7 @@ async def render_guild_manage(query: types.CallbackQuery, user: dict, chat_id: i
     text = (
         f"─ [ ⚙️ УПРАВЛЕНИЕ ] ─\n\n"
         f"╭ 🛡 <b>{esc(g['name'])}</b>\n"
-        f"┆\n"
+        f"├\n"
         f"├ 💡 /disbandguild — распустить\n"
         f"├ 💡 /donate Сумма — пополнить казну\n"
         f"╰ 💡 /transfer_ally Сумма — передать союзу"
@@ -101,7 +104,8 @@ async def render_guild_manage(query: types.CallbackQuery, user: dict, chat_id: i
 
 @dp.callback_query(GuildCB.filter(F.action == "manage"))
 @inject_user
-async def cb_guild_manage(query: types.CallbackQuery, callback_data: GuildCB, user: dict, chat_id: int, state: FSMContext):
+async def cb_guild_manage(query: types.CallbackQuery, callback_data: GuildCB, user: dict, chat_id: int,
+                          state: FSMContext):
     await state.clear()
     if query.from_user.id != callback_data.owner_id:
         await query.answer("⚠️ Чужое меню!", show_alert=True)
@@ -120,7 +124,7 @@ async def render_guild_members(query: types.CallbackQuery, user: dict, chat_id: 
     g = await get_guild(user["guild_id"])
     members = await get_guild_members(user["guild_id"])
     is_owner = g and g["owner_id"] == query.from_user.id
-    text = f"─ [ 👥 СОСТАВ ГИЛЬДИИ ] ─\n\n╭ Нажми на участника, чтобы управлять им:\n├\n╰ Всего: {len(members)} чел."
+    text = f"── 〔 👥 СОСТАВ ГИЛЬДИИ 〕 ──\n\n╭ Нажми на участника, чтобы управлять им:\n├\n╰ Всего: {len(members)} чел."
     img = await get_local_setting("image_guild_members", chat_id)
     await edit_or_send(query, text, guild_members_kb(query.from_user.id, members, is_owner), image_url=img or "")
 
@@ -150,12 +154,14 @@ async def render_gmem_view(query: types.CallbackQuery, user: dict, chat_id: int,
     text = (
         f"─ [ 👤 УЧАСТНИК ] ─\n\n"
         f"╭ 🎭 <b>{esc(target['character_name'])}</b>\n"
-        f"┆\n"
+        f"├\n"
         f"├ 👑 Ранг: <b>{esc(target['guild_rank'])}</b>\n"
-        f"┆\n"
+        f"├\n"
         f"╰ 💰 Вклад: <b>{target['guild_contribution']}</b>"
     )
-    await edit_or_send(query, text, guild_member_manage_kb(query.from_user.id, target_id, is_owner, target['guild_rank']), image_url="")
+    await edit_or_send(query, text,
+                       guild_member_manage_kb(query.from_user.id, target_id, is_owner, target['guild_rank']),
+                       image_url="")
 
 
 @dp.callback_query(F.data.startswith("gmem_view_"))
@@ -218,17 +224,18 @@ async def render_guild_craft(query: types.CallbackQuery, user: dict, chat_id: in
     text = (
         f"─ [ ⚒ КРАФТ БАФФОВ ] ─\n\n"
         f"╭ Скрафти награду для всех участников (сгорает через 14 дней).\n"
-        f"┆\n"
+        f"├\n"
         f"├ 💬 Сообщения: {stats['m']} / {req_m}\n"
         f"├ 🎭 Стикеры: {stats['s']} / {req_s}\n"
         f"├ ↩️ Ответы: {stats['r']} / {req_r}\n"
         f"├ 🖼 Фото: {stats['p']} / {req_p}\n"
         f"├ 🐉 Убито боссов: {stats['b']} / {req_b}\n"
-        f"┆\n"
+        f"├\n"
         f"├ 🎁 Награда: Баффы на 14 дней + 500-1000 монет в казну + 50-100 💎\n"
         f"╰ <i>(Любой 1 участник может нафармить это сам)</i>"
     )
-    can = stats['m'] >= req_m and stats['s'] >= req_s and stats['r'] >= req_r and stats['p'] >= req_p and stats['b'] >= req_b
+    can = stats['m'] >= req_m and stats['s'] >= req_s and stats['r'] >= req_r and stats['p'] >= req_p and stats[
+        'b'] >= req_b
     if not can: text += "\n\n❌ Недостаточно ресурсов."
     b = InlineKeyboardBuilder()
     if can:
@@ -254,18 +261,27 @@ async def do_guild_craft(query: types.CallbackQuery, item_type: str, user: dict,
     stats = await get_guild_craft_stats(g["guild_id"])
     members = await get_guild_members(g["guild_id"])
     count = max(5, len(members))
-    req_m = count * 400; req_s = count * 40; req_r = count * 200; req_p = count * 2; req_b = count * 1
+    req_m = count * 400;
+    req_s = count * 40;
+    req_r = count * 200;
+    req_p = count * 2;
+    req_b = count * 1
     if stats['m'] < req_m or stats['s'] < req_s or stats['r'] < req_r or stats['p'] < req_p or stats['b'] < req_b:
         await query.answer("❌ Недостаточно ресурсов.", show_alert=True)
         return
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("UPDATE guild_member_stats SET msgs=0, stickers=0, replies=0, photos=0, bosses=0 WHERE guild_id = ?", (g["guild_id"],))
+        await db.execute(
+            "UPDATE guild_member_stats SET msgs=0, stickers=0, replies=0, photos=0, bosses=0 WHERE guild_id = ?",
+            (g["guild_id"],))
         await db.commit()
     expires = int(datetime.now(timezone.utc).timestamp()) + (14 * 86400)
     for m in members:
-        if item_type == "char": await update_user(m["user_id"], chat_id, guild_char_exp=expires)
-        elif item_type == "rest": await update_user(m["user_id"], chat_id, guild_rest_exp=expires)
-        elif item_type == "clean": await update_user(m["user_id"], chat_id, guild_clean_exp=expires)
+        if item_type == "char":
+            await update_user(m["user_id"], chat_id, guild_char_exp=expires)
+        elif item_type == "rest":
+            await update_user(m["user_id"], chat_id, guild_rest_exp=expires)
+        elif item_type == "clean":
+            await update_user(m["user_id"], chat_id, guild_clean_exp=expires)
     reward_coins = random.randint(500, 1000)
     reward_primo = random.randint(50, 100)
     await update_guild(g["guild_id"], treasury=g["treasury"] + reward_coins)
@@ -299,7 +315,7 @@ async def cb_guild_shop(query: types.CallbackQuery, user: dict, chat_id: int, st
     g = await get_guild(user["guild_id"])
     if not g or g["owner_id"] != query.from_user.id:
         return await query.answer("❌ Только лидер.", show_alert=True)
-    text = f"─ [ 🛒 МАГАЗИН ГИЛЬДИИ ] ─\n\n╭ 💰 Казна: {g['treasury']}\n├\n╰ Выбери товар:"
+    text = f"── 〔 🛒 МАГАЗИН ГИЛЬДИИ 〕 ──\n\n╭ 💰 Казна: {g['treasury']}\n├\n╰ Выбери товар:"
     img = await get_local_setting("image_guild_shop", chat_id)
     await edit_or_send(query, text, guild_shop_kb(query.from_user.id), image_url=img or "")
 
@@ -347,7 +363,8 @@ async def cb_guild_edit_desc(query: types.CallbackQuery, state: FSMContext, user
     await state.set_state(GuildEdit.waiting_for_desc)
     b = InlineKeyboardBuilder()
     b.button(text="❌ Отмена", callback_data="guild_manage_back")
-    await edit_or_send(query, f"─ [ 📝 ОПИСАНИЕ ] ─\n\n╭ Отправь новый текст описания (до 300 символов):", b.as_markup(), image_url="")
+    await edit_or_send(query, f"── 〔 📝 ОПИСАНИЕ 〕 ──\n\n╭ Отправь новый текст описания (до 300 символов):",
+                       b.as_markup(), image_url="")
 
 
 @dp.message(GuildEdit.waiting_for_desc, F.text)
@@ -372,7 +389,9 @@ async def cb_guild_edit_photo(query: types.CallbackQuery, state: FSMContext, use
     await state.set_state(GuildEdit.waiting_for_photo)
     b = InlineKeyboardBuilder()
     b.button(text="❌ Отмена", callback_data="guild_manage_back")
-    await edit_or_send(query, f"─ [ 🖼 ФОТО ГИЛЬДИИ ] ─\n\n╭ Отправь мне фотографию, которая будет гербом твоей гильдии.", b.as_markup(), image_url="")
+    await edit_or_send(query,
+                       f"─ [ 🖼 ФОТО ГИЛЬДИИ ] ─\n\n╭ Отправь мне фотографию, которая будет гербом твоей гильдии.",
+                       b.as_markup(), image_url="")
 
 
 @dp.message(GuildEdit.waiting_for_photo, F.photo)
@@ -459,16 +478,17 @@ async def cb_guild_info(query: types.CallbackQuery, callback_data: GuildCB, user
     text = (
         f"─ [ 🏰 ГИЛЬДИЯ «{esc(g['name']).upper()}» ] ─\n\n"
         f"╭ 👑 Лидер: {esc(g['owner_name'])}\n"
-        f"┆\n"
+        f"├\n"
         f"├ 📅 Создана: {created}\n"
-        f"┆\n"
+        f"├\n"
         f"├ 👥 Участники: {len(members)}/{g.get('max_members', 5)}\n"
-        f"┆\n"
+        f"├\n"
         f"├ 💰 Казна: {g['treasury']}\n"
-        f"┆\n"
+        f"├\n"
         f"╰ 📊 Очки недели: {g['week_points']}"
     )
-    await edit_or_send(query, text, guild_menu_kb(query.from_user.id, True, g["owner_id"] == query.from_user.id), image_url="")
+    await edit_or_send(query, text, guild_menu_kb(query.from_user.id, True, g["owner_id"] == query.from_user.id),
+                       image_url="")
 
 
 @dp.callback_query(GuildCB.filter(F.action == "treasury"))
@@ -480,12 +500,12 @@ async def cb_guild_treasury(query: types.CallbackQuery, callback_data: GuildCB, 
     text = (
         f"─ [ 💰 КАЗНА ГИЛЬДИИ ] ─\n\n"
         f"╭ «{esc(g['name'])}»\n"
-        f"┆\n"
+        f"├\n"
         f"├ В казне: {g['treasury']} монет\n"
-        f"┆\n"
+        f"├\n"
         f"├ Пополнить:\n"
         f"├ /donate Сумма\n"
-        f"┆\n"
+        f"├\n"
         f"╰ 🎖️ За каждые {REP_PER_DONATE_UNIT} монет: +1 репутации"
     )
     b = InlineKeyboardBuilder()
@@ -526,9 +546,11 @@ async def cmd_transfer_ally(message: types.Message):
     user = await _ensure_user(message.from_user.id, message.chat.id)
     if not user["guild_id"]: return await message.answer("❌ Ты не в гильдии.")
     g = await get_guild(user["guild_id"])
-    if not g or g["owner_id"] != message.from_user.id: return await message.answer("❌ Только лидер может передавать деньги.")
+    if not g or g["owner_id"] != message.from_user.id: return await message.answer(
+        "❌ Только лидер может передавать деньги.")
     ally_id = g.get("ally_id")
-    if not ally_id: return await message.answer("❌ У вашей гильдии нет союзника. Используйте /ally_create чтобы предложить союз.")
+    if not ally_id: return await message.answer(
+        "❌ У вашей гильдии нет союзника. Используйте /ally_create чтобы предложить союз.")
     parts = message.text.split(maxsplit=1)
     if len(parts) < 2 or not parts[1].isdigit(): return await message.answer("Используй: /transfer_ally Сумма")
     amount = int(parts[1])
@@ -538,7 +560,9 @@ async def cmd_transfer_ally(message: types.Message):
     if not ally_g: return await message.answer("❌ Гильдия-союзник не найдена (возможно, распущена).")
     await update_guild(g["guild_id"], treasury=g["treasury"] - amount)
     await update_guild(ally_id, treasury=ally_g["treasury"] + amount)
-    await message.answer(f"🤝 Ты передал {amount} монет из казны гильдии «{esc(g['name'])}» в казну союзной гильдии «{esc(ally_g['name'])}»!", reply_markup=back_kb(message.from_user.id))
+    await message.answer(
+        f"🤝 Ты передал {amount} монет из казны гильдии «{esc(g['name'])}» в казну союзной гильдии «{esc(ally_g['name'])}»!",
+        reply_markup=back_kb(message.from_user.id))
 
 
 @dp.message(Command("createguild"))
@@ -553,14 +577,17 @@ async def cmd_createguild(message: types.Message):
     name = parts[1].strip()[:32]
     if await get_guild_by_name(name, chat_id): return await message.answer(f"❌ Гильдия «{esc(name)}» уже существует.")
     gid = await create_guild(name, message.from_user.id, user["character_name"] or "Игрок", chat_id)
-    await update_user(message.from_user.id, chat_id, balance=user["balance"] - GUILD_CREATE_PRICE, guild_id=gid, guild_rank="Лидер")
+    await update_user(message.from_user.id, chat_id, balance=user["balance"] - GUILD_CREATE_PRICE, guild_id=gid,
+                      guild_rank="Лидер")
     if not user.get("guild_bonus_claimed"):
         await update_user(message.from_user.id, chat_id, guild_bonus_claimed=1)
         await _gain_rep(message.from_user.id, chat_id, REP_PER_GUILD_CREATE, message.from_user.first_name)
         rep_line = f"\n🎖️ +{REP_PER_GUILD_CREATE} репутации"
     else:
         rep_line = "\n🎖️ Бонус за создание уже получен ранее"
-    await message.answer(f"─ [ 🏰 ГИЛЬДИЯ СОЗДАНА! ] ─\n\n╭ «{esc(name)}»\n├ Ты — Лидер.\n├\n├ -{GUILD_CREATE_PRICE} монет{rep_line}\n╰ Удачи!", reply_markup=back_kb(message.from_user.id))
+    await message.answer(
+        f"─ [ 🏰 ГИЛЬДИЯ СОЗДАНА! ] ─\n\n╭ «{esc(name)}»\n├ Ты — Лидер.\n├\n├ -{GUILD_CREATE_PRICE} монет{rep_line}\n╰ Удачи!",
+        reply_markup=back_kb(message.from_user.id))
 
 
 @dp.message(Command("donate"))
@@ -575,11 +602,13 @@ async def cmd_donate(message: types.Message):
     if amount <= 0: return await message.answer("❌ Сумма > 0.")
     if user["balance"] < amount: return await message.answer("❌ Не хватает.")
     g = await get_guild(user["guild_id"])
-    await update_user(message.from_user.id, chat_id, balance=user["balance"] - amount, guild_contribution=user["guild_contribution"] + amount)
+    await update_user(message.from_user.id, chat_id, balance=user["balance"] - amount,
+                      guild_contribution=user["guild_contribution"] + amount)
     await update_guild(g["guild_id"], treasury=g["treasury"] + amount)
     rep_gain = min(REP_PER_DONATE_MAX, (amount // REP_PER_DONATE_UNIT))
     if rep_gain > 0: await _gain_rep(message.from_user.id, chat_id, rep_gain, message.from_user.first_name)
-    await message.answer(f"💛 Ты внёс(ла) {amount} монет.\n🎖️ Репутация: +{rep_gain}", reply_markup=back_kb(message.from_user.id))
+    await message.answer(f"💛 Ты внёс(ла) {amount} монет.\n🎖️ Репутация: +{rep_gain}",
+                         reply_markup=back_kb(message.from_user.id))
 
 
 @dp.message(Command("disbandguild"))
@@ -591,8 +620,104 @@ async def cmd_disbandguild(message: types.Message):
     g = await get_guild(user["guild_id"])
     if not g or g["owner_id"] != message.from_user.id: return await message.answer("❌ Только лидер.")
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("UPDATE users SET guild_id = 0, guild_rank = 'Участник', guild_contribution = 0 WHERE guild_id = ? AND chat_id = ?", (g["guild_id"], chat_id))
+        await db.execute(
+            "UPDATE users SET guild_id = 0, guild_rank = 'Участник', guild_contribution = 0 WHERE guild_id = ? AND chat_id = ?",
+            (g["guild_id"], chat_id))
         await db.execute("DELETE FROM guilds WHERE guild_id = ?", (g["guild_id"],))
         await db.execute("DELETE FROM guild_member_stats WHERE guild_id = ?", (g["guild_id"],))
         await db.commit()
     await message.answer(f"🏰 Гильдия «{esc(g['name'])}» распущена.", reply_markup=back_kb(message.from_user.id))
+
+
+# ==================== НОВАЯ СИСТЕМА ПРИГЛАШЕНИЙ ====================
+
+@dp.message(Command("invite"))
+async def cmd_invite(message: types.Message):
+    chat_id = message.chat.id
+    if message.chat.type not in ("group", "supergroup"):
+        return await message.answer("❌ Эта команда работает только в группах.")
+
+    user = await _ensure_user(message.from_user.id, chat_id)
+    if not user["guild_id"]:
+        return await message.answer("❌ Ты не в гильдии.")
+
+    g = await get_guild(user["guild_id"])
+    if not g or user["guild_rank"] not in ("Лидер", "Офицер"):
+        return await message.answer("❌ Только Лидер или Офицер может приглашать игроков.")
+
+    members = await get_guild_members(g["guild_id"])
+    if len(members) >= g.get("max_members", 5):
+        return await message.answer("❌ В гильдии нет свободных мест.")
+
+    target_ref, display = extract_target(message)
+    if target_ref is None:
+        return await message.answer(
+            "⚔️ Ответь на сообщение игрока и напиши <code>/invite</code>, или укажи <code>/invite @username</code>",
+            parse_mode="HTML")
+
+    if isinstance(target_ref, str):
+        target_id = await resolve_user_id(target_ref)
+        if not target_id:
+            return await message.answer(f"❌ Не нашёл @{target_ref}. Пусть игрок напишет в чат с ботом.")
+    else:
+        target_id = target_ref
+
+    if target_id == message.from_user.id:
+        return await message.answer("❌ Себя пригласить нельзя.")
+
+    target_user = await get_user(target_id, chat_id)
+    if target_user and target_user["guild_id"]:
+        return await message.answer(f"❌ {esc(display)} уже состоит в гильдии.")
+
+    b = InlineKeyboardBuilder()
+    b.button(text="✅ Принять",
+             callback_data=GuildInviteCB(action="accept", guild_id=g["guild_id"], target_id=target_id))
+    b.button(text="❌ Отклонить",
+             callback_data=GuildInviteCB(action="decline", guild_id=g["guild_id"], target_id=target_id))
+    b.adjust(2)
+
+    mention = f'<a href="tg://user?id={target_id}">{esc(display)}</a>'
+    inviter = f'<a href="tg://user?id={message.from_user.id}">{esc(user["character_name"])}</a>'
+
+    await message.answer(
+        f"─ [ 🏰 ПРИГЛАШЕНИЕ В ГИЛЬДИЮ ] ─\n\n"
+        f"╭ {mention}, игрок {inviter}\n"
+        f"├ приглашает тебя в гильдию:\n"
+        f"├\n"
+        f"╰ 🛡 <b>{esc(g['name'])}</b>",
+        reply_markup=b.as_markup(), parse_mode="HTML"
+    )
+
+
+@dp.callback_query(GuildInviteCB.filter())
+async def cb_guild_invite(query: types.CallbackQuery, callback_data: GuildInviteCB):
+    if query.from_user.id != callback_data.target_id:
+        return await query.answer("❌ Это приглашение не для тебя!", show_alert=True)
+
+    if callback_data.action == "decline":
+        await query.message.edit_text(f"─ [ 🕊️ ОТКЛОНЕНО ] ─\n\n╭ Ты отклонил приглашение в гильдию.\n╰",
+                                      parse_mode="HTML")
+        return
+
+    chat_id = query.message.chat.id
+    g = await get_guild(callback_data.guild_id)
+    if not g:
+        return await query.answer("❌ Гильдия больше не существует.", show_alert=True)
+
+    members = await get_guild_members(g["guild_id"])
+    if len(members) >= g.get("max_members", 5):
+        return await query.answer("❌ В гильдии уже нет мест.", show_alert=True)
+
+    # Вступаем
+    await update_user(query.from_user.id, chat_id, guild_id=g["guild_id"], guild_rank="Участник", guild_contribution=0)
+
+    target_user = await get_user(query.from_user.id, chat_id)
+    name = esc(target_user["character_name"] or query.from_user.first_name)
+
+    await query.message.edit_text(
+        f"─ [ 🎉 ДОБРО ПОЖАЛОВАТЬ! ] ─\n\n"
+        f"╭ {name} вступил(а) в гильдию!\n"
+        f"├\n"
+        f"╰ 🛡 <b>{esc(g['name'])}</b>",
+        parse_mode="HTML"
+    )

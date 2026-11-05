@@ -97,5 +97,11 @@ class BossCB(CallbackData, prefix="boss"):
 class GachaInvCB(CallbackData, prefix="ginv"):
     action: str
     item_id: int = 0
-    rarity: int = 0  # <--- ДОБАВЛЕНО ДЛЯ МАССОВОЙ ПРОДАЖИ
+    rarity: int = 0
     owner_id: int = 0
+
+# НОВЫЙ КОЛБЭК ДЛЯ ПРИГЛАШЕНИЙ В ГИЛЬДИЮ
+class GuildInviteCB(CallbackData, prefix="ginvite"):
+    action: str
+    guild_id: int
+    target_id: int
