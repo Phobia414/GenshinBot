@@ -6,7 +6,8 @@ from datetime import datetime, timezone
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
         # Проверяем старые таблицы (миграция)
-        for table in ["users", "guilds", "artifacts", "protected_users", "gacha_inventory", "world_boss", "guild_boss", "guild_member_stats"]:
+        for table in ["users", "guilds", "artifacts", "protected_users", "gacha_inventory", "world_boss", "guild_boss",
+                      "guild_member_stats"]:
             try:
                 async with db.execute(f"PRAGMA table_info({table})") as cur:
                     cols = [row[1] for row in await cur.fetchall()]
@@ -40,6 +41,7 @@ async def init_db():
                 gacha_guaranteed_5 INTEGER DEFAULT 0, gacha_lost_50_50 INTEGER DEFAULT 0, last_daily INTEGER DEFAULT 0,
                 guild_char_exp INTEGER DEFAULT 0, guild_rest_exp INTEGER DEFAULT 0, guild_clean_exp INTEGER DEFAULT 0,
                 first_seen INTEGER DEFAULT 0, rel_image TEXT DEFAULT '', search_rp_partner TEXT DEFAULT '',
+                msgs_week INTEGER DEFAULT 0, msgs_month INTEGER DEFAULT 0, gacha_banner TEXT DEFAULT 'event_char',
                 PRIMARY KEY (user_id, chat_id)
             )
         """)
@@ -94,11 +96,16 @@ async def init_db():
                 min_messages INTEGER DEFAULT 100, frequency_days INTEGER DEFAULT 7, last_cleanup INTEGER DEFAULT 0
             )
         """)
-        await db.execute("CREATE TABLE IF NOT EXISTS chat_settings (chat_id INTEGER PRIMARY KEY, list_message_id INTEGER DEFAULT 0)")
-        await db.execute("CREATE TABLE IF NOT EXISTS group_channels (group_id INTEGER PRIMARY KEY, channel_id INTEGER, message_id INTEGER, font_style TEXT DEFAULT 'none', custom_alphabet TEXT DEFAULT '{}')")
-        await db.execute("CREATE TABLE IF NOT EXISTS custom_names (group_id INTEGER, default_name TEXT, custom_name TEXT, PRIMARY KEY (group_id, default_name))")
-        await db.execute("CREATE TABLE IF NOT EXISTS guild_alliances (id INTEGER PRIMARY KEY AUTOINCREMENT, guild1_id INTEGER, guild2_id INTEGER, created_at INTEGER)")
-        await db.execute("CREATE TABLE IF NOT EXISTS guild_member_stats (guild_id INTEGER, user_id INTEGER, msgs INTEGER DEFAULT 0, stickers INTEGER DEFAULT 0, replies INTEGER DEFAULT 0, photos INTEGER DEFAULT 0, bosses INTEGER DEFAULT 0, PRIMARY KEY (guild_id, user_id))")
+        await db.execute(
+            "CREATE TABLE IF NOT EXISTS chat_settings (chat_id INTEGER PRIMARY KEY, list_message_id INTEGER DEFAULT 0)")
+        await db.execute(
+            "CREATE TABLE IF NOT EXISTS group_channels (group_id INTEGER PRIMARY KEY, channel_id INTEGER, message_id INTEGER, font_style TEXT DEFAULT 'none', custom_alphabet TEXT DEFAULT '{}')")
+        await db.execute(
+            "CREATE TABLE IF NOT EXISTS custom_names (group_id INTEGER, default_name TEXT, custom_name TEXT, PRIMARY KEY (group_id, default_name))")
+        await db.execute(
+            "CREATE TABLE IF NOT EXISTS guild_alliances (id INTEGER PRIMARY KEY AUTOINCREMENT, guild1_id INTEGER, guild2_id INTEGER, created_at INTEGER)")
+        await db.execute(
+            "CREATE TABLE IF NOT EXISTS guild_member_stats (guild_id INTEGER, user_id INTEGER, msgs INTEGER DEFAULT 0, stickers INTEGER DEFAULT 0, replies INTEGER DEFAULT 0, photos INTEGER DEFAULT 0, bosses INTEGER DEFAULT 0, PRIMARY KEY (guild_id, user_id))")
         await db.execute("CREATE TABLE IF NOT EXISTS bot_settings (key TEXT PRIMARY KEY, value TEXT)")
         await db.execute("CREATE TABLE IF NOT EXISTS char_photos (name TEXT PRIMARY KEY, image_url TEXT)")
         await db.execute("CREATE TABLE IF NOT EXISTS custom_chars (name TEXT PRIMARY KEY, region TEXT, image_url TEXT)")
@@ -107,31 +114,45 @@ async def init_db():
         await db.execute("CREATE TABLE IF NOT EXISTS known_groups (chat_id INTEGER PRIMARY KEY)")
         await db.commit()
 
-        # Миграция: добавляем новые колонки, если их нет
-        for col in ["rel_image TEXT DEFAULT ''", "search_rp_partner TEXT DEFAULT ''"]:
+        # Миграция: добавляем новые колонки, если их нет (для старых баз)
+        missing_columns = [
+            "rel_image TEXT DEFAULT ''",
+            "search_rp_partner TEXT DEFAULT ''",
+            "msgs_week INTEGER DEFAULT 0",
+            "msgs_month INTEGER DEFAULT 0",
+            "gacha_banner TEXT DEFAULT 'event_char'",
+            "gacha_pity_4 INTEGER DEFAULT 0",
+            "gacha_pity_5 INTEGER DEFAULT 0",
+            "gacha_guaranteed_5 INTEGER DEFAULT 0",
+            "gacha_lost_50_50 INTEGER DEFAULT 0"
+        ]
+
+        for col in missing_columns:
             try:
                 await db.execute(f"ALTER TABLE users ADD COLUMN {col}")
             except Exception:
-                pass
-        # Миграция: добавляем новые колонки, если их нет
-        for col in ["rel_image TEXT DEFAULT ''", "search_rp_partner TEXT DEFAULT ''",
-                    "msgs_week INTEGER DEFAULT 0", "msgs_month INTEGER DEFAULT 0"]: # <-- ДОБАВЛЕНО
-            try:
-                await db.execute(f"ALTER TABLE users ADD COLUMN {col}")
-            except Exception:
-                pass
+                pass  # Колонка уже существует
+
 
 # ============ ДОПОЛНИТЕЛЬНЫЕ ФУНКЦИИ ИНИЦИАЛИЗАЦИИ ============
 async def init_settings_db(): pass
+
+
 async def init_known_groups_db(): pass
+
+
 async def init_gacha_db(): pass
+
+
 async def init_gacha_images_db(): pass
+
 
 async def load_gacha_images():
     import state
     rows = await fetch_all("SELECT item_name, image_url FROM gacha_custom_images")
     for r in rows:
         state._gacha_images[r['item_name']] = r['image_url']
+
 
 # ============ ШОРТКАТЫ ДЛЯ БД ============
 async def fetch_one(query, params=()):
@@ -141,11 +162,13 @@ async def fetch_one(query, params=()):
             row = await cur.fetchone()
             return dict(row) if row else None
 
+
 async def fetch_all(query, params=()):
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(query, params) as cur:
             return [dict(r) for r in await cur.fetchall()]
+
 
 async def execute(query, params=()):
     async with aiosqlite.connect(DB_PATH) as db:
@@ -153,13 +176,18 @@ async def execute(query, params=()):
         await db.commit()
         return cur.lastrowid
 
+
 # ============ USERS ============
 async def get_user(user_id, chat_id=0):
     return await fetch_one("SELECT * FROM users WHERE user_id = ? AND chat_id = ?", (user_id, chat_id))
 
+
 async def create_user(user_id, chat_id=0):
     now = int(datetime.now(timezone.utc).timestamp())
-    await execute("INSERT OR IGNORE INTO users (user_id, chat_id, resin, last_resin_update, first_seen) VALUES (?, ?, 160, ?, ?)", (user_id, chat_id, now, now))
+    await execute(
+        "INSERT OR IGNORE INTO users (user_id, chat_id, resin, last_resin_update, first_seen) VALUES (?, ?, 160, ?, ?)",
+        (user_id, chat_id, now, now))
+
 
 async def update_user(user_id, chat_id=0, **kwargs):
     if not kwargs: return
@@ -167,59 +195,89 @@ async def update_user(user_id, chat_id=0, **kwargs):
     values = list(kwargs.values()) + [user_id, chat_id]
     await execute(f"UPDATE users SET {fields} WHERE user_id = ? AND chat_id = ?", values)
 
+
 async def increment_user_field(user_id, chat_id, field, amount=1):
-    await execute(f"UPDATE users SET {field} = IFNULL({field}, 0) + ? WHERE user_id = ? AND chat_id = ?", (amount, user_id, chat_id))
+    await execute(f"UPDATE users SET {field} = IFNULL({field}, 0) + ? WHERE user_id = ? AND chat_id = ?",
+                  (amount, user_id, chat_id))
+
 
 async def is_character_taken(character, chat_id=0):
     res = await fetch_one("SELECT user_id FROM users WHERE character_name = ? AND chat_id = ?", (character, chat_id))
     return res is not None
 
+
 async def get_taken_characters(chat_id=0):
-    rows = await fetch_all("SELECT character_name FROM users WHERE character_name IS NOT NULL AND character_name != '' AND chat_id = ?", (chat_id,))
+    rows = await fetch_all(
+        "SELECT character_name FROM users WHERE character_name IS NOT NULL AND character_name != '' AND chat_id = ?",
+        (chat_id,))
     return {r['character_name'] for r in rows}
 
+
 async def get_top_balance(chat_id=0, limit=10):
-    return await fetch_all("SELECT user_id, character_name, balance FROM users WHERE chat_id = ? ORDER BY balance DESC LIMIT ?", (chat_id, limit))
+    return await fetch_all(
+        "SELECT user_id, character_name, balance FROM users WHERE chat_id = ? ORDER BY balance DESC LIMIT ?",
+        (chat_id, limit))
+
 
 async def get_top_messages(chat_id=0, limit=10):
-    return await fetch_all("SELECT user_id, character_name, messages_count FROM users WHERE chat_id = ? ORDER BY messages_count DESC LIMIT ?", (chat_id, limit))
+    return await fetch_all(
+        "SELECT user_id, character_name, messages_count FROM users WHERE chat_id = ? ORDER BY messages_count DESC LIMIT ?",
+        (chat_id, limit))
+
 
 async def get_top_reputation(chat_id=0, limit=10):
-    return await fetch_all("SELECT user_id, character_name, reputation FROM users WHERE chat_id = ? ORDER BY reputation DESC LIMIT ?", (chat_id, limit))
+    return await fetch_all(
+        "SELECT user_id, character_name, reputation FROM users WHERE chat_id = ? ORDER BY reputation DESC LIMIT ?",
+        (chat_id, limit))
+
 
 # ============ CHAT LIST / GROUP SETTINGS ============
 async def set_group_channel(group_id, channel_id, message_id):
-    await execute("INSERT OR REPLACE INTO group_channels (group_id, channel_id, message_id) VALUES (?, ?, ?)", (group_id, channel_id, message_id))
+    await execute("INSERT OR REPLACE INTO group_channels (group_id, channel_id, message_id) VALUES (?, ?, ?)",
+                  (group_id, channel_id, message_id))
+
 
 async def get_group_channel(group_id):
     res = await fetch_one("SELECT channel_id, message_id FROM group_channels WHERE group_id = ?", (group_id,))
     if res: return res['channel_id'], res['message_id']
     return None, None
 
+
 async def set_group_font(group_id, font_style):
-    await execute("INSERT INTO group_channels (group_id, font_style) VALUES (?, ?) ON CONFLICT(group_id) DO UPDATE SET font_style = excluded.font_style", (group_id, font_style))
+    await execute(
+        "INSERT INTO group_channels (group_id, font_style) VALUES (?, ?) ON CONFLICT(group_id) DO UPDATE SET font_style = excluded.font_style",
+        (group_id, font_style))
+
 
 async def get_group_font(group_id):
     res = await fetch_one("SELECT font_style FROM group_channels WHERE group_id = ?", (group_id,))
     return res['font_style'] if res else "none"
 
+
 async def set_custom_name(group_id, default_name, custom_name):
-    await execute("INSERT OR REPLACE INTO custom_names (group_id, default_name, custom_name) VALUES (?, ?, ?)", (group_id, default_name, custom_name))
+    await execute("INSERT OR REPLACE INTO custom_names (group_id, default_name, custom_name) VALUES (?, ?, ?)",
+                  (group_id, default_name, custom_name))
+
 
 async def get_custom_names(group_id):
     rows = await fetch_all("SELECT default_name, custom_name FROM custom_names WHERE group_id = ?", (group_id,))
     return {r['default_name']: r['custom_name'] for r in rows}
 
+
 # ============ GUILDS ============
 async def get_guild(guild_id):
     return await fetch_one("SELECT * FROM guilds WHERE guild_id = ?", (guild_id,))
 
+
 async def get_guild_by_name(name, chat_id):
     return await fetch_one("SELECT * FROM guilds WHERE name = ? AND chat_id = ?", (name, chat_id))
 
+
 async def create_guild(name, owner_id, owner_name, chat_id):
     now = int(datetime.now(timezone.utc).timestamp())
-    return await execute("INSERT INTO guilds (chat_id, name, owner_id, owner_name, created_at) VALUES (?, ?, ?, ?, ?)", (chat_id, name, owner_id, owner_name, now))
+    return await execute("INSERT INTO guilds (chat_id, name, owner_id, owner_name, created_at) VALUES (?, ?, ?, ?, ?)",
+                         (chat_id, name, owner_id, owner_name, now))
+
 
 async def update_guild(guild_id, **kwargs):
     if not kwargs: return
@@ -227,29 +285,46 @@ async def update_guild(guild_id, **kwargs):
     values = list(kwargs.values()) + [guild_id]
     await execute(f"UPDATE guilds SET {fields} WHERE guild_id = ?", values)
 
+
 async def get_all_guilds(chat_id, limit=20):
-    return await fetch_all("SELECT g.*, (SELECT COUNT(*) FROM users WHERE guild_id = g.guild_id AND chat_id = g.chat_id) as members FROM guilds g WHERE g.chat_id = ? ORDER BY g.level DESC, g.treasury DESC LIMIT ?", (chat_id, limit))
+    return await fetch_all(
+        "SELECT g.*, (SELECT COUNT(*) FROM users WHERE guild_id = g.guild_id AND chat_id = g.chat_id) as members FROM guilds g WHERE g.chat_id = ? ORDER BY g.level DESC, g.treasury DESC LIMIT ?",
+        (chat_id, limit))
+
 
 async def get_guild_members(guild_id):
-    return await fetch_all("SELECT user_id, character_name, guild_rank, guild_contribution FROM users WHERE guild_id = ? ORDER BY guild_contribution DESC", (guild_id,))
+    return await fetch_all(
+        "SELECT user_id, character_name, guild_rank, guild_contribution FROM users WHERE guild_id = ? ORDER BY guild_contribution DESC",
+        (guild_id,))
+
 
 async def get_guild_craft_stats(guild_id):
-    row = await fetch_one("SELECT SUM(msgs) as m, SUM(stickers) as s, SUM(replies) as r, SUM(photos) as p, SUM(bosses) as b FROM guild_member_stats WHERE guild_id = ?", (guild_id,))
+    row = await fetch_one(
+        "SELECT SUM(msgs) as m, SUM(stickers) as s, SUM(replies) as r, SUM(photos) as p, SUM(bosses) as b FROM guild_member_stats WHERE guild_id = ?",
+        (guild_id,))
     if not row or row['m'] is None: return {"m": 0, "s": 0, "r": 0, "p": 0, "b": 0}
     return row
 
+
 # ============ ARTIFACTS ============
 async def add_artifact(user_id, chat_id, slot, rarity, bonus_type, bonus_value, name):
-    return await execute("INSERT INTO artifacts (user_id, chat_id, slot, rarity, bonus_type, bonus_value, name) VALUES (?, ?, ?, ?, ?, ?, ?)", (user_id, chat_id, slot, rarity, bonus_type, bonus_value, name))
+    return await execute(
+        "INSERT INTO artifacts (user_id, chat_id, slot, rarity, bonus_type, bonus_value, name) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (user_id, chat_id, slot, rarity, bonus_type, bonus_value, name))
+
 
 async def get_artifact(artifact_id):
     return await fetch_one("SELECT * FROM artifacts WHERE artifact_id = ?", (artifact_id,))
 
+
 async def get_user_artifacts(user_id, chat_id):
-    return await fetch_all("SELECT * FROM artifacts WHERE user_id = ? AND chat_id = ? ORDER BY slot, rarity DESC", (user_id, chat_id))
+    return await fetch_all("SELECT * FROM artifacts WHERE user_id = ? AND chat_id = ? ORDER BY slot, rarity DESC",
+                           (user_id, chat_id))
+
 
 async def delete_artifact(artifact_id):
     await execute("DELETE FROM artifacts WHERE artifact_id = ?", (artifact_id,))
+
 
 async def get_total_bonuses(user_id, chat_id):
     user = await get_user(user_id, chat_id)
@@ -260,9 +335,12 @@ async def get_total_bonuses(user_id, chat_id):
         if art_id:
             art = await get_artifact(art_id)
             if art:
-                if art["bonus_type"] == "earn": earn += art["bonus_value"]
-                elif art["bonus_type"] == "drop": drop += art["bonus_value"]
+                if art["bonus_type"] == "earn":
+                    earn += art["bonus_value"]
+                elif art["bonus_type"] == "drop":
+                    drop += art["bonus_value"]
     return earn, drop
+
 
 # ============ WARNS / REPUTATION ============
 async def add_warn(user_id, chat_id, amount=1):
@@ -272,6 +350,7 @@ async def add_warn(user_id, chat_id, amount=1):
     await update_user(user_id, chat_id, warns=new_warns)
     return new_warns
 
+
 async def remove_warn(user_id, chat_id, amount=1):
     user = await get_user(user_id, chat_id)
     if not user: return 0
@@ -279,9 +358,11 @@ async def remove_warn(user_id, chat_id, amount=1):
     await update_user(user_id, chat_id, warns=new_warns)
     return new_warns
 
+
 def get_rep_level(reputation):
     if reputation is None: reputation = 0
     return min(10, reputation // 500 + 1)
+
 
 def get_rep_progress(reputation):
     if reputation is None: reputation = 0
@@ -290,6 +371,7 @@ def get_rep_progress(reputation):
     current = reputation % 500
     return level, current, 500
 
+
 async def add_reputation(user_id, chat_id, amount=1):
     user = await get_user(user_id, chat_id)
     if not user: return 0
@@ -297,10 +379,12 @@ async def add_reputation(user_id, chat_id, amount=1):
     await update_user(user_id, chat_id, reputation=new_rep)
     return new_rep
 
+
 # ============ RESIN ============
 RESIN_MAX = 160
 RESIN_REGEN_SECONDS = 480
 RESIN_COST_DUNGEON = 40
+
 
 async def update_resin(user_id, chat_id):
     user = await get_user(user_id, chat_id)
@@ -320,6 +404,7 @@ async def update_resin(user_id, chat_id):
         return new_resin
     return current
 
+
 # ============ COOKING ============
 INGREDIENTS = {
     "apple": {"name": "🍎 Яблоко", "emoji": "🍎"}, "mushroom": {"name": "🍄 Гриб", "emoji": "🍄"},
@@ -334,16 +419,19 @@ RECIPES = {
     "apple_pie": {"name": "🍎 Яблочный пирог", "need": {"apple": 3, "honey": 1}, "buff_value": 30, "duration": 3600},
 }
 
+
 async def add_ingredient(user_id, chat_id, ing_key):
     user = await get_user(user_id, chat_id)
     if not user: return
     field = f"ing_{ing_key}"
     await update_user(user_id, chat_id, **{field: (user.get(field, 0) or 0) + 1})
 
+
 async def get_ingredients(user_id, chat_id):
     user = await get_user(user_id, chat_id)
     if not user: return {}
     return {key: (user.get(f"ing_{key}", 0) or 0) for key in INGREDIENTS.keys()}
+
 
 async def use_ingredients(user_id, chat_id, need):
     user = await get_user(user_id, chat_id)
@@ -356,9 +444,11 @@ async def use_ingredients(user_id, chat_id, need):
     await update_user(user_id, chat_id, **updates)
     return True
 
+
 async def set_food_buff(user_id, chat_id, name, value, duration):
     until = int(datetime.now(timezone.utc).timestamp()) + duration
     await update_user(user_id, chat_id, food_buff_name=name, food_buff_value=value, food_buff_until=until)
+
 
 async def get_food_buff(user_id, chat_id):
     user = await get_user(user_id, chat_id)
@@ -369,12 +459,17 @@ async def get_food_buff(user_id, chat_id):
     if until > 0: await update_user(user_id, chat_id, food_buff_name="", food_buff_value=0, food_buff_until=0)
     return "", 0
 
+
 # ============ BOSSES ============
 async def get_world_boss(chat_id):
     return await fetch_one("SELECT * FROM world_boss WHERE chat_id = ?", (chat_id,))
 
+
 async def set_world_boss(chat_id, boss_name, hp, week_start):
-    await execute("INSERT OR REPLACE INTO world_boss (chat_id, boss_name, current_hp, max_hp, week_start) VALUES (?, ?, ?, ?, ?)", (chat_id, boss_name, hp, hp, week_start))
+    await execute(
+        "INSERT OR REPLACE INTO world_boss (chat_id, boss_name, current_hp, max_hp, week_start) VALUES (?, ?, ?, ?, ?)",
+        (chat_id, boss_name, hp, hp, week_start))
+
 
 async def damage_world_boss(chat_id, amount):
     wb = await get_world_boss(chat_id)
@@ -383,11 +478,16 @@ async def damage_world_boss(chat_id, amount):
     await execute("UPDATE world_boss SET current_hp = ? WHERE chat_id = ?", (new_hp, chat_id))
     return new_hp
 
+
 async def get_guild_boss(chat_id):
     return await fetch_one("SELECT * FROM guild_boss WHERE chat_id = ?", (chat_id,))
 
+
 async def set_guild_boss(chat_id, boss_name, hp, week_start):
-    await execute("INSERT OR REPLACE INTO guild_boss (chat_id, boss_name, current_hp, max_hp, week_start) VALUES (?, ?, ?, ?, ?)", (chat_id, boss_name, hp, hp, week_start))
+    await execute(
+        "INSERT OR REPLACE INTO guild_boss (chat_id, boss_name, current_hp, max_hp, week_start) VALUES (?, ?, ?, ?, ?)",
+        (chat_id, boss_name, hp, hp, week_start))
+
 
 async def damage_guild_boss(chat_id, amount):
     gb = await get_guild_boss(chat_id)
@@ -396,23 +496,30 @@ async def damage_guild_boss(chat_id, amount):
     await execute("UPDATE guild_boss SET current_hp = ? WHERE chat_id = ?", (new_hp, chat_id))
     return new_hp
 
+
 # ============ PROTECTED USERS / SETTINGS ============
 async def add_protected_user(user_id, chat_id, owner_id):
-    await execute("INSERT OR REPLACE INTO protected_users (user_id, chat_id, owner_id) VALUES (?, ?, ?)", (user_id, chat_id, owner_id))
+    await execute("INSERT OR REPLACE INTO protected_users (user_id, chat_id, owner_id) VALUES (?, ?, ?)",
+                  (user_id, chat_id, owner_id))
+
 
 async def remove_protected_user(user_id, chat_id):
     await execute("DELETE FROM protected_users WHERE user_id = ? AND chat_id = ?", (user_id, chat_id))
+
 
 async def get_protected_owner(user_id, chat_id):
     res = await fetch_one("SELECT owner_id FROM protected_users WHERE user_id = ? AND chat_id = ?", (user_id, chat_id))
     return res['owner_id'] if res else None
 
+
 async def get_setting(key, default=""):
     res = await fetch_one("SELECT value FROM bot_settings WHERE key = ?", (key,))
     return res['value'] if res else default
 
+
 async def set_setting(key, value):
     await execute("INSERT OR REPLACE INTO bot_settings (key, value) VALUES (?, ?)", (key, value))
+
 
 async def get_local_setting(key, chat_id=0, default=""):
     if chat_id:
@@ -420,9 +527,13 @@ async def get_local_setting(key, chat_id=0, default=""):
         if local_val: return local_val
     return await get_setting(key, default)
 
+
 async def set_local_setting(key, value, chat_id=0):
-    if chat_id: await set_setting(f"chat_{chat_id}_{key}", value)
-    else: await set_setting(key, value)
+    if chat_id:
+        await set_setting(f"chat_{chat_id}_{key}", value)
+    else:
+        await set_setting(key, value)
+
 
 # ============ CUSTOM DATA ============
 async def load_custom_data_to_state():
@@ -434,15 +545,18 @@ async def load_custom_data_to_state():
     rows = await fetch_all("SELECT item_name, image_url FROM gacha_custom_images")
     for r in rows: state._gacha_images[r['item_name']] = r['image_url']
 
+
 async def save_char_photo(name, url):
     import state
     state._char_photos[name] = url
     await execute("INSERT OR REPLACE INTO char_photos (name, image_url) VALUES (?, ?)", (name, url))
 
+
 async def save_custom_char(name, region, url):
     import state
     state._custom_chars[name] = {"region": region, "image": url}
     await execute("INSERT OR REPLACE INTO custom_chars (name, region, image_url) VALUES (?, ?, ?)", (name, region, url))
+
 
 async def delete_custom_char(name):
     import state
@@ -450,49 +564,66 @@ async def delete_custom_char(name):
     await execute("DELETE FROM custom_chars WHERE name = ?", (name,))
     await execute("DELETE FROM char_photos WHERE name = ?", (name,))
 
+
 async def save_gacha_image(name, url):
     import state
     state._gacha_images[name] = url
     await execute("INSERT OR REPLACE INTO gacha_custom_images (item_name, image_url) VALUES (?, ?)", (name, url))
 
+
 # ============ GROUPS / GACHA ============
 async def add_known_group(chat_id):
     await execute("INSERT OR IGNORE INTO known_groups (chat_id) VALUES (?)", (chat_id,))
+
 
 async def get_known_groups():
     rows = await fetch_all("SELECT chat_id FROM known_groups")
     return [r['chat_id'] for r in rows]
 
+
 async def update_primogems(user_id, chat_id, amount):
-    await execute("UPDATE users SET primogems = IFNULL(primogems, 0) + ? WHERE user_id = ? AND chat_id = ?", (amount, user_id, chat_id))
+    await execute("UPDATE users SET primogems = IFNULL(primogems, 0) + ? WHERE user_id = ? AND chat_id = ?",
+                  (amount, user_id, chat_id))
+
 
 async def get_gacha_gif(rarity):
     res = await fetch_one("SELECT file_id FROM gacha_gifs WHERE rarity = ?", (rarity,))
     return res['file_id'] if res else None
 
+
 async def set_gacha_gif(rarity, file_id):
     await execute("INSERT OR REPLACE INTO gacha_gifs (rarity, file_id) VALUES (?, ?)", (rarity, file_id))
 
+
 async def add_gacha_item(user_id, chat_id, item_name, item_type, rarity, image_url):
-    await execute("INSERT INTO gacha_inventory (user_id, chat_id, item_name, item_type, rarity, image_url) VALUES (?, ?, ?, ?, ?, ?)", (user_id, chat_id, item_name, item_type, rarity, image_url))
+    await execute(
+        "INSERT INTO gacha_inventory (user_id, chat_id, item_name, item_type, rarity, image_url) VALUES (?, ?, ?, ?, ?, ?)",
+        (user_id, chat_id, item_name, item_type, rarity, image_url))
+
 
 async def get_gacha_inventory(user_id, chat_id):
-    return await fetch_all("SELECT * FROM gacha_inventory WHERE user_id = ? AND chat_id = ? ORDER BY id DESC", (user_id, chat_id))
+    return await fetch_all("SELECT * FROM gacha_inventory WHERE user_id = ? AND chat_id = ? ORDER BY id DESC",
+                           (user_id, chat_id))
+
 
 # ============ APPLICATIONS ============
-async def save_application(user_id, chat_id, character_name, age, experience, about, timezone, triggers, metagaming, activity):
+async def save_application(user_id, chat_id, character_name, age, experience, about, timezone, triggers, metagaming,
+                           activity):
     await execute("""
         INSERT OR REPLACE INTO applications (user_id, chat_id, character_name, age, experience, about, timezone, triggers, metagaming, activity, status)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
     """, (user_id, chat_id, character_name, age, experience, about, timezone, triggers, metagaming, activity))
 
+
 async def get_application(user_id, chat_id):
     return await fetch_one("SELECT * FROM applications WHERE user_id = ? AND chat_id = ?", (user_id, chat_id))
+
 
 async def update_application_status(user_id, chat_id, status):
     await execute("UPDATE applications SET status = ? WHERE user_id = ? AND chat_id = ?", (status, user_id, chat_id))
 
-# ============ АВТО-ЧИСТКА (ТЕ САМЫЕ ФУНКЦИИ) ============
+
+# ============ АВТО-ЧИСТКА ============
 async def get_cleanup_settings(chat_id):
     row = await fetch_one("SELECT * FROM chat_cleanup_settings WHERE chat_id = ?", (chat_id,))
     if not row:
@@ -503,9 +634,24 @@ async def get_cleanup_settings(chat_id):
         row = await fetch_one("SELECT * FROM chat_cleanup_settings WHERE chat_id = ?", (chat_id,))
     return row
 
+
 async def update_cleanup_settings(chat_id, **kwargs):
     await get_cleanup_settings(chat_id)
     if not kwargs: return
     fields = ", ".join(f"{k} = ?" for k in kwargs.keys())
     values = list(kwargs.values()) + [chat_id]
     await execute(f"UPDATE chat_cleanup_settings SET {fields} WHERE chat_id = ?", values)
+
+
+# ============ ДОВЕРЕННЫЕ АДМИНЫ (НОВОЕ) ============
+async def add_trusted_admin(user_id: int):
+    await execute("INSERT OR IGNORE INTO bot_settings (key, value) VALUES (?, ?)", (f"trusted_admin_{user_id}", "1"))
+
+
+async def remove_trusted_admin(user_id: int):
+    await execute("DELETE FROM bot_settings WHERE key = ?", (f"trusted_admin_{user_id}",))
+
+
+async def get_trusted_admins() -> list[int]:
+    rows = await fetch_all("SELECT key FROM bot_settings WHERE key LIKE 'trusted_admin_%'")
+    return [int(r['key'].replace('trusted_admin_', '')) for r in rows]

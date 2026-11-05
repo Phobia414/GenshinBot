@@ -51,19 +51,14 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
     chat_id = message.chat.id
     user = await _ensure_user(message.from_user.id, chat_id)
 
-    # --- ОБРАБОТКА ССЫЛКИ-ПРИГЛАШЕНИЯ ---
     if command.args and command.args.startswith("apply_"):
         target_chat_id = int(command.args.replace("apply_", ""))
-
-        # Проверяем, есть ли уже персонаж в базе именно для ЭТОЙ ролевой
-        group_user = await get_user(message.from_user.id, target_chat_id)
-        if group_user and group_user["character_name"]:
-            # Если есть, выдаем ссылку на вход обратно
+        if user and user["character_name"]:
             try:
                 expire_date = int(time.time()) + 86400
                 link = await bot.create_chat_invite_link(target_chat_id, member_limit=1, expire_date=expire_date)
                 await message.answer(
-                    f"✅ Вы уже зарегистрированы в этой ролевой как <b>{esc(group_user['character_name'])}</b>!\n\n"
+                    f"✅ Вы уже зарегистрированы в этой ролевой как <b>{esc(user['character_name'])}</b>!\n\n"
                     f"🔗 <b>Ваша ссылка для вступления в группу:</b>\n{link.invite_link}\n\n"
                     f"<i>Если вы хотите сменить персонажа, зайдите в группу и напишите /freerole</i>",
                     parse_mode="HTML"
@@ -85,7 +80,6 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
         await send_step(message.chat.id, 0, state)
         return
 
-    # Если человек зашел в ЛС бота, но у него есть одобренная анкета
     if not user["character_name"]:
         apps = await fetch_all("SELECT chat_id FROM applications WHERE user_id = ? AND status = 'accepted'",
                                (message.from_user.id,))
@@ -110,7 +104,7 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
     if not user["character_name"] or user.get("char_change_paid") == 1:
         if not user["gender"]:
             default_text = (
-                f"─ [ ✨ ПРИВЕТСТВИЕ ] ─\n\n"
+                f"── 〔 ✨ ПРИВЕТСТВИЕ 〕 ──\n\n"
                 f"╭ Я — Орион, твой верный\n"
                 f"├ спутник в этом мире 🧭\n"
                 f"├\n"
@@ -133,7 +127,7 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
             return
 
         text = (
-            f"─ [ 🌸 ВЫБОР ПЕРСОНАЖА ] ─\n\n"
+            f"── 〔 🌸 ВЫБОР ПЕРСОНАЖА 〕 ──\n\n"
             f"╭ Рад снова тебя видеть,\n"
             f"├ Путешественник!\n"
             f"├\n"
@@ -154,7 +148,7 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
 
     name = esc(user_display_name(user))
     default_menu = (
-        f"─ [ 🌟 ГЛАВНОЕ МЕНЮ ] ─\n\n"
+        f"── 〔 🌟 ГЛАВНОЕ МЕНЮ 〕 ──\n\n"
         f"╭ 🍃 Привет, <b>{{name}}</b>!\n"
         f"├\n"
         f"├ Куда отправимся сегодня?\n"
@@ -186,11 +180,11 @@ async def cb_gender(query: types.CallbackQuery, callback_data: MenuCB):
     user = await get_user(query.from_user.id, chat_id)
 
     if user and user.get("character_name"):
-        text = f"─ [ 💖 ОТЛИЧНО! ] ─\n\n╭ Пол успешно обновлен.\n╰ Твой персонаж: <b>{esc(user['character_name'])}</b>"
+        text = f"── 〔 💖 ОТЛИЧНО! 〕 ──\n\n╭ Пол успешно обновлен.\n╰ Твой персонаж: <b>{esc(user['character_name'])}</b>"
         custom_img = await get_local_setting("image_menu", chat_id)
         await edit_or_send(query, text, main_menu_kb(query.from_user.id), image_url=custom_img or "")
     else:
-        text = f"─ [ 💖 ОТЛИЧНО! ] ─\n\n╭ Теперь выбери регион,\n╰ откуда родом твой герой 🎭"
+        text = f"── 〔 💖 ОТЛИЧНО! 〕 ──\n\n╭ Теперь выбери регион,\n╰ откуда родом твой герой 🎭"
         custom_img = await get_local_setting("image_regions", chat_id)
         await edit_or_send(query, text, regions_kb(query.from_user.id), image_url=custom_img or "")
 
@@ -213,7 +207,7 @@ async def cb_region(query: types.CallbackQuery, callback_data: RegionCB):
     chat_id = query.message.chat.id
     taken = await get_taken_characters(chat_id)
     region_name = REGIONS[callback_data.region]
-    text = f"─ [ 🎭 РЕГИОН: {region_name.upper()} ] ─\n\n╭ Выбери того, кто станет\n╰ твоим воплощением ✨"
+    text = f"── 〔 🎭 РЕГИОН: {region_name.upper()} 〕 ──\n\n╭ Выбери того, кто станет\n╰ твоим воплощением ✨"
 
     custom_img = await get_local_setting(f"image_region_{callback_data.region}", chat_id)
     if not custom_img:
@@ -268,35 +262,22 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
 
     if chat.type in ("group", "supergroup"):
         try:
+            # ИСПОЛЬЗУЕМ НОВЫЙ МЕТОД: set_chat_member_tag (не требует админки)
             try:
-                await bot.promote_chat_member(
-                    chat_id=chat.id, user_id=query.from_user.id,
-                    can_change_info=False, can_delete_messages=False, can_invite_users=False,
-                    can_restrict_members=False, can_pin_messages=False, can_promote_members=False,
-                    can_manage_chat=False, can_manage_video_chats=False
+                await bot.set_chat_member_tag(
+                    chat_id=chat.id,
+                    user_id=query.from_user.id,
+                    tag=name[:16]
                 )
-            except Exception:
-                pass
-
-            bot_member = await bot.get_chat_member(chat.id, bot.id)
-            if bot_member.can_promote_members:
-                await bot.promote_chat_member(
-                    chat_id=chat.id, user_id=query.from_user.id,
-                    can_change_info=False, can_delete_messages=False, can_invite_users=False,
-                    can_restrict_members=False, can_pin_messages=False, can_promote_members=False,
-                    can_manage_chat=False, can_manage_video_chats=True
-                )
-                await bot.set_chat_administrator_custom_title(
-                    chat_id=chat.id, user_id=query.from_user.id, custom_title=name[:16]
-                )
-                ts = "\n\n👑 Титул установлен!"
-            else:
-                ts = "\n\n⚠️ Бот не может выдать титул (нет прав)."
+                ts = "\n\n👑 Тег установлен!"
+            except Exception as e:
+                print(f"Ошибка установки тега: {e}")
+                ts = "\n\n⚠️ Не удалось установить тег (проверьте права бота)."
         except Exception as e:
-            print(f"❌ Ошибка выдачи титула: {e}")
-            ts = "\n\n⚠️ Не удалось установить титул."
+            print(f"Глобальная ошибка: {e}")
+            ts = ""
 
-    text = f"─ [ 🎉 ДОБРО ПОЖАЛОВАТЬ! ] ─\n\n╭ Теперь ты — <b>{esc(name)}</b>!{ts}\n├\n╰ Орион рад за тебя! 💛"
+    text = f"── 〔 🎉 ДОБРО ПОЖАЛОВАТЬ! 〕 ──\n\n╭ Теперь ты — <b>{esc(name)}</b>!{ts}\n├\n╰ Орион рад за тебя! 💛"
 
     try:
         await query.message.delete()

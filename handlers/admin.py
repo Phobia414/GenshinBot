@@ -15,9 +15,10 @@ from db import (
     add_reputation, get_top_balance, get_top_messages, get_top_reputation,
     get_rep_level, RESIN_MAX, add_protected_user, remove_protected_user,
     get_protected_owner, update_primogems, get_guild_by_name,
-    get_cleanup_settings, update_cleanup_settings, fetch_all
+    get_cleanup_settings, update_cleanup_settings, fetch_all, execute, fetch_one,
+    add_trusted_admin, remove_trusted_admin
 )
-from helpers import esc, is_chat_admin, _ensure_user
+from helpers import esc, is_chat_admin, _ensure_user, extract_target, resolve_user_id
 from keyboards import back_kb
 
 from aiogram.filters import BaseFilter
@@ -132,7 +133,6 @@ async def cmd_addgems(message: types.Message):
     if message.reply_to_message:
         target_id = message.reply_to_message.from_user.id
     elif len(parts) > 2:
-        from helpers import resolve_user_id
         target_id = await resolve_user_id(parts[2])
         if not target_id:
             await message.answer("❌ Игрок не найден.")
@@ -368,8 +368,17 @@ async def cmd_cleanup_set(message: types.Message):
         await message.answer("Ошибка в числах.")
         return
 
-    await update_cleanup_settings(message.chat.id, enabled=enabled_state, min_messages=min_msgs, frequency_days=days)
-    await message.answer("✅ Настройки авто-чистки обновлены.", reply_markup=back_kb(message.from_user.id))
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+
+    await update_cleanup_settings(
+        message.chat.id,
+        enabled=enabled_state,
+        min_messages=min_msgs,
+        frequency_days=days,
+        last_cleanup=now_ts
+    )
+    await message.answer("✅ Настройки авто-чистки обновлены. Таймер запущен заново.",
+                         reply_markup=back_kb(message.from_user.id))
 
 
 @dp.message(Command("cleanup_list"))
@@ -412,6 +421,49 @@ async def cmd_applylink(message: types.Message):
         f"Отправьте эту ссылку в рекламный пост. Все, кто по ней перейдут, "
         f"смогут заполнить анкету именно для вашей ролевой.\n\n"
         f"<code>{link}</code>\n\n"
-        f"<i>Анкеты будут приходить в ЛС всем админам этой группы.</i>"
+        f"<i>Анкеты будут приходить в ЛС всем доверенным админам.</i>"
     )
     await message.answer(text, parse_mode="HTML")
+
+
+@dp.message(Command("trust"))
+async def cmd_trust(message: types.Message):
+    if message.from_user.id != OWNER_ID: return
+
+    parts = message.text.split()
+    if len(parts) < 2 and not message.reply_to_message:
+        return await message.answer("Используй: <code>/trust @username</code> или ответом на сообщение",
+                                    parse_mode="HTML")
+
+    target_ref, display = extract_target(message)
+    if target_ref is None:
+        return await message.answer("❌ Ответь на сообщение или укажи @username")
+
+    if isinstance(target_ref, str):
+        target_id = await resolve_user_id(target_ref)
+        if not target_id:
+            return await message.answer(f"❌ Не нашёл @{target_ref}")
+    else:
+        target_id = target_ref
+
+    await add_trusted_admin(target_id)
+    await message.answer(f"✅ Пользователь {esc(display)} теперь доверенный админ (будет получать анкеты).")
+
+
+@dp.message(Command("untrust"))
+async def cmd_untrust(message: types.Message):
+    if message.from_user.id != OWNER_ID: return
+
+    target_ref, display = extract_target(message)
+    if target_ref is None:
+        return await message.answer("❌ Ответь на сообщение или укажи @username")
+
+    if isinstance(target_ref, str):
+        target_id = await resolve_user_id(target_ref)
+        if not target_id:
+            return await message.answer(f"❌ Не нашёл @{target_ref}")
+    else:
+        target_id = target_ref
+
+    await remove_trusted_admin(target_id)
+    await message.answer(f"✅ Пользователь {esc(display)} больше не получает анкеты.")

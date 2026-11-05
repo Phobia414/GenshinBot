@@ -1,8 +1,6 @@
 from datetime import datetime, timezone
 from aiogram import types, F
-
 from bot_instance import dp
-from constants import DIV
 from db import fetch_all
 from helpers import esc
 
@@ -39,10 +37,12 @@ async def cmd_stats(message: types.Message):
     inactive_lines = []
 
     for u in users:
-        name = esc(u["character_name"] or u["username"] or f"Игрок {u['user_id']}")
         msgs = u["msgs"] or 0
-        last_time = u["last_msg_time"] or 0
+        if not u["character_name"] and not u["username"] and msgs == 0:
+            continue
 
+        name = esc(u["character_name"] or u["username"] or f"Игрок {u['user_id']}")
+        last_time = u["last_msg_time"] or 0
         days_inactive = (now - last_time) // 86400
 
         if msgs > 0 or days_inactive < 1:
@@ -51,7 +51,6 @@ async def cmd_stats(message: types.Message):
             inactive_lines.append(f"╭ {name} — 💤 {days_inactive} дн. неактива")
 
     text = f"── 〔 📊 СТАТИСТИКА ЗА {title} 〕 ──\n\n"
-
     text += "<b>🔥 Активные участники:</b>\n"
     if active_lines:
         text += "\n".join(active_lines[:40])

@@ -9,7 +9,8 @@ import time
 from bot_instance import bot, dp
 from config import OWNER_ID
 from constants import DIV
-from db import get_user, update_user, get_application, update_application_status, get_taken_characters, save_application
+from db import get_user, update_user, get_application, update_application_status, get_taken_characters, \
+    save_application, get_trusted_admins
 from characters import CHARACTERS
 from helpers import esc
 
@@ -24,15 +25,14 @@ class ApplyForm(StatesGroup):
     activity = State()
 
 
-# Шаг metagaming полностью удален
 FORM_STEPS = [
-    (ApplyForm.age, "age"),  # 0
-    (ApplyForm.age_visibility, "age_visibility"),  # 1
-    (ApplyForm.experience, "experience"),  # 2
-    (ApplyForm.about, "about"),  # 3
-    (ApplyForm.timezone, "timezone"),  # 4
-    (ApplyForm.triggers, "triggers"),  # 5
-    (ApplyForm.activity, "activity")  # 6
+    (ApplyForm.age, "age"),
+    (ApplyForm.age_visibility, "age_visibility"),
+    (ApplyForm.experience, "experience"),
+    (ApplyForm.about, "about"),
+    (ApplyForm.timezone, "timezone"),
+    (ApplyForm.triggers, "triggers"),
+    (ApplyForm.activity, "activity")
 ]
 
 
@@ -76,7 +76,6 @@ async def send_step(chat_id: int, step_index: int, state: FSMContext):
     else:
         b.adjust(2, 1)
 
-    # Индикатор печати и пауза, чтобы пользователь не спамил
     await bot.send_chat_action(chat_id, 'typing')
     await asyncio.sleep(0.7)
 
@@ -198,7 +197,6 @@ async def process_timezone(message: types.Message, state: FSMContext):
 async def process_triggers(message: types.Message, state: FSMContext):
     if not message.text: return
     await state.update_data(triggers=message.text)
-    # Отправляем на шаг 6 (Активность)
     await send_step(message.chat.id, 6, state)
 
 
@@ -215,7 +213,6 @@ async def process_activity(message: types.Message, state: FSMContext):
                 "❌ Ошибка: не найден ID ролевой. Пожалуйста, начните заполнение анкеты заново по ссылке.")
             return
 
-        # Передаем пустую строку вместо метагейминга
         await save_application(
             message.from_user.id, data["target_chat_id"], "Не выбран",
             data["age"], data["experience"], data["about"], data["timezone"],
@@ -245,19 +242,16 @@ async def process_activity(message: types.Message, state: FSMContext):
         b.button(text="💬 Связаться", url=f"tg://user?id={message.from_user.id}")
         b.adjust(2, 1)
 
-        try:
-            admins = await bot.get_chat_administrators(data["target_chat_id"])
-            for admin in admins:
-                if not admin.user.is_bot:
-                    try:
-                        await bot.send_message(admin.user.id, text, reply_markup=b.as_markup(), parse_mode="HTML")
-                    except Exception:
-                        pass
-        except Exception as e:
+        # РАССЫЛАЕМ ТОЛЬКО ДОВЕРЕННЫМ АДМИНАМ
+        admins = await get_trusted_admins()
+        if not admins:
+            admins = [OWNER_ID]
+
+        for admin_id in admins:
             try:
-                await bot.send_message(OWNER_ID, text, reply_markup=b.as_markup(), parse_mode="HTML")
-            except:
-                pass
+                await bot.send_message(admin_id, text, reply_markup=b.as_markup(), parse_mode="HTML")
+            except Exception as e:
+                print(f"Ошибка отправки анкеты админу {admin_id}: {e}")
 
     except Exception as e:
         print(f"Ошибка при отправке анкеты: {e}")

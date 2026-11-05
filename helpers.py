@@ -1,9 +1,11 @@
 import html
 import random
+import inspect
 from datetime import datetime, timezone
 from functools import wraps
 from aiogram import types
 from aiogram.types import FSInputFile, InputMediaPhoto
+from aiogram.exceptions import TelegramBadRequest
 from bot_instance import bot
 from config import DB_PATH
 from constants import PLACEHOLDER_IMAGES, DIV
@@ -130,8 +132,6 @@ def get_reputation_bonuses(rep):
 
 def get_reputation_title(rep, region_name):
     level = get_rep_level(rep)
-
-    # ИСПРАВЛЕНО: Словарь падежей (Предложный, Родительный)
     cases = {
         "Мондштадт": ("Мондштадте", "Мондштадта"),
         "Ли Юэ": ("Ли Юэ", "Ли Юэ"),
@@ -143,9 +143,7 @@ def get_reputation_title(rep, region_name):
         "Снежная": ("Снежной", "Снежной"),
         "Тейват": ("Тейвате", "Тейвата"),
     }
-
     prep, gen = cases.get(region_name, (region_name, region_name))
-
     if level >= 10: return f"🏆 Герой {gen}"
     if level >= 7: return f"⭐ Знаменитость {gen}"
     if level >= 5: return f"🌟 Уважаемый житель {gen}"
@@ -239,6 +237,13 @@ async def get_user_by_username(username):
 def inject_user(func):
     @wraps(func)
     async def wrapper(*args, **kwargs):
+        # Используем inspect, чтобы понять, передан ли уже user (позиционно или как kwarg)
+        sig = inspect.signature(func)
+        bound_args = sig.bind_partial(*args, **kwargs)
+
+        if 'user' in bound_args.arguments and 'chat_id' in bound_args.arguments:
+            return await func(*args, **kwargs)
+
         event = next((a for a in args if isinstance(a, (types.CallbackQuery, types.Message))), None)
         if not event: return await func(*args, **kwargs)
 
@@ -251,15 +256,13 @@ def inject_user(func):
         if not user:
             await create_user(event.from_user.id, chat_id)
             user = await get_user(event.from_user.id, chat_id)
+
         return await func(*args, user=user, chat_id=chat_id, **kwargs)
 
     return wrapper
 
 
 async def edit_or_send(query, text, kb, image_url=None):
-    if image_url is None: image_url = get_placeholder_image()
-    if image_url and len(text) > 1024: image_url = None
-
     if not query.message:
         try:
             await bot.send_message(query.from_user.id, text, reply_markup=kb, parse_mode="HTML")
@@ -269,49 +272,61 @@ async def edit_or_send(query, text, kb, image_url=None):
 
     chat_id = query.message.chat.id
     has_photo = bool(getattr(query.message, "photo", None))
-    is_local = image_url and image_url in PLACEHOLDER_IMAGES
-    is_file_id = image_url and not image_url.startswith("http") and not is_local
-    if not image_url:
-        candidates = [None]
-    elif is_local:
-        candidates = [FSInputFile(image_url), None]
-    elif is_file_id:
-        candidates = [image_url, None]
-    else:
-        candidates = [image_url, FSInputFile(get_placeholder_image()), None]
 
-    for media in candidates:
-        if media and has_photo:
+    if image_url and isinstance(image_url, str) and image_url.startswith("images/"):
+        media_to_send = FSInputFile(image_url)
+    else:
+        media_to_send = image_url
+
+    if not image_url:
+        if has_photo:
             try:
-                await query.message.edit_media(media=InputMediaPhoto(media=media, caption=text, parse_mode="HTML"),
-                                               reply_markup=kb)
-                return
+                await query.message.delete()
             except:
                 pass
-        elif not media and not has_photo:
+            await bot.send_message(chat_id, text, reply_markup=kb, parse_mode="HTML")
+        else:
             try:
                 await query.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
-                return
+            except TelegramBadRequest as e:
+                if "message is not modified" in str(e):
+                    return
+                await bot.send_message(chat_id, text, reply_markup=kb, parse_mode="HTML")
+        return
+
+    if has_photo:
+        if len(text) > 1024:
+            try:
+                await query.message.delete()
             except:
                 pass
+            await bot.send_message(chat_id, text, reply_markup=kb, parse_mode="HTML")
+        else:
+            try:
+                await query.message.edit_caption(caption=text, reply_markup=kb, parse_mode="HTML")
+            except TelegramBadRequest as e:
+                if "message is not modified" in str(e):
+                    return
+                try:
+                    await query.message.delete()
+                except:
+                    pass
+                await bot.send_photo(chat_id, media_to_send, caption=text, reply_markup=kb, parse_mode="HTML")
+            except Exception:
+                try:
+                    await query.message.delete()
+                except:
+                    pass
+                await bot.send_photo(chat_id, media_to_send, caption=text, reply_markup=kb, parse_mode="HTML")
+    else:
         try:
             await query.message.delete()
         except:
             pass
-        has_photo = False
-        if media:
-            try:
-                await bot.send_photo(chat_id=chat_id, photo=media, caption=text, reply_markup=kb, parse_mode="HTML")
-                return
-            except:
-                pass
+        if len(text) > 1024:
+            await bot.send_message(chat_id, text, reply_markup=kb, parse_mode="HTML")
         else:
             try:
-                await bot.send_message(chat_id=chat_id, text=text, reply_markup=kb, parse_mode="HTML")
-                return
-            except:
-                pass
-    try:
-        await bot.send_message(chat_id=chat_id, text=text)
-    except:
-        pass
+                await bot.send_photo(chat_id, media_to_send, caption=text, reply_markup=kb, parse_mode="HTML")
+            except Exception:
+                await bot.send_message(chat_id, text, reply_markup=kb, parse_mode="HTML")

@@ -29,7 +29,7 @@ from characters import get_character_image
 from helpers import get_placeholder_image
 from handlers.chat_list import update_chat_list
 from handlers.fun import start_duel_logic
-from keyboards import back_kb, regions_kb
+from keyboards import back_kb, regions_kb, gender_kb
 
 
 @dp.callback_query(F.data == "quiz_answer")
@@ -69,7 +69,6 @@ async def cmd_rppartner(message: types.Message):
     await update_chat_list(chat_id)
 
 
-# ИСПРАВЛЕНИЕ ЗДЕСЬ: Добавлено исключение для команд, начинающихся с "!"
 @dp.message(StateFilter(None), F.text & ~F.text.startswith("/") & ~F.text.startswith("!"))
 @inject_user
 async def track_text(message: types.Message, user: dict, chat_id: int):
@@ -110,14 +109,7 @@ async def track_text(message: types.Message, user: dict, chat_id: int):
         for answer in correct_answers:
             if not answer:
                 continue
-
-            if text_lower == answer:
-                is_correct = True
-                break
-            elif text_lower in answer:
-                is_correct = True
-                break
-            elif answer in text_lower:
+            if text_lower == answer or text_lower in answer or answer in text_lower:
                 is_correct = True
                 break
             else:
@@ -492,12 +484,12 @@ async def on_chat_member_update(event: types.ChatMemberUpdated):
                 await update_user(affected_user.id, event.chat.id, character_name="", char_change_paid=0,
                                   search_rp_partner="")
 
+                # Снимаем тег (если бот имеет права)
                 try:
-                    await bot.promote_chat_member(
-                        chat_id=event.chat.id, user_id=affected_user.id,
-                        can_change_info=False, can_delete_messages=False, can_invite_users=False,
-                        can_restrict_members=False, can_pin_messages=False, can_promote_members=False,
-                        can_manage_chat=False, can_manage_video_chats=False
+                    await bot.set_chat_member_tag(
+                        chat_id=event.chat.id,
+                        user_id=affected_user.id,
+                        tag=""
                     )
                 except Exception:
                     pass

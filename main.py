@@ -145,7 +145,6 @@ async def send_quiz_question():
             return
 
         for chat_id in target_groups:
-            # Выбор сложности по весам
             difficulties = ["easy", "medium", "hard"]
             difficulty = random.choices(difficulties, weights=QUIZ_WEIGHTS, k=1)[0]
 
@@ -200,9 +199,15 @@ async def auto_cleanup_job():
                     log.warning(f"Не удалось получить админов чата {chat_id}: {e}")
                     continue
 
+                # НЕ КИКАЕМ ТЕХ, КТО ЗАШЕЛ МЕНЬШЕ 24 ЧАСОВ НАЗАД
+                min_time_to_kick = now - 86400
+
                 users_to_kick = await fetch_all(
-                    "SELECT user_id FROM users WHERE chat_id = ? AND messages_count < ? AND (rest_active = 0 OR rest_active IS NULL) AND (clean_exempt = 0 OR clean_exempt IS NULL)",
-                    (chat_id, min_msgs)
+                    "SELECT user_id FROM users WHERE chat_id = ? AND messages_count < ? "
+                    "AND (rest_active = 0 OR rest_active IS NULL) "
+                    "AND (clean_exempt = 0 OR clean_exempt IS NULL) "
+                    "AND (first_seen < ? OR first_seen IS NULL)",
+                    (chat_id, min_msgs, min_time_to_kick)
                 )
 
                 if users_to_kick:
@@ -236,7 +241,6 @@ async def auto_cleanup_job():
         log.exception(f"Auto cleanup error: {e}")
 
 
-# === НОВЫЕ ФУНКЦИИ ДЛЯ СБРОСА СТАТИСТИКИ ===
 async def reset_weekly_stats():
     try:
         await execute("UPDATE users SET msgs_week = 0")
@@ -251,9 +255,6 @@ async def reset_monthly_stats():
         log.info("📊 Месячная статистика сообщений сброшена.")
     except Exception as e:
         log.error(f"Ошибка сброса месячной статистики: {e}")
-
-
-# ===========================================
 
 
 def setup_sentry():
@@ -297,24 +298,19 @@ async def main():
             await set_world_boss(chat_id, boss_name, boss["hp"], now_ts)
             await set_guild_boss(chat_id, boss_name, boss["hp"], now_ts)
 
-    # ВОССТАНАВЛИВАЕМ СПИСКИ РОЛЕЙ ПРИ ЗАПУСКЕ
     await restore_chat_lists()
-
     await set_bot_commands()
 
     scheduler = AsyncIOScheduler(timezone="Europe/Moscow")
 
-    # Существующие задачи
     scheduler.add_job(rotate_bosses, CronTrigger(day_of_week="sat", hour=BOSS_ROTATION_HOUR, minute=0),
                       id="boss_rotation", misfire_grace_time=3600)
 
     scheduler.add_job(cleanup_cooldowns, IntervalTrigger(hours=1), id="cleanup_cooldowns")
-
     scheduler.add_job(send_quiz_question, CronTrigger(minute=0), id="hourly_quiz", misfire_grace_time=300)
-
     scheduler.add_job(auto_cleanup_job, IntervalTrigger(hours=1), id="auto_cleanup")
 
-    # НОВЫЕ ЗАДАЧИ: Сброс статистики
+    # Сброс статистики
     scheduler.add_job(reset_weekly_stats, CronTrigger(day_of_week="mon", hour=0, minute=0), id="reset_week")
     scheduler.add_job(reset_monthly_stats, CronTrigger(day=1, hour=0, minute=0), id="reset_month")
 
