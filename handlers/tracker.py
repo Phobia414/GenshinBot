@@ -196,6 +196,8 @@ async def track_text(message: types.Message, user: dict, chat_id: int):
 
     await increment_user_field(message.from_user.id, chat_id, "messages_count", 1)
     await increment_user_field(message.from_user.id, chat_id, "board_msgs", 1)
+    await increment_user_field(message.from_user.id, chat_id, "msgs_week", 1)   # <-- ДОБАВЛЕНО
+    await increment_user_field(message.from_user.id, chat_id, "msgs_month", 1)  # <-- ДОБАВЛЕНО
     await update_user(message.from_user.id, chat_id, last_msg_time=now)
     await _gain_rep(message.from_user.id, chat_id, REP_PER_MESSAGE, message.from_user.first_name)
 

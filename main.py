@@ -23,7 +23,7 @@ from state import (
     _boss_cooldown, _inter_cooldown, _call_cooldown
 )
 import state
-from constants import CALL_COOLDOWN, QUIZ_QUESTIONS, QUIZ_REWARD
+from constants import CALL_COOLDOWN, QUIZ_QUESTIONS, QUIZ_WEIGHTS
 from helpers import _now_ts
 from logger import setup_logging, get_logger
 
@@ -82,11 +82,8 @@ async def set_bot_commands():
 async def restore_chat_lists():
     """Автоматически обновляет списки ролей во всех привязанных каналах при запуске бота"""
     try:
-        # Получаем все группы, у которых есть привязанный канал
         groups = await fetch_all(
             "SELECT group_id FROM group_channels WHERE channel_id IS NOT NULL AND message_id IS NOT NULL")
-
-        # Импорт внутри функции, чтобы избежать циклического импорта
         from handlers.chat_list import update_chat_list
 
         for g in groups:
@@ -148,16 +145,31 @@ async def send_quiz_question():
             return
 
         for chat_id in target_groups:
-            q = random.choice(QUIZ_QUESTIONS)
+            # Выбор сложности по весам
+            difficulties = ["easy", "medium", "hard"]
+            difficulty = random.choices(difficulties, weights=QUIZ_WEIGHTS, k=1)[0]
+
+            q_data = random.choice(QUIZ_QUESTIONS[difficulty])
+
+            if difficulty == "easy":
+                coins, primo, title = 50, 10, "🌱 ЛЕГКИЙ"
+            elif difficulty == "medium":
+                coins, primo, title = 100, 20, "⚖️ СРЕДНИЙ"
+            else:
+                coins, primo, title = 200, 40, "💀 СЛОЖНЫЙ"
+
             state._active_quizzes[chat_id] = {
-                "question": q["q"],
-                "answer": q["options"][q["correct"]].lower().strip(),
-                "reward": QUIZ_REWARD
+                "question": q_data["q"],
+                "answers": [a.lower().strip() for a in q_data["answers"]],
+                "coins": coins,
+                "primo": primo
             }
+
             text = (
-                f"🧠 **ЕЖЕЧАСНАЯ ВИКТОРИНА!**\n\n"
-                f"❓ Вопрос: {q['q']}\n\n"
-                f"💰 Награда: {QUIZ_REWARD} монет и **40 Примогемов** 💎!\n"
+                f"🧠 **ЕЖЕЧАСНАЯ ВИКТОРИНА!**\n"
+                f"Сложность: **{title}**\n\n"
+                f"❓ Вопрос: {q_data['q']}\n\n"
+                f"💰 Награда: {coins} монет и **{primo} Примогемов** 💎!\n"
                 f"⚡ Кто первый ответит в чат, тот и заберет награду!"
             )
             b = InlineKeyboardBuilder()
@@ -224,6 +236,26 @@ async def auto_cleanup_job():
         log.exception(f"Auto cleanup error: {e}")
 
 
+# === НОВЫЕ ФУНКЦИИ ДЛЯ СБРОСА СТАТИСТИКИ ===
+async def reset_weekly_stats():
+    try:
+        await execute("UPDATE users SET msgs_week = 0")
+        log.info("📊 Недельная статистика сообщений сброшена.")
+    except Exception as e:
+        log.error(f"Ошибка сброса недельной статистики: {e}")
+
+
+async def reset_monthly_stats():
+    try:
+        await execute("UPDATE users SET msgs_month = 0")
+        log.info("📊 Месячная статистика сообщений сброшена.")
+    except Exception as e:
+        log.error(f"Ошибка сброса месячной статистики: {e}")
+
+
+# ===========================================
+
+
 def setup_sentry():
     if not SENTRY_DSN:
         return
@@ -272,6 +304,7 @@ async def main():
 
     scheduler = AsyncIOScheduler(timezone="Europe/Moscow")
 
+    # Существующие задачи
     scheduler.add_job(rotate_bosses, CronTrigger(day_of_week="sat", hour=BOSS_ROTATION_HOUR, minute=0),
                       id="boss_rotation", misfire_grace_time=3600)
 
@@ -280,6 +313,10 @@ async def main():
     scheduler.add_job(send_quiz_question, CronTrigger(minute=0), id="hourly_quiz", misfire_grace_time=300)
 
     scheduler.add_job(auto_cleanup_job, IntervalTrigger(hours=1), id="auto_cleanup")
+
+    # НОВЫЕ ЗАДАЧИ: Сброс статистики
+    scheduler.add_job(reset_weekly_stats, CronTrigger(day_of_week="mon", hour=0, minute=0), id="reset_week")
+    scheduler.add_job(reset_monthly_stats, CronTrigger(day=1, hour=0, minute=0), id="reset_month")
 
     scheduler.start()
 

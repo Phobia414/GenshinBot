@@ -113,6 +113,13 @@ async def init_db():
                 await db.execute(f"ALTER TABLE users ADD COLUMN {col}")
             except Exception:
                 pass
+        # Миграция: добавляем новые колонки, если их нет
+        for col in ["rel_image TEXT DEFAULT ''", "search_rp_partner TEXT DEFAULT ''",
+                    "msgs_week INTEGER DEFAULT 0", "msgs_month INTEGER DEFAULT 0"]: # <-- ДОБАВЛЕНО
+            try:
+                await db.execute(f"ALTER TABLE users ADD COLUMN {col}")
+            except Exception:
+                pass
 
 # ============ ДОПОЛНИТЕЛЬНЫЕ ФУНКЦИИ ИНИЦИАЛИЗАЦИИ ============
 async def init_settings_db(): pass
