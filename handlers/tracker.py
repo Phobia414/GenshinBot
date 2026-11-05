@@ -69,7 +69,8 @@ async def cmd_rppartner(message: types.Message):
     await update_chat_list(chat_id)
 
 
-@dp.message(StateFilter(None), F.text & ~F.text.startswith("/"))
+# ИСПРАВЛЕНИЕ ЗДЕСЬ: Добавлено исключение для команд, начинающихся с "!"
+@dp.message(StateFilter(None), F.text & ~F.text.startswith("/") & ~F.text.startswith("!"))
 @inject_user
 async def track_text(message: types.Message, user: dict, chat_id: int):
     is_group = message.chat.type in ("group", "supergroup")
@@ -196,8 +197,8 @@ async def track_text(message: types.Message, user: dict, chat_id: int):
 
     await increment_user_field(message.from_user.id, chat_id, "messages_count", 1)
     await increment_user_field(message.from_user.id, chat_id, "board_msgs", 1)
-    await increment_user_field(message.from_user.id, chat_id, "msgs_week", 1)   # <-- ДОБАВЛЕНО
-    await increment_user_field(message.from_user.id, chat_id, "msgs_month", 1)  # <-- ДОБАВЛЕНО
+    await increment_user_field(message.from_user.id, chat_id, "msgs_week", 1)
+    await increment_user_field(message.from_user.id, chat_id, "msgs_month", 1)
     await update_user(message.from_user.id, chat_id, last_msg_time=now)
     await _gain_rep(message.from_user.id, chat_id, REP_PER_MESSAGE, message.from_user.first_name)
 
@@ -491,7 +492,6 @@ async def on_chat_member_update(event: types.ChatMemberUpdated):
                 await update_user(affected_user.id, event.chat.id, character_name="", char_change_paid=0,
                                   search_rp_partner="")
 
-                # ПРИНУДИТЕЛЬНО СНИМАЕМ ПРАВА ПРИ ВЫХОДЕ (чтобы титул не завис)
                 try:
                     await bot.promote_chat_member(
                         chat_id=event.chat.id, user_id=affected_user.id,
@@ -523,7 +523,6 @@ async def on_chat_member_update(event: types.ChatMemberUpdated):
                 )
                 await update_application_status(affected_user.id, event.chat.id, 'waiting_char')
             else:
-                # Если зашел без анкеты - сразу предлагаем выбрать пол
                 user = await get_user(affected_user.id, event.chat.id)
                 if not user or not user["character_name"]:
                     mention = f'<a href="tg://user?id={affected_user.id}">{esc(affected_user.first_name)}</a>'
