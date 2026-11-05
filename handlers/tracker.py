@@ -375,16 +375,18 @@ async def show_user_card(message, user, tg_user, chat_id):
         guild_line = "🏰 Без гильдии"
     from db import get_rep_level
     rep_level = get_rep_level(user["reputation"])
+
+    # НОВОЕ ОФОРМЛЕНИЕ
     text = (
-        f"🎴 КАРТОЧКА ПУТЕШЕСТВЕННИКА\n{DIV}\n\n"
-        f"🎭 {name} · ⚧ {gtext}\n\n"
-        f"{DIV}\n\n"
-        f"💬 Сообщений: {user['messages_count']}\n"
-        f"🎖️ Репутация: {rep_level} / 10\n"
-        f"💰 Баланс: {user['balance']}\n\n"
-        f"{DIV}\n\n"
-        f"{partner_line}{child_line}\n"
-        f"{guild_line}"
+        f"─ [ КАРТОЧКА ПУТЕШЕСТВЕННИКА ] ─\n\n"
+        f"╭ 🎭 {name} · ⚧ {gtext}\n"
+        f"├\n"
+        f"├ 💬 Сообщений: {user['messages_count']}\n"
+        f"├ 🎖️ Репутация: {rep_level} / 10\n"
+        f"├ 💰 Баланс: {user['balance']}\n"
+        f"├\n"
+        f"├ {partner_line}{child_line}\n"
+        f"╰ {guild_line}"
     )
     candidates = []
     if user["character_name"]:
@@ -483,6 +485,9 @@ async def on_chat_member_update(event: types.ChatMemberUpdated):
                 old_name = user["character_name"]
                 await update_user(affected_user.id, event.chat.id, character_name="", char_change_paid=0,
                                   search_rp_partner="")
+
+                # ИСПРАВЛЕНИЕ: Меняем статус анкеты, чтобы можно было зайти снова
+                await update_application_status(affected_user.id, event.chat.id, "rejected")
 
                 # Снимаем тег (если бот имеет права)
                 try:
