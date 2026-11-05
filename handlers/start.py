@@ -110,7 +110,7 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
     if not user["character_name"] or user.get("char_change_paid") == 1:
         if not user["gender"]:
             default_text = (
-                f"── 〔 ✨ ПРИВЕТСТВИЕ 〕 ──\n\n"
+                f"─ [ ✨ ПРИВЕТСТВИЕ ] ─\n\n"
                 f"╭ Я — Орион, твой верный\n"
                 f"├ спутник в этом мире 🧭\n"
                 f"├\n"
@@ -133,7 +133,7 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
             return
 
         text = (
-            f"── 〔 🌸 ВЫБОР ПЕРСОНАЖА 〕 ──\n\n"
+            f"─ [ 🌸 ВЫБОР ПЕРСОНАЖА ] ─\n\n"
             f"╭ Рад снова тебя видеть,\n"
             f"├ Путешественник!\n"
             f"├\n"
@@ -154,7 +154,7 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
 
     name = esc(user_display_name(user))
     default_menu = (
-        f"── 〔 🌟 ГЛАВНОЕ МЕНЮ 〕 ──\n\n"
+        f"─ [ 🌟 ГЛАВНОЕ МЕНЮ ] ─\n\n"
         f"╭ 🍃 Привет, <b>{{name}}</b>!\n"
         f"├\n"
         f"├ Куда отправимся сегодня?\n"
@@ -186,11 +186,11 @@ async def cb_gender(query: types.CallbackQuery, callback_data: MenuCB):
     user = await get_user(query.from_user.id, chat_id)
 
     if user and user.get("character_name"):
-        text = f"── 〔 💖 ОТЛИЧНО! 〕 ──\n\n╭ Пол успешно обновлен.\n╰ Твой персонаж: <b>{esc(user['character_name'])}</b>"
+        text = f"─ [ 💖 ОТЛИЧНО! ] ─\n\n╭ Пол успешно обновлен.\n╰ Твой персонаж: <b>{esc(user['character_name'])}</b>"
         custom_img = await get_local_setting("image_menu", chat_id)
         await edit_or_send(query, text, main_menu_kb(query.from_user.id), image_url=custom_img or "")
     else:
-        text = f"── 〔 💖 ОТЛИЧНО! 〕 ──\n\n╭ Теперь выбери регион,\n╰ откуда родом твой герой 🎭"
+        text = f"─ [ 💖 ОТЛИЧНО! ] ─\n\n╭ Теперь выбери регион,\n╰ откуда родом твой герой 🎭"
         custom_img = await get_local_setting("image_regions", chat_id)
         await edit_or_send(query, text, regions_kb(query.from_user.id), image_url=custom_img or "")
 
@@ -213,7 +213,7 @@ async def cb_region(query: types.CallbackQuery, callback_data: RegionCB):
     chat_id = query.message.chat.id
     taken = await get_taken_characters(chat_id)
     region_name = REGIONS[callback_data.region]
-    text = f"── 〔 🎭 РЕГИОН: {region_name.upper()} 〕 ──\n\n╭ Выбери того, кто станет\n╰ твоим воплощением ✨"
+    text = f"─ [ 🎭 РЕГИОН: {region_name.upper()} ] ─\n\n╭ Выбери того, кто станет\n╰ твоим воплощением ✨"
 
     custom_img = await get_local_setting(f"image_region_{callback_data.region}", chat_id)
     if not custom_img:
@@ -296,7 +296,7 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
             print(f"❌ Ошибка выдачи титула: {e}")
             ts = "\n\n⚠️ Не удалось установить титул."
 
-    text = f"── 〔 🎉 ДОБРО ПОЖАЛОВАТЬ! 〕 ──\n\n╭ Теперь ты — <b>{esc(name)}</b>!{ts}\n├\n╰ Орион рад за тебя! 💛"
+    text = f"─ [ 🎉 ДОБРО ПОЖАЛОВАТЬ! ] ─\n\n╭ Теперь ты — <b>{esc(name)}</b>!{ts}\n├\n╰ Орион рад за тебя! 💛"
 
     try:
         await query.message.delete()
