@@ -37,6 +37,7 @@ FORM_STEPS = [
 
 
 async def send_step(chat_id: int, step_index: int, state: FSMContext):
+    """Универсальная функция для отправки вопроса с кнопками навигации"""
     if step_index >= len(FORM_STEPS):
         return
 
@@ -45,6 +46,8 @@ async def send_step(chat_id: int, step_index: int, state: FSMContext):
     data = await state.get_data()
 
     b = InlineKeyboardBuilder()
+
+    # Показываем "Далее", только если на этот вопрос уже отвечали
     is_answered = data.get(key) is not None and data.get(key) != ""
 
     text = ""
@@ -63,7 +66,7 @@ async def send_step(chat_id: int, step_index: int, state: FSMContext):
     elif st == ApplyForm.triggers:
         text = "⚠️ <b>Есть ли у вас триггерные темы или то, что категорически неприемлемо в ролевой?</b>\n\nНапример: жестокость к животным, определенные фобии. Если таких тем нет — напишите «Нет»."
     elif st == ApplyForm.activity:
-        text = "⚡ <b>Какова ваша ожидаемая активность?</b>\n\nСколько постов в неделю вы сможете писать в ролевой? (Например: 10-15 постов в неделю)."
+        text = "⚡ <b>Какова ваша ожидаемая активность?</b>\n\nКак часто или сколько сообщений в неделю вы сможете писать?"
 
     if step_index > 0:
         b.button(text="⬅️ Назад", callback_data="apply_nav_back")
@@ -78,6 +81,8 @@ async def send_step(chat_id: int, step_index: int, state: FSMContext):
 
     await bot.send_message(chat_id, text, reply_markup=b.as_markup(), parse_mode="HTML")
 
+
+# ==================== ОБРАБОТЧИКИ КНОПОК НАВИГАЦИИ ====================
 
 @dp.callback_query(F.data == "apply_nav_back", StateFilter(ApplyForm))
 async def cb_nav_back(query: types.CallbackQuery, state: FSMContext):
@@ -107,20 +112,24 @@ async def cb_nav_next(query: types.CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data == "apply_nav_rewrite", StateFilter(ApplyForm))
 async def cb_nav_rewrite(query: types.CallbackQuery, state: FSMContext):
-    # ИСПРАВЛЕНИЕ: Полный сброс анкеты с сохранением target_chat_id
+    # ИСПРАВЛЕНИЕ: Полный сброс анкеты с сохранением target_chat_id и уведомлением
     data = await state.get_data()
     target_chat_id = data.get("target_chat_id")
 
     await state.clear()
-    await state.update_data(target_chat_id=target_chat_id)  # Возвращаем ID ролевой, чтобы бот знал, куда отправлять
+    if target_chat_id:
+        await state.update_data(target_chat_id=target_chat_id)  # Возвращаем ID ролевой, чтобы бот знал, куда отправлять
 
     try:
         await query.message.delete()
     except:
         pass
 
+    await bot.send_message(query.from_user.id,
+                           "🔄 <b>Анкета полностью сброшена. Начинаем заново!</b>\n<i>(Старые сообщения выше можете просто проигнорировать)</i>",
+                           parse_mode="HTML")
     await send_step(query.from_user.id, 0, state)  # Начинаем с 0-го шага (возраст)
-    await query.answer("Анкета полностью сброшена!")
+    await query.answer("Анкета сброшена")
 
 
 @dp.callback_query(F.data == "apply_age_show", StateFilter(ApplyForm.age_visibility))
@@ -147,8 +156,11 @@ async def cb_age_hide(query: types.CallbackQuery, state: FSMContext):
     await query.answer()
 
 
+# ==================== ОБРАБОТЧИКИ ТЕКСТОВЫХ ОТВЕТОВ ====================
+
 @dp.message(ApplyForm.age)
 async def process_age(message: types.Message, state: FSMContext):
+    if not message.text: return
     text = message.text.strip()
     if not text.isdigit():
         await message.answer("❌ Пожалуйста, напишите возраст цифрой (например: 18).")
@@ -164,80 +176,100 @@ async def process_age(message: types.Message, state: FSMContext):
 
 @dp.message(ApplyForm.experience)
 async def process_experience(message: types.Message, state: FSMContext):
+    if not message.text: return
     await state.update_data(experience=message.text)
     await send_step(message.chat.id, 3, state)
 
 
 @dp.message(ApplyForm.about)
 async def process_about(message: types.Message, state: FSMContext):
+    if not message.text: return
     await state.update_data(about=message.text)
     await send_step(message.chat.id, 4, state)
 
 
 @dp.message(ApplyForm.timezone)
 async def process_timezone(message: types.Message, state: FSMContext):
+    if not message.text: return
     await state.update_data(timezone=message.text)
     await send_step(message.chat.id, 5, state)
 
 
 @dp.message(ApplyForm.triggers)
 async def process_triggers(message: types.Message, state: FSMContext):
+    if not message.text: return
     await state.update_data(triggers=message.text)
     await send_step(message.chat.id, 6, state)
 
 
 @dp.message(ApplyForm.metagaming)
 async def process_metagaming(message: types.Message, state: FSMContext):
+    if not message.text: return
     await state.update_data(metagaming=message.text)
     await send_step(message.chat.id, 7, state)
 
 
 @dp.message(ApplyForm.activity)
 async def process_activity(message: types.Message, state: FSMContext):
-    await state.update_data(activity=message.text)
-    data = await state.get_data()
-
-    await save_application(
-        message.from_user.id, data["target_chat_id"], "Не выбран",
-        data["age"], data["experience"], data["about"], data["timezone"],
-        data["triggers"], data["metagaming"], data["activity"]
-    )
-    await state.clear()
-
-    await message.answer("✅ <b>Ваша анкета отправлена на проверку администраторам!</b>\nПожалуйста, ожидайте ответа.",
-                         parse_mode="HTML")
-
-    text = (
-        f"📩 <b>НОВАЯ АНКЕТА</b>\n{DIV}\n\n"
-        f"👤 <b>Пользователь:</b> {esc(message.from_user.first_name)} (@{message.from_user.username})\n\n"
-        f"🎭 <b>Роль:</b> Будет выбрана при входе\n\n"
-        f"🎂 <b>Возраст:</b> {esc(data['age'])}\n\n"
-        f"📖 <b>Опыт:</b> {esc(data['experience'])}\n\n"
-        f"🌟 <b>О себе:</b> {esc(data['about'])}\n\n"
-        f"🕒 <b>Часовой пояс:</b> {esc(data['timezone'])}\n\n"
-        f"⚠️ <b>Триггеры:</b> {esc(data['triggers'])}\n\n"
-        f"⚡ <b>Активность:</b> {esc(data['activity'])}"
-    )
-
-    b = InlineKeyboardBuilder()
-    b.button(text="✅ Принять", callback_data=f"appr_accept_{message.from_user.id}_{data['target_chat_id']}")
-    b.button(text="❌ Отклонить", callback_data=f"appr_decline_{message.from_user.id}_{data['target_chat_id']}")
-    b.button(text="💬 Связаться", url=f"tg://user?id={message.from_user.id}")
-    b.adjust(2, 1)
-
+    if not message.text: return
     try:
-        admins = await bot.get_chat_administrators(data["target_chat_id"])
-        for admin in admins:
-            if not admin.user.is_bot:
-                try:
-                    await bot.send_message(admin.user.id, text, reply_markup=b.as_markup(), parse_mode="HTML")
-                except Exception:
-                    pass
-    except Exception as e:
+        await state.update_data(activity=message.text)
+        data = await state.get_data()
+
+        # Проверка, что мы не потеряли ID чата (защита от багов)
+        if "target_chat_id" not in data or not data["target_chat_id"]:
+            await state.clear()
+            await message.answer(
+                "❌ Ошибка: не найден ID ролевой. Пожалуйста, начните заполнение анкеты заново по ссылке.")
+            return
+
+        await save_application(
+            message.from_user.id, data["target_chat_id"], "Не выбран",
+            data["age"], data["experience"], data["about"], data["timezone"],
+            data["triggers"], data["metagaming"], data["activity"]
+        )
+        await state.clear()
+
+        await message.answer(
+            "✅ <b>Ваша анкета отправлена на проверку администраторам!</b>\nПожалуйста, ожидайте ответа.",
+            parse_mode="HTML")
+
+        text = (
+            f"📩 <b>НОВАЯ АНКЕТА</b>\n{DIV}\n\n"
+            f"👤 <b>Пользователь:</b> {esc(message.from_user.first_name)} (@{message.from_user.username})\n"
+            f"🎭 <b>Роль:</b> Будет выбрана при входе\n\n"
+            f"🎂 <b>Возраст:</b> {esc(data['age'])}\n"
+            f"📖 <b>Опыт:</b> {esc(data['experience'])}\n"
+            f"🌟 <b>О себе:</b> {esc(data['about'])}\n"
+            f"🕒 <b>Часовой пояс:</b> {esc(data['timezone'])}\n"
+            f"⚠️ <b>Триггеры:</b> {esc(data['triggers'])}\n"
+            f"⚡ <b>Активность:</b> {esc(data['activity'])}"
+        )
+
+        b = InlineKeyboardBuilder()
+        b.button(text="✅ Принять", callback_data=f"appr_accept_{message.from_user.id}_{data['target_chat_id']}")
+        b.button(text="❌ Отклонить", callback_data=f"appr_decline_{message.from_user.id}_{data['target_chat_id']}")
+        b.button(text="💬 Связаться", url=f"tg://user?id={message.from_user.id}")
+        b.adjust(2, 1)
+
         try:
-            await bot.send_message(OWNER_ID, text, reply_markup=b.as_markup(), parse_mode="HTML")
-        except:
-            pass
+            admins = await bot.get_chat_administrators(data["target_chat_id"])
+            for admin in admins:
+                if not admin.user.is_bot:
+                    try:
+                        await bot.send_message(admin.user.id, text, reply_markup=b.as_markup(), parse_mode="HTML")
+                    except Exception:
+                        pass
+        except Exception as e:
+            try:
+                await bot.send_message(OWNER_ID, text, reply_markup=b.as_markup(), parse_mode="HTML")
+            except:
+                pass
+
+    except Exception as e:
+        print(f"Ошибка при отправке анкеты: {e}")
+        await message.answer(
+            "❌ Произошла ошибка при сохранении анкеты. Пожалуйста, напишите ответ еще раз или начните заново.")
 
 
 async def is_admin_of_chat(user_id: int, chat_id: int) -> bool:
