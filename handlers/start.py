@@ -264,17 +264,23 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
 
     if chat.type in ("group", "supergroup"):
         try:
-            # ПЫТАЕМСЯ ВЫДАТЬ ТЕГ И ВЫВОДИМ ОШИБКУ, ЕСЛИ НЕ ПОЛУЧИЛОСЬ
-            await bot.set_chat_member_tag(
+            # ИСПРАВЛЕНИЕ: Ловим результат выполнения метода
+            result = await bot.set_chat_member_tag(
                 chat_id=chat.id,
                 user_id=query.from_user.id,
                 tag=name[:16]
             )
-            ts = "\n\n👑 Тег установлен!"
+            print(f"DEBUG: Результат set_chat_member_tag: {result}")
+
+            if result:
+                ts = "\n\n👑 Тег установлен!"
+            else:
+                ts = f"\n\n⚠️ <b>Тег не выдан.</b> Telegram ответил: {result}"
+
         except Exception as e:
             print(f"Ошибка установки тега: {e}")
-            # Выводим ошибку прямо в чат, чтобы понять причину
-            ts = f"\n\n⚠️ <b>Ошибка тега:</b> <code>{e}</code>"
+            # Выводим ошибку прямо в чат
+            ts = f"\n\n⚠️ <b>Ошибка:</b> <code>{e}</code>"
 
     text = f"─ [ ДОБРО ПОЖАЛОВАТЬ! ] ─\n\n╭ Теперь ты — <b>{esc(name)}</b>!{ts}\n├\n╰ Орион рад за тебя! 💛"
 
