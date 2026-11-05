@@ -1,3 +1,4 @@
+import asyncio
 from aiogram import types, F
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -20,24 +21,22 @@ class ApplyForm(StatesGroup):
     about = State()
     timezone = State()
     triggers = State()
-    metagaming = State()
     activity = State()
 
 
+# Шаг metagaming полностью удален
 FORM_STEPS = [
-    (ApplyForm.age, "age"),
-    (ApplyForm.age_visibility, "age_visibility"),
-    (ApplyForm.experience, "experience"),
-    (ApplyForm.about, "about"),
-    (ApplyForm.timezone, "timezone"),
-    (ApplyForm.triggers, "triggers"),
-    (ApplyForm.metagaming, "metagaming"),
-    (ApplyForm.activity, "activity")
+    (ApplyForm.age, "age"),  # 0
+    (ApplyForm.age_visibility, "age_visibility"),  # 1
+    (ApplyForm.experience, "experience"),  # 2
+    (ApplyForm.about, "about"),  # 3
+    (ApplyForm.timezone, "timezone"),  # 4
+    (ApplyForm.triggers, "triggers"),  # 5
+    (ApplyForm.activity, "activity")  # 6
 ]
 
 
 async def send_step(chat_id: int, step_index: int, state: FSMContext):
-    """Универсальная функция для отправки вопроса с кнопками навигации"""
     if step_index >= len(FORM_STEPS):
         return
 
@@ -46,8 +45,6 @@ async def send_step(chat_id: int, step_index: int, state: FSMContext):
     data = await state.get_data()
 
     b = InlineKeyboardBuilder()
-
-    # Показываем "Далее", только если на этот вопрос уже отвечали
     is_answered = data.get(key) is not None and data.get(key) != ""
 
     text = ""
@@ -78,6 +75,10 @@ async def send_step(chat_id: int, step_index: int, state: FSMContext):
         b.adjust(2, 2, 1)
     else:
         b.adjust(2, 1)
+
+    # Индикатор печати и пауза, чтобы пользователь не спамил
+    await bot.send_chat_action(chat_id, 'typing')
+    await asyncio.sleep(0.7)
 
     await bot.send_message(chat_id, text, reply_markup=b.as_markup(), parse_mode="HTML")
 
@@ -112,23 +113,21 @@ async def cb_nav_next(query: types.CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data == "apply_nav_rewrite", StateFilter(ApplyForm))
 async def cb_nav_rewrite(query: types.CallbackQuery, state: FSMContext):
-    # ИСПРАВЛЕНИЕ: Полный сброс анкеты с сохранением target_chat_id и уведомлением
     data = await state.get_data()
     target_chat_id = data.get("target_chat_id")
 
     await state.clear()
     if target_chat_id:
-        await state.update_data(target_chat_id=target_chat_id)  # Возвращаем ID ролевой, чтобы бот знал, куда отправлять
+        await state.update_data(target_chat_id=target_chat_id)
 
     try:
         await query.message.delete()
     except:
         pass
 
-    await bot.send_message(query.from_user.id,
-                           "🔄 <b>Анкета полностью сброшена. Начинаем заново!</b>\n<i>(Старые сообщения выше можете просто проигнорировать)</i>",
+    await bot.send_message(query.from_user.id, "🔄 <b>Анкета полностью сброшена. Начинаем заново!</b>",
                            parse_mode="HTML")
-    await send_step(query.from_user.id, 0, state)  # Начинаем с 0-го шага (возраст)
+    await send_step(query.from_user.id, 0, state)
     await query.answer("Анкета сброшена")
 
 
@@ -199,14 +198,8 @@ async def process_timezone(message: types.Message, state: FSMContext):
 async def process_triggers(message: types.Message, state: FSMContext):
     if not message.text: return
     await state.update_data(triggers=message.text)
+    # Отправляем на шаг 6 (Активность)
     await send_step(message.chat.id, 6, state)
-
-
-@dp.message(ApplyForm.metagaming)
-async def process_metagaming(message: types.Message, state: FSMContext):
-    if not message.text: return
-    await state.update_data(metagaming=message.text)
-    await send_step(message.chat.id, 7, state)
 
 
 @dp.message(ApplyForm.activity)
@@ -216,17 +209,17 @@ async def process_activity(message: types.Message, state: FSMContext):
         await state.update_data(activity=message.text)
         data = await state.get_data()
 
-        # Проверка, что мы не потеряли ID чата (защита от багов)
         if "target_chat_id" not in data or not data["target_chat_id"]:
             await state.clear()
             await message.answer(
                 "❌ Ошибка: не найден ID ролевой. Пожалуйста, начните заполнение анкеты заново по ссылке.")
             return
 
+        # Передаем пустую строку вместо метагейминга
         await save_application(
             message.from_user.id, data["target_chat_id"], "Не выбран",
             data["age"], data["experience"], data["about"], data["timezone"],
-            data["triggers"], data["metagaming"], data["activity"]
+            data["triggers"], "", data["activity"]
         )
         await state.clear()
 
@@ -271,6 +264,8 @@ async def process_activity(message: types.Message, state: FSMContext):
         await message.answer(
             "❌ Произошла ошибка при сохранении анкеты. Пожалуйста, напишите ответ еще раз или начните заново.")
 
+
+# --- Обработчики для владельца и админов ---
 
 async def is_admin_of_chat(user_id: int, chat_id: int) -> bool:
     if user_id == OWNER_ID: return True
