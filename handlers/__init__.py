@@ -1,3 +1,4 @@
+from . import stats
 from . import start
 from . import chat_list
 from . import tracker
@@ -19,4 +20,3 @@ from . import gacha
 from . import daily
 from . import economy
 from . import apply
-from . import stats  # <--- Должно быть в самом конце
