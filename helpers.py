@@ -1,9 +1,10 @@
 import html
 import random
+import aiohttp
 from datetime import datetime, timezone
 from functools import wraps
 from aiogram import types
-from aiogram.types import FSInputFile, InputMediaPhoto
+from aiogram.types import FSInputFile, InputMediaPhoto, BufferedInputFile
 from aiogram.exceptions import TelegramBadRequest
 from bot_instance import bot
 from config import DB_PATH
@@ -32,7 +33,7 @@ async def get_section_image(section_key, fallback_image=None, chat_id=0):
         return custom_img
     if fallback_image:
         return fallback_image
-    return ""  # Если нет ни кастомной, ни картинки-заглушки — возвращаем пустоту
+    return ""
 
 
 def user_display_name(user):
@@ -65,18 +66,12 @@ async def _gain_rep(user_id, chat_id, amount, name=""):
     if amount <= 0: return
     user = await get_user(user_id, chat_id)
     if not user: return
-
     old_level = get_rep_level(user.get("reputation", 0))
     new_rep = await add_reputation(user_id, chat_id, amount)
     new_level = get_rep_level(new_rep)
-
     if new_level > old_level and chat_id != 0:
         try:
-            await bot.send_message(
-                chat_id,
-                f"🎖️ <b>{esc(name)}</b> повысил уровень репутации до <b>{new_level}</b>!",
-                parse_mode="HTML"
-            )
+            await bot.send_message(chat_id, f"🎖️ <b>{esc(name)}</b> повысил уровень репутации до <b>{new_level}</b>!", parse_mode="HTML")
         except Exception:
             pass
 
@@ -84,14 +79,11 @@ async def _gain_rep(user_id, chat_id, amount, name=""):
 async def get_characters_status(chat_id=0):
     from characters import CHARACTERS, get_characters_by_region
     taken = await get_taken_characters(chat_id)
-    occ = []
-    free = []
+    occ, free = [], []
     for reg_key, reg_name in REGIONS.items():
         for name in get_characters_by_region(reg_key):
-            if name in taken:
-                occ.append((reg_name, name, 0))
-            else:
-                free.append((reg_name, name))
+            if name in taken: occ.append((reg_name, name, 0))
+            else: free.append((reg_name, name))
     return occ, free
 
 
@@ -134,14 +126,10 @@ def get_reputation_bonuses(rep):
 def get_reputation_title(rep, region_name):
     level = get_rep_level(rep)
     cases = {
-        "Мондштадт": ("Мондштадте", "Мондштадта"),
-        "Ли Юэ": ("Ли Юэ", "Ли Юэ"),
-        "Инадзума": ("Инадзуме", "Инадзумы"),
-        "Сумеру": ("Сумеру", "Сумеру"),
-        "Фонтейн": ("Фонтейне", "Фонтейна"),
-        "Натлан": ("Натлане", "Натлана"),
-        "Нод-Край": ("Нод-Крае", "Нод-Края"),
-        "Снежная": ("Снежной", "Снежной"),
+        "Мондштадт": ("Мондштадте", "Мондштадта"), "Ли Юэ": ("Ли Юэ", "Ли Юэ"),
+        "Инадзума": ("Инадзуме", "Инадзумы"), "Сумеру": ("Сумеру", "Сумеру"),
+        "Фонтейн": ("Фонтейне", "Фонтейна"), "Натлан": ("Натлане", "Натлана"),
+        "Нод-Край": ("Нод-Крае", "Нод-Края"), "Снежная": ("Снежной", "Снежной"),
         "Тейват": ("Тейвате", "Тейвата"),
     }
     prep, gen = cases.get(region_name, (region_name, region_name))
@@ -199,10 +187,7 @@ def roll_artifact(drop_bonus=0, set_name=""):
     bonus_type = ARTIFACT_SLOTS[slot]["bonus_type"]
     bonus_value = RARITY_BONUS[rarity]
     slot_short = SLOT_SHORT.get(slot, slot)
-    if set_name:
-        name = f"{slot_short} [{set_name}] ({rarity}★)"
-    else:
-        name = f"{slot_short} ({rarity}★)"
+    name = f"{slot_short} [{set_name}] ({rarity}★)" if set_name else f"{slot_short} ({rarity}★)"
     return slot, rarity, bonus_type, bonus_value, name
 
 
@@ -240,84 +225,91 @@ def inject_user(func):
     async def wrapper(*args, **kwargs):
         if 'user' in kwargs and 'chat_id' in kwargs:
             return await func(*args, **kwargs)
-
         event = next((a for a in args if isinstance(a, (types.CallbackQuery, types.Message))), None)
         if not event: return await func(*args, **kwargs)
-
-        if isinstance(event, types.CallbackQuery):
-            chat_id = event.message.chat.id if event.message else 0
-        else:
-            chat_id = event.chat.id
-
+        chat_id = event.message.chat.id if isinstance(event, types.CallbackQuery) and event.message else event.chat.id
         user = await get_user(event.from_user.id, chat_id)
         if not user:
             await create_user(event.from_user.id, chat_id)
             user = await get_user(event.from_user.id, chat_id)
         return await func(*args, user=user, chat_id=chat_id, **kwargs)
-
     return wrapper
+
+
+# --- НОВАЯ ФУНКЦИЯ ДЛЯ СКАЧИВАНИЯ КАРТИНОК ---
+async def download_image(url: str):
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as resp:
+                if resp.status == 200:
+                    data = await resp.read()
+                    return BufferedInputFile(data, filename="image.jpg")
+                else:
+                    print(f"❌ Ошибка скачивания картинки (Status {resp.status}): {url}")
+                    return None
+    except Exception as e:
+        print(f"❌ Ошибка скачивания картинки: {e}")
+        return None
 
 
 async def edit_or_send(query, text, kb, image_url=None):
     if not query.message:
-        try:
-            await bot.send_message(query.from_user.id, text, reply_markup=kb, parse_mode="HTML")
-        except:
-            pass
+        try: await bot.send_message(query.from_user.id, text, reply_markup=kb, parse_mode="HTML")
+        except: pass
         return
 
     chat_id = query.message.chat.id
     has_photo = bool(getattr(query.message, "photo", None))
 
-    if not image_url:
-        if has_photo:
+    # Если картинка есть, скачиваем её или готовим локальный файл
+    media = None
+    if image_url:
+        if image_url.startswith("http"):
+            media = await download_image(image_url)
+        else:
             try:
-                await query.message.delete()
-            except:
-                pass
+                media = FSInputFile(image_url)
+            except Exception as e:
+                print(f"❌ Ошибка загрузки локального файла: {e}")
+
+    if not media:
+        if has_photo:
+            try: await query.message.delete()
+            except: pass
             await bot.send_message(chat_id, text, reply_markup=kb, parse_mode="HTML")
         else:
             try:
                 await query.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
             except TelegramBadRequest as e:
-                if "message is not modified" in str(e):
-                    return
+                if "message is not modified" in str(e): return
                 await bot.send_message(chat_id, text, reply_markup=kb, parse_mode="HTML")
         return
 
     if has_photo:
         if len(text) > 1024:
-            try:
-                await query.message.delete()
-            except:
-                pass
+            try: await query.message.delete()
+            except: pass
             await bot.send_message(chat_id, text, reply_markup=kb, parse_mode="HTML")
         else:
             try:
                 await query.message.edit_caption(caption=text, reply_markup=kb, parse_mode="HTML")
             except TelegramBadRequest as e:
-                if "message is not modified" in str(e):
-                    return
-                try:
-                    await query.message.delete()
-                except:
-                    pass
-                await bot.send_photo(chat_id, image_url, caption=text, reply_markup=kb, parse_mode="HTML")
+                if "message is not modified" in str(e): return
+                try: await query.message.delete()
+                except: pass
+                await bot.send_photo(chat_id, media, caption=text, reply_markup=kb, parse_mode="HTML")
             except Exception:
-                try:
-                    await query.message.delete()
-                except:
-                    pass
-                await bot.send_photo(chat_id, image_url, caption=text, reply_markup=kb, parse_mode="HTML")
+                try: await query.message.delete()
+                except: pass
+                await bot.send_photo(chat_id, media, caption=text, reply_markup=kb, parse_mode="HTML")
     else:
-        try:
-            await query.message.delete()
-        except:
-            pass
+        try: await query.message.delete()
+        except: pass
         if len(text) > 1024:
             await bot.send_message(chat_id, text, reply_markup=kb, parse_mode="HTML")
         else:
             try:
-                await bot.send_photo(chat_id, image_url, caption=text, reply_markup=kb, parse_mode="HTML")
-            except Exception:
+                await bot.send_photo(chat_id, media, caption=text, reply_markup=kb, parse_mode="HTML")
+            except Exception as e:
+                print(f"❌ Ошибка отправки фото: {e}")
                 await bot.send_message(chat_id, text, reply_markup=kb, parse_mode="HTML")
