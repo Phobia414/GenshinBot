@@ -11,6 +11,8 @@ REGIONS = {
     "nodkrai": "🌙 Нод-Край",
     "snezhnaya": "❄️ Снежная",
     "fatui": "🎭 Фатуи",
+    "hexenzirkel": "🧙‍♀️ Ведьмин круг",
+    "shades": "👤 Тени Фанеса",
     "other": "✨ Другие",
 }
 
@@ -38,9 +40,7 @@ CHARACTERS = {
     "Далия": {"region": "mondstadt", "image": "https://static0.gamerantimages.com/wordpress/wp-content/uploads/2025/05/genshin-7.jpg"},
     "Лоэн": {"region": "mondstadt", "image": "https://i.pinimg.com/originals/fd/85/8a/fd858a6ff60c4a0f2eb4263edd52f973.jpg"},
     "Дурин": {"region": "mondstadt", "image": "https://avatars.mds.yandex.net/i?id=25d7478de147fda2abd0c7d06e60dfd7_l-7025550-images-thumbs&n=13"},
-    "Николь": {"region": "mondstadt", "image": "https://avatars.mds.yandex.net/i?id=5f52ba1038a6f52ca3a058805fc4367a_l-12734301-images-thumbs&n=13"},
     "Варка": {"region": "mondstadt", "image": "https://i.pinimg.com/originals/11/3a/95/113a957547cebfeff62519f24d0f31e4.jpg"},
-    "Алиса": {"region": "mondstadt", "image": "https://avatars.mds.yandex.net/i?id=4022d47cdc63fa0ca84dc069d0f77494_l-4491259-images-thumbs&n=13"},
     "Прюн": {"region": "mondstadt", "image": "https://avatars.mds.yandex.net/i?id=eca890b12766f71bbe9c32b3ce3ba041_l-4612938-images-thumbs&n=13"},
 
     # ===== Ли Юэ =====
@@ -144,11 +144,13 @@ CHARACTERS = {
     # ===== Снежная =====
     "Алёша": {"region": "snezhnaya", "image": "https://i.pinimg.com/originals/e3/15/41/e315411f884980ecc476d55b6e6b2032.jpg?nii=t"},
     "Одетта": {"region": "snezhnaya", "image": "https://avatars.mds.yandex.net/i?id=5a6b4533ce63b79370c549bd4776df4f_l-5235953-images-thumbs&n=13"},
-    "Царица": {"region": "snezhnaya", "image": "https://avatars.mds.yandex.net/i?id=db2a6708ea7303ce3aae534e6dd84e16_l-10303547-images-thumbs&n=13"},
+    "Анастасия Федоровна Снежная": {"region": "snezhnaya", "image": "https://avatars.mds.yandex.net/i?id=db2a6708ea7303ce3aae534e6dd84e16_l-10303547-images-thumbs&n=13"},
     "Весна": {"region": "snezhnaya", "image": "https://avatars.mds.yandex.net/i?id=ae9583b77b4920b8a5a52b3c3c609025_l-5714596-images-thumbs&n=13"},
     "Водяница": {"region": "snezhnaya", "image": "https://avatars.mds.yandex.net/i?id=3a037def437c3c83babacca9d97679c1_l-8221351-images-thumbs&n=13"},
     "Валерий": {"region": "snezhnaya", "image": "https://wotpack.ru/wp-content/uploads/2026/06/litso-valeriya-vblizi-genshin-impact-1536x864.jpg"},
     "Митя": {"region": "snezhnaya", "image": "https://avatars.mds.yandex.net/i?id=0a742c3c56117b4098fb93a80d441418_l-5287068-images-thumbs&n=13"},
+    "Даника": {"region": "snezhnaya", "image": "https://genshin.jmp.blue/characters/paimon/portrait"},
+    "Ной": {"region": "snezhnaya", "image": "https://genshin.jmp.blue/characters/paimon/portrait"},
 
     # ===== Фатуи =====
     "Арлекино": {"region": "fatui", "image": "https://avatars.mds.yandex.net/i?id=68adc0eb0cf1798a5fdec547049d44dd_l-8797427-images-thumbs&n=13"},
@@ -168,6 +170,23 @@ CHARACTERS = {
     "Люмин": {"region": "other", "image": "https://i.pinimg.com/originals/5f/a0/63/5fa063f5218f5a27a3479c97da917561.jpg"},
     "Паймон": {"region": "other", "image": "https://genshin.jmp.blue/characters/paimon/portrait"},
     "Элой": {"region": "other", "image": "https://avatars.mds.yandex.net/i?id=8564e7b7366a0072463effa4c571d486_l-4146308-images-thumbs&n=13"},
+    "Фанет": {"region": "other", "image": "https://genshin.jmp.blue/characters/paimon/portrait"},
+    "Икор": {"region": "other", "image": "https://genshin.jmp.blue/characters/paimon/portrait"},
+    "Рери": {"region": "other", "image": "https://upload-os-bbs.hoyolab.com/upload/2026/08/09/487204965/aa2760e5dc741219229c3b3101774d3d_7848395882897636984.png"},
+# ===== Ведьмин круг (Hexenzirkel) =====
+    "Алиса": {"region": "hexenzirkel", "image": "https://avatars.mds.yandex.net/i?id=4022d47cdc63fa0ca84dc069d0f77494_l-4491259-images-thumbs&n=13"},
+    "Николь": {"region": "hexenzirkel", "image": "https://avatars.mds.yandex.net/i?id=5f52ba1038a6f52ca3a058805fc4367a_l-12734301-images-thumbs&n=13"},
+    "Октавия": {"region": "hexenzirkel", "image": "https://avatars.mds.yandex.net/i?id=3dc0f1f3628f4d3d5bac4adb9cf5a3d7_l-8211189-images-thumbs&n=13"},
+    "Иванова": {"region": "hexenzirkel", "image": "https://genshin.jmp.blue/characters/paimon/portrait"},
+    "Рэндоттир": {"region": "hexenzirkel", "image": "https://static.wikia.nocookie.net/gensin-impact/images/6/69/Rhinedottir_Teaser_Portrait.png/revision/latest/scale-to-width-down/1200?cb=20260525204739"},
+    "Барбелот": {"region": "hexenzirkel", "image": "https://wotpack.ru/wp-content/uploads/2026/06/barbelot-v-genshin-impact-chto-izvestno-ob-astromante-trismegistus-e1781291121451.jpg"},
+    "Андерсдоттер": {"region": "hexenzirkel", "image": "https://wotpack.ru/wp-content/uploads/2025/12/oblozhka-dlya-video-pro-andersdotter-genshin-impact-4qp7m.jpg"},
+
+# ===== Тени Фанеса (Shades of Phanes) =====
+    "Асмодей": {"region": "shades", "image": "https://avatars.mds.yandex.net/i?id=3623dc22c05820d5a6c2d23fe0ccf66c_l-3724606-images-thumbs&n=13"},
+    "Астарот": {"region": "shades", "image": "https://i.pinimg.com/736x/2f/7c/88/2f7c88a4c8787676281bcf948b894e56.jpg"},
+    "Ронова": {"region": "shades", "image": "https://i.pinimg.com/736x/eb/29/37/eb2937dedf2918739797dbdfb4cd5481.jpg"},
+    "Набериус": {"region": "shades", "image": "https://avatars.mds.yandex.net/i?id=6007684b751c9443f3642fde536b495a_l-12614586-images-thumbs&n=13"},
 }
 
 
