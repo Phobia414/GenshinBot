@@ -7,7 +7,7 @@ from aiogram.types import FSInputFile, InputMediaPhoto
 from aiogram.exceptions import TelegramBadRequest
 from bot_instance import bot
 from config import DB_PATH
-from constants import DIV
+from constants import DIV, PLACEHOLDER_IMAGES
 from db import (
     get_user, create_user, get_rep_level, get_local_setting,
     update_user, increment_user_field, get_guild, get_taken_characters,
@@ -20,6 +20,10 @@ import aiosqlite
 
 def esc(s):
     return html.escape(str(s)) if s else ""
+
+
+def get_placeholder_image():
+    return random.choice(PLACEHOLDER_IMAGES)
 
 
 async def get_section_image(section_key, fallback_image=None, chat_id=0):
