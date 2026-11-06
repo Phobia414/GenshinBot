@@ -236,7 +236,6 @@ def inject_user(func):
     return wrapper
 
 
-# --- НОВАЯ ФУНКЦИЯ ДЛЯ СКАЧИВАНИЯ КАРТИНОК ---
 async def download_image(url: str):
     try:
         async with aiohttp.ClientSession() as session:
@@ -261,16 +260,20 @@ async def edit_or_send(query, text, kb, image_url=None):
     chat_id = query.message.chat.id
     has_photo = bool(getattr(query.message, "photo", None))
 
-    # Если картинка есть, скачиваем её или готовим локальный файл
     media = None
     if image_url:
         if image_url.startswith("http"):
+            # Если это ссылка из интернета
             media = await download_image(image_url)
-        else:
+        elif image_url.startswith("images/"):
+            # Если это локальный файл на сервере
             try:
                 media = FSInputFile(image_url)
             except Exception as e:
                 print(f"❌ Ошибка загрузки локального файла: {e}")
+        else:
+            # Если это file_id (картинка, загруженная через админку)
+            media = image_url
 
     if not media:
         if has_photo:
