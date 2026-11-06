@@ -1,6 +1,5 @@
 import html
 import random
-import inspect
 from datetime import datetime, timezone
 from functools import wraps
 from aiogram import types
@@ -8,7 +7,7 @@ from aiogram.types import FSInputFile, InputMediaPhoto
 from aiogram.exceptions import TelegramBadRequest
 from bot_instance import bot
 from config import DB_PATH
-from constants import PLACEHOLDER_IMAGES, DIV
+from constants import DIV
 from db import (
     get_user, create_user, get_rep_level, get_local_setting,
     update_user, increment_user_field, get_guild, get_taken_characters,
@@ -23,15 +22,13 @@ def esc(s):
     return html.escape(str(s)) if s else ""
 
 
-def get_placeholder_image():
-    return random.choice(PLACEHOLDER_IMAGES)
-
-
 async def get_section_image(section_key, fallback_image=None, chat_id=0):
     custom_img = await get_local_setting(f"image_{section_key}", chat_id)
-    if custom_img: return custom_img
-    if fallback_image: return fallback_image
-    return get_placeholder_image()
+    if custom_img:
+        return custom_img
+    if fallback_image:
+        return fallback_image
+    return ""  # Если нет ни кастомной, ни картинки-заглушки — возвращаем пустоту
 
 
 def user_display_name(user):
@@ -237,11 +234,7 @@ async def get_user_by_username(username):
 def inject_user(func):
     @wraps(func)
     async def wrapper(*args, **kwargs):
-        # Используем inspect, чтобы понять, передан ли уже user (позиционно или как kwarg)
-        sig = inspect.signature(func)
-        bound_args = sig.bind_partial(*args, **kwargs)
-
-        if 'user' in bound_args.arguments and 'chat_id' in bound_args.arguments:
+        if 'user' in kwargs and 'chat_id' in kwargs:
             return await func(*args, **kwargs)
 
         event = next((a for a in args if isinstance(a, (types.CallbackQuery, types.Message))), None)
@@ -256,7 +249,6 @@ def inject_user(func):
         if not user:
             await create_user(event.from_user.id, chat_id)
             user = await get_user(event.from_user.id, chat_id)
-
         return await func(*args, user=user, chat_id=chat_id, **kwargs)
 
     return wrapper
@@ -272,11 +264,6 @@ async def edit_or_send(query, text, kb, image_url=None):
 
     chat_id = query.message.chat.id
     has_photo = bool(getattr(query.message, "photo", None))
-
-    if image_url and isinstance(image_url, str) and image_url.startswith("images/"):
-        media_to_send = FSInputFile(image_url)
-    else:
-        media_to_send = image_url
 
     if not image_url:
         if has_photo:
@@ -311,13 +298,13 @@ async def edit_or_send(query, text, kb, image_url=None):
                     await query.message.delete()
                 except:
                     pass
-                await bot.send_photo(chat_id, media_to_send, caption=text, reply_markup=kb, parse_mode="HTML")
+                await bot.send_photo(chat_id, image_url, caption=text, reply_markup=kb, parse_mode="HTML")
             except Exception:
                 try:
                     await query.message.delete()
                 except:
                     pass
-                await bot.send_photo(chat_id, media_to_send, caption=text, reply_markup=kb, parse_mode="HTML")
+                await bot.send_photo(chat_id, image_url, caption=text, reply_markup=kb, parse_mode="HTML")
     else:
         try:
             await query.message.delete()
@@ -327,6 +314,6 @@ async def edit_or_send(query, text, kb, image_url=None):
             await bot.send_message(chat_id, text, reply_markup=kb, parse_mode="HTML")
         else:
             try:
-                await bot.send_photo(chat_id, media_to_send, caption=text, reply_markup=kb, parse_mode="HTML")
+                await bot.send_photo(chat_id, image_url, caption=text, reply_markup=kb, parse_mode="HTML")
             except Exception:
                 await bot.send_message(chat_id, text, reply_markup=kb, parse_mode="HTML")

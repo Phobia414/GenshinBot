@@ -21,11 +21,12 @@ from aiogram.types import FSInputFile
 async def cb_menu(query, callback_data, user, chat_id):
     if query.from_user.id != callback_data.owner_id: return
     if user.get("char_change_paid") == 1:
-        return await edit_or_send(query, f"🌸 ВЫБОР ПЕРСОНАЖА\n{DIV}\n\nТы оплатил смену!\nВыбери регион:",
-                                  regions_kb(query.from_user.id))
+        return await edit_or_send(query, f"── 〔 🖼 ВЫБОР ПЕРСОНАЖА 〕 ──\n\nТы оплатил смену!\nВыбери регион:",
+                                  regions_kb(query.from_user.id), image_url="")
 
     name = esc(user_display_name(user))
-    days = (int(datetime.now(timezone.utc).timestamp()) - (user.get("first_seen") or 0)) // 86400
+    first_seen = user.get("first_seen") or int(datetime.now(timezone.utc).timestamp())
+    days = (int(datetime.now(timezone.utc).timestamp()) - first_seen) // 86400 + 1
 
     region_display = "Тейват"
     if user.get("character_name"):
@@ -37,24 +38,23 @@ async def cb_menu(query, callback_data, user, chat_id):
     rep = user.get("reputation", 0) or 0
     reg_info = find_region_by_character(user.get("character_name"))
     reg_name_for_title = reg_info[1] if reg_info else "Тейват"
-
-    if " " in reg_name_for_title:
-        reg_name_for_title = reg_name_for_title.split(" ", 1)[1]
-
+    if " " in reg_name_for_title: reg_name_for_title = reg_name_for_title.split(" ", 1)[1]
     rep_title = get_reputation_title(rep, reg_name_for_title)
 
     text = (
-        f"  ─ [ 🎴 ГЛАВНОЕ МЕНЮ ] ─\n\n"
+        f"── 〔 🖼 ГЛАВНОЕ МЕНЮ 〕 ──\n\n"
         f"╭ 🍃 <b>{name}</b> · {region_display}\n"
-        f"┆\n"
+        f"├\n"
         f"├ 📊 Статус: {rep_title}\n"
-        f"┆\n"
+        f"├\n"
         f"╰ ⏳ В Тейвате: <b>{days}</b> дн."
     )
     final_text = format_text(await get_local_setting("text_menu", chat_id, text), user, DIV)
+
+    # ВОЗВРАЩЕНО: подстановка картинки персонажа, если нет кастомной
     fallback = get_character_image(user["character_name"]) if user["character_name"] else None
-    await edit_or_send(query, final_text, main_menu_kb(query.from_user.id),
-                       image_url=await get_section_image("menu", fallback, chat_id))
+    image = await get_section_image("menu", fallback, chat_id)
+    await edit_or_send(query, final_text, main_menu_kb(query.from_user.id), image_url=image)
 
 
 @dp.callback_query(MenuCB.filter(F.action == "profile"))
@@ -62,16 +62,15 @@ async def cb_menu(query, callback_data, user, chat_id):
 async def cb_profile(query, callback_data, user, chat_id):
     if query.from_user.id != callback_data.owner_id: return
     if user.get("char_change_paid") == 1:
-        return await edit_or_send(query, f"🌸 ВЫБОР ПЕРСОНАЖА\n{DIV}\n\nТы оплатил смену!\nВыбери регион:",
-                                  regions_kb(query.from_user.id))
+        return await edit_or_send(query, f"── 〔 🖼 ВЫБОР ПЕРСОНАЖА 〕 ──\n\nТы оплатил смену!\nВыбери регион:",
+                                  regions_kb(query.from_user.id), image_url="")
 
     name = esc(user_display_name(user))
     g = await get_guild(user["guild_id"]) if user["guild_id"] else None
-    guild_line = f" {esc(g['name'])}" if g else "🏰 Без гильдии"
+    guild_line = f"🏰 {esc(g['name'])}" if g else "Без гильдии"
 
-    # ИСПРАВЛЕНИЕ: Склонение слова "Свободен" в зависимости от пола
     if user["partner_id"]:
-        partner_line = f" {esc(user['partner_name'])}"
+        partner_line = f"❤️ {esc(user['partner_name'])}"
     else:
         if user["gender"] == "male":
             partner_line = "❤️ Свободен"
@@ -81,32 +80,33 @@ async def cb_profile(query, callback_data, user, chat_id):
             partner_line = "❤️ Свободен(а)"
 
     resin = await update_resin(query.from_user.id, chat_id)
-
     rep = user["reputation"] or 0
     reg_info = find_region_by_character(user.get("character_name"))
     reg_name_for_title = reg_info[1] if reg_info else "Тейват"
-    if " " in reg_name_for_title:
-        reg_name_for_title = reg_name_for_title.split(" ", 1)[1]
+    if " " in reg_name_for_title: reg_name_for_title = reg_name_for_title.split(" ", 1)[1]
     rep_title = get_reputation_title(rep, reg_name_for_title)
 
     text = (
-        f"  ─ [ 🎴 ПРОФИЛЬ ] ─\n\n"
-        f"🍃 {name}\n\n"
-        f"╭ 💰 Баланс: <b>{user['balance']}</b>\n"
-        f"┆\n"
+        f"── 〔 🖼 ПРОФИЛЬ 〕 ──\n\n"
+        f"╭ 🍃 {name}\n"
+        f"├\n"
+        f"├ 💰 Баланс: <b>{user['balance']}</b>\n"
+        f"├\n"
         f"├ 💎 Примогемы: <b>{user.get('primogems', 0)}</b>\n"
-        f"┆\n"
+        f"├\n"
         f"├ 💧 Смола: <b>{resin} / {RESIN_MAX}</b>\n"
-        f"┆\n"
+        f"├\n"
         f"├ 🎖️ Репутация: <b>{rep_title}</b>\n"
-        f"┆\n"
-        f"├ ❤️ Партнер: {partner_line}\n"
-        f"┆\n"
-        f"╰ 🏰 Гильдия: {guild_line}"
+        f"├\n"
+        f"├ {partner_line}\n"
+        f"├\n"
+        f"╰ 🏰 {guild_line}"
     )
+
+    # ВОЗВРАЩЕНО: подстановка картинки персонажа, если нет кастомной
     fallback = get_character_image(user["character_name"]) if user["character_name"] else None
-    await edit_or_send(query, text, profile_kb(query.from_user.id),
-                       image_url=await get_section_image("profile", fallback, chat_id))
+    image = await get_section_image("profile", fallback, chat_id)
+    await edit_or_send(query, text, profile_kb(query.from_user.id), image_url=image)
 
 
 @dp.callback_query(MenuCB.filter(F.action == "freerole"))
@@ -117,16 +117,22 @@ async def cb_freerole(query, callback_data, user, chat_id):
     await update_user(query.from_user.id, chat_id, character_name="")
     await query.answer(f"⚠️ Роль «{old}» освобождена. Вернуть можно за {PRICE_ROLE_CHANGE} монет.", show_alert=True)
     if chat_id: await update_chat_list(chat_id)
-    await cb_profile(query, MenuCB(action="profile", owner_id=query.from_user.id), user, chat_id)
+    await cb_profile(query, MenuCB(action="profile", owner_id=query.from_user.id), user=user, chat_id=chat_id)
 
 
 @dp.callback_query(MenuCB.filter(F.action == "adventurers"))
 @inject_user
 async def cb_adventurers(query, callback_data, user, chat_id):
     if query.from_user.id != callback_data.owner_id: return
-    text = f"[ 🏛 ГИЛЬДИЯ ИСКАТЕЛЕЙ ]\n\n🍃 Добро пожаловать, <b>{esc(user_display_name(user))}</b>!\n\n╞═══════════╡\n\nВыбери направление:"
-    await edit_or_send(query, text, adventurers_kb(query.from_user.id),
-                       image_url=await get_section_image("adventurers", chat_id=chat_id))
+    text = (
+        f"── 〔 🏛 ГИЛЬДИЯ ИСКАТЕЛЕЙ 〕 ──\n\n"
+        f"╭ 🍃 Добро пожаловать,\n"
+        f"├ <b>{esc(user_display_name(user))}</b>!\n"
+        f"├\n"
+        f"╰ Выбери направление:"
+    )
+    image = await get_section_image("adventurers", chat_id=chat_id)
+    await edit_or_send(query, text, adventurers_kb(query.from_user.id), image_url=image)
 
 
 @dp.callback_query(MenuCB.filter(F.action == "reputation"))
@@ -138,23 +144,23 @@ async def cb_reputation(query, callback_data, user, chat_id):
 
     reg_info = find_region_by_character(user.get("character_name"))
     reg_name_for_title = reg_info[1] if reg_info else "Тейват"
-    if " " in reg_name_for_title:
-        reg_name_for_title = reg_name_for_title.split(" ", 1)[1]
+    if " " in reg_name_for_title: reg_name_for_title = reg_name_for_title.split(" ", 1)[1]
 
     title = get_reputation_title(rep, reg_name_for_title)
     pt = "Максимум!" if level >= 10 else f"{'█' * (cur * 10 // 500)}{'░' * (10 - (cur * 10 // 500))} {cur}/500"
 
     text = (
-        f"  ─ [ 🎖️ РЕПУТАЦИЯ] ─\n"
-        f"{title}\n\n"
-        f"╭ 📊 Уровень: <b>{level} / 10</b>\n"
-        f"┆\n"
+        f"── 〔 🎖️ РЕПУТАЦИЯ 〕 ──\n\n"
+        f"╭ {title}\n"
+        f"├\n"
+        f"├ 📊 Уровень: <b>{level} / 10</b>\n"
+        f"├\n"
         f"├ 🌟 Очки: <b>{rep}</b>\n"
-        f"┆\n"
+        f"├\n"
         f"╰ 📈 Прогресс: {pt}"
     )
-    await edit_or_send(query, text, reputation_kb(query.from_user.id),
-                       image_url=await get_section_image("reputation", chat_id=chat_id))
+    image = await get_section_image("reputation", chat_id=chat_id)
+    await edit_or_send(query, text, reputation_kb(query.from_user.id), image_url=image)
 
 
 @dp.message(Command("freerole"))

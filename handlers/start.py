@@ -73,10 +73,10 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
         app = await get_application(message.from_user.id, target_chat_id)
         if app:
             status = app['status']
-            if status == 'pending':
-                return await message.answer("⏳ Ваша анкета уже на рассмотрении. Ожидайте.")
-            elif status in ('accepted', 'waiting_char', 'joined'):
-                await update_application_status(message.from_user.id, target_chat_id, 'rejected')
+            if status in ('pending', 'waiting_char'):
+                return await message.answer("⏳ Ваша анкета уже на рассмотрении или одобрена. Ожидайте.")
+            elif status == 'rejected':
+                pass
 
         await state.update_data(target_chat_id=target_chat_id)
         await send_step(message.chat.id, 0, state)
@@ -106,7 +106,7 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
     if not user["character_name"] or user.get("char_change_paid") == 1:
         if not user["gender"]:
             default_text = (
-                f"─ [ ПРИВЕТСТВИЕ ] ─\n\n"
+                f"── 〔 ✨ ПРИВЕТСТВИЕ 〕 ──\n\n"
                 f"╭ Я — Орион, твой верный\n"
                 f"├ спутник в этом мире 🧭\n"
                 f"├\n"
@@ -118,10 +118,10 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
             raw_text = await get_local_setting("text_start", chat_id, default_text)
             text = format_text(raw_text, "", DIV)
 
-            custom_img = await get_local_setting("image_start", chat_id)
+            image = await get_section_image("start", chat_id=chat_id)
 
-            if custom_img:
-                msg = await message.answer_photo(custom_img, caption=text, reply_markup=gender_kb(message.from_user.id),
+            if image:
+                msg = await message.answer_photo(image, caption=text, reply_markup=gender_kb(message.from_user.id),
                                                  parse_mode="HTML")
             else:
                 msg = await message.answer(text, reply_markup=gender_kb(message.from_user.id), parse_mode="HTML")
@@ -129,7 +129,7 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
             return
 
         text = (
-            f"─ [ ВЫБОР ПЕРСОНАЖА ] ─\n\n"
+            f"── 〔 🌸 ВЫБОР ПЕРСОНАЖА 〕 ──\n\n"
             f"╭ Рад снова тебя видеть,\n"
             f"├ Путешественник!\n"
             f"├\n"
@@ -138,10 +138,10 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
             f"├\n"
             f"╰ Выбери регион:"
         )
-        custom_img = await get_local_setting("image_regions", chat_id)
+        image = await get_section_image("regions", chat_id=chat_id)
 
-        if custom_img:
-            msg = await message.answer_photo(custom_img, caption=text, reply_markup=regions_kb(message.from_user.id),
+        if image:
+            msg = await message.answer_photo(image, caption=text, reply_markup=regions_kb(message.from_user.id),
                                              parse_mode="HTML")
         else:
             msg = await message.answer(text, reply_markup=regions_kb(message.from_user.id), parse_mode="HTML")
@@ -150,7 +150,7 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
 
     name = esc(user_display_name(user))
     default_menu = (
-        f"─ [ ГЛАВНОЕ МЕНЮ ] ─\n\n"
+        f"── 〔 🌟 ГЛАВНОЕ МЕНЮ 〕 ──\n\n"
         f"╭ 🍃 Привет, <b>{{name}}</b>!\n"
         f"├\n"
         f"├ Куда отправимся сегодня?\n"
@@ -160,10 +160,12 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
     raw_menu = await get_local_setting("text_menu", chat_id, default_menu)
     text = format_text(raw_menu, name, DIV)
 
-    custom_img = await get_local_setting("image_menu", chat_id)
+    # ВОЗВРАЩЕНО: подстановка картинки персонажа, если нет кастомной
+    fallback = get_character_image(user["character_name"]) if user["character_name"] else None
+    image = await get_section_image("menu", fallback, chat_id)
 
-    if custom_img:
-        msg = await message.answer_photo(custom_img, caption=text, reply_markup=main_menu_kb(message.from_user.id),
+    if image:
+        msg = await message.answer_photo(image, caption=text, reply_markup=main_menu_kb(message.from_user.id),
                                          parse_mode="HTML")
     else:
         msg = await message.answer(text, reply_markup=main_menu_kb(message.from_user.id), parse_mode="HTML")
@@ -182,13 +184,14 @@ async def cb_gender(query: types.CallbackQuery, callback_data: MenuCB):
     user = await get_user(query.from_user.id, chat_id)
 
     if user and user.get("character_name"):
-        text = f"─ [ ОТЛИЧНО! ] ─\n\n╭ Пол успешно обновлен.\n╰ Твой персонаж: <b>{esc(user['character_name'])}</b>"
-        custom_img = await get_local_setting("image_menu", chat_id)
-        await edit_or_send(query, text, main_menu_kb(query.from_user.id), image_url=custom_img or "")
+        text = f"── 〔 💖 ОТЛИЧНО! 〕 ──\n\n╭ Пол успешно обновлен.\n╰ Твой персонаж: <b>{esc(user['character_name'])}</b>"
+        fallback = get_character_image(user["character_name"]) if user["character_name"] else None
+        image = await get_section_image("menu", fallback, chat_id)
+        await edit_or_send(query, text, main_menu_kb(query.from_user.id), image_url=image)
     else:
-        text = f"─ [ ОТЛИЧНО! ] ─\n\n╭ Теперь выбери регион,\n╰ откуда родом твой герой 🎭"
-        custom_img = await get_local_setting("image_regions", chat_id)
-        await edit_or_send(query, text, regions_kb(query.from_user.id), image_url=custom_img or "")
+        text = f"── 〔 💖 ОТЛИЧНО! 〕 ──\n\n╭ Теперь выбери регион,\n╰ откуда родом твой герой 🎭"
+        image = await get_section_image("regions", chat_id=chat_id)
+        await edit_or_send(query, text, regions_kb(query.from_user.id), image_url=image)
 
 
 @dp.callback_query(MenuCB.filter(F.action == "regions"))
@@ -196,9 +199,9 @@ async def cb_regions(query: types.CallbackQuery, callback_data: MenuCB):
     if query.from_user.id != callback_data.owner_id:
         await query.answer("⚠️ Это чужое меню!", show_alert=True)
         return
-    text = f"─ [ ВЫБОР РЕГИОНА ] ─\n\n╭ Выбери регион,\n╰ Путешественник:"
-    custom_img = await get_local_setting("image_regions", query.message.chat.id)
-    await edit_or_send(query, text, regions_kb(query.from_user.id), image_url=custom_img or "")
+    text = f"── 〔 🌍 ВЫБОР РЕГИОНА 〕 ──\n\n╭ Выбери регион,\n╰ Путешественник:"
+    image = await get_section_image("regions", chat_id=query.message.chat.id)
+    await edit_or_send(query, text, regions_kb(query.from_user.id), image_url=image)
 
 
 @dp.callback_query(RegionCB.filter())
@@ -209,14 +212,13 @@ async def cb_region(query: types.CallbackQuery, callback_data: RegionCB):
     chat_id = query.message.chat.id
     taken = await get_taken_characters(chat_id)
     region_name = REGIONS[callback_data.region]
-    text = f"─ [ РЕГИОН: {region_name.upper()} ] ─\n\n╭ Выбери того, кто станет\n╰ твоим воплощением ✨"
+    text = f"── 〔 🎭 РЕГИОН: {region_name.upper()} 〕 ──\n\n╭ Выбери того, кто станет\n╰ твоим воплощением ✨"
 
-    custom_img = await get_local_setting(f"image_region_{callback_data.region}", chat_id)
-    if not custom_img:
-        custom_img = await get_local_setting("image_regions", chat_id)
+    image = await get_section_image(f"region_{callback_data.region}", chat_id=chat_id)
+    if not image:
+        image = await get_section_image("regions", chat_id=chat_id)
 
-    await edit_or_send(query, text, characters_kb(query.from_user.id, callback_data.region, taken),
-                       image_url=custom_img or "")
+    await edit_or_send(query, text, characters_kb(query.from_user.id, callback_data.region, taken), image_url=image)
 
 
 @dp.callback_query(CharCB.filter())
@@ -238,28 +240,6 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
     await update_user(query.from_user.id, chat_id, character_name=name, char_change_paid=0)
     await update_chat_list(chat_id)
 
-    # ИСПРАВЛЕНИЕ: ВЫДАЧА ТЕГА ПЕРЕНЕСЕНА ВЫШЕ ПРОВЕРКИ АНКЕТЫ
-    chat = query.message.chat
-    ts = ""
-
-    if chat.type in ("group", "supergroup"):
-        try:
-            result = await bot.set_chat_member_tag(
-                chat_id=chat.id,
-                user_id=query.from_user.id,
-                tag=name[:16]
-            )
-            print(f"DEBUG: Результат set_chat_member_tag: {result}")
-
-            if result:
-                ts = "\n\n👑 Тег установлен!"
-            else:
-                ts = f"\n\n⚠️ <b>Тег не выдан.</b> Telegram ответил: {result}"
-
-        except Exception as e:
-            print(f"Ошибка установки тега: {e}")
-            ts = f"\n\n⚠️ <b>Ошибка:</b> <code>{e}</code>"
-
     app = await get_application(query.from_user.id, chat_id)
     if app and app['status'] == 'waiting_char':
         await update_application_status(query.from_user.id, chat_id, 'joined')
@@ -277,12 +257,50 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
             await query.message.delete()
         except:
             pass
-        # Добавляем статус тега в сообщение о публикации
-        await bot.send_message(chat_id, f"✅ Анкета опубликована! Добро пожаловать в игру, {esc(name)}!{ts}",
+        await bot.send_message(chat_id, f"✅ Анкета опубликована! Добро пожаловать в игру, {esc(name)}!",
                                reply_markup=main_menu_kb(query.from_user.id))
         return
 
-    text = f"─ [ ДОБРО ПОЖАЛОВАТЬ! ] ─\n\n╭ Теперь ты — <b>{esc(name)}</b>!{ts}\n├\n╰ Орион рад за тебя! 💛"
+    chat = query.message.chat
+    ts = ""
+
+    if chat.type in ("group", "supergroup"):
+        try:
+            bot_member = await bot.get_chat_member(chat.id, bot.id)
+
+            if not bot_member.can_promote_members:
+                ts = "\n\n⚠️ <b>Ошибка:</b> У бота нет прав на выдачу титула! Включите галочку «Добавлять новых администраторов» в настройках группы."
+            else:
+                try:
+                    try:
+                        await bot.promote_chat_member(
+                            chat_id=chat.id, user_id=query.from_user.id,
+                            can_change_info=False, can_delete_messages=False, can_invite_users=False,
+                            can_restrict_members=False, can_pin_messages=False, can_promote_members=False,
+                            can_manage_chat=False, can_manage_video_chats=False
+                        )
+                    except Exception:
+                        pass
+
+                    await bot.promote_chat_member(
+                        chat_id=chat.id, user_id=query.from_user.id,
+                        can_change_info=False, can_delete_messages=False, can_invite_users=False,
+                        can_restrict_members=False, can_pin_messages=False, can_promote_members=False,
+                        can_manage_chat=False, can_manage_video_chats=True
+                    )
+
+                    await bot.set_chat_administrator_custom_title(
+                        chat_id=chat.id, user_id=query.from_user.id, custom_title=name[:16]
+                    )
+                    ts = "\n\n👑 Титул установлен!"
+                except Exception as e:
+                    print(f"Ошибка выдачи титула: {e}")
+                    ts = f"\n\n⚠️ Не удалось установить титул (Telegram заблокировал)."
+        except Exception as e:
+            print(f"Глобальная ошибка прав: {e}")
+            ts = "\n\n⚠️ Ошибка проверки прав бота."
+
+    text = f"── 〔 🎉 ДОБРО ПОЖАЛОВАТЬ! 〕 ──\n\n╭ Теперь ты — <b>{esc(name)}</b>!{ts}\n├\n╰ Орион рад за тебя! 💛"
 
     try:
         await query.message.delete()
@@ -291,7 +309,7 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
 
     char_image = get_character_image(name)
 
-    if char_image and char_image not in PLACEHOLDER_IMAGES:
+    if char_image:
         try:
             msg = await bot.send_photo(chat.id, photo=char_image, caption=text,
                                        reply_markup=main_menu_kb(query.from_user.id), parse_mode="HTML")
