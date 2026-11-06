@@ -263,18 +263,17 @@ async def edit_or_send(query, text, kb, image_url=None):
     media = None
     if image_url:
         if image_url.startswith("http"):
-            # Если это ссылка из интернета
             media = await download_image(image_url)
         elif image_url.startswith("images/"):
-            # Если это локальный файл на сервере
             try:
                 media = FSInputFile(image_url)
             except Exception as e:
                 print(f"❌ Ошибка загрузки локального файла: {e}")
         else:
-            # Если это file_id (картинка, загруженная через админку)
+            # Если это file_id (загружено через админку)
             media = image_url
 
+    # РЕЖИМ 1: Без картинки (только текст)
     if not media:
         if has_photo:
             try: await query.message.delete()
@@ -288,6 +287,7 @@ async def edit_or_send(query, text, kb, image_url=None):
                 await bot.send_message(chat_id, text, reply_markup=kb, parse_mode="HTML")
         return
 
+    # РЕЖИМ 2: С картинкой
     if has_photo:
         if len(text) > 1024:
             try: await query.message.delete()
@@ -295,13 +295,17 @@ async def edit_or_send(query, text, kb, image_url=None):
             await bot.send_message(chat_id, text, reply_markup=kb, parse_mode="HTML")
         else:
             try:
-                await query.message.edit_caption(caption=text, reply_markup=kb, parse_mode="HTML")
+                # ИСПРАВЛЕНИЕ: Используем edit_media, чтобы принудительно поменять картинку!
+                input_media = InputMediaPhoto(media=media, caption=text, parse_mode="HTML")
+                await query.message.edit_media(media=input_media, reply_markup=kb)
             except TelegramBadRequest as e:
                 if "message is not modified" in str(e): return
+                # Если не удалось отредактировать медиа - удаляем и шлем заново
                 try: await query.message.delete()
                 except: pass
                 await bot.send_photo(chat_id, media, caption=text, reply_markup=kb, parse_mode="HTML")
-            except Exception:
+            except Exception as e:
+                print(f"❌ Ошибка edit_media: {e}")
                 try: await query.message.delete()
                 except: pass
                 await bot.send_photo(chat_id, media, caption=text, reply_markup=kb, parse_mode="HTML")
