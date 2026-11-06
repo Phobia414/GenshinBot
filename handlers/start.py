@@ -160,7 +160,6 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
     raw_menu = await get_local_setting("text_menu", chat_id, default_menu)
     text = format_text(raw_menu, name, DIV)
 
-    # ВОЗВРАЩЕНО: подстановка картинки персонажа, если нет кастомной
     fallback = get_character_image(user["character_name"]) if user["character_name"] else None
     image = await get_section_image("menu", fallback, chat_id)
 
@@ -240,27 +239,9 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
     await update_user(query.from_user.id, chat_id, character_name=name, char_change_paid=0)
     await update_chat_list(chat_id)
 
-    app = await get_application(query.from_user.id, chat_id)
-    if app and app['status'] == 'waiting_char':
-        await update_application_status(query.from_user.id, chat_id, 'joined')
-        text = (
-            f"🎉 <b>У нас новенький! Встречайте!</b>\n\n"
-            f"🎭 <b>Роль:</b> {esc(name)}\n\n"
-            f"📖 <b>Опыт:</b> {esc(app['experience'])}\n"
-            f"🌟 <b>О себе:</b> {esc(app['about'])}\n"
-            f"🕒 <b>Часовой пояс:</b> {esc(app['timezone'])}\n"
-            f"⚠️ <b>Триггеры:</b> {esc(app['triggers'])}\n"
-            f"⚡ <b>Активность:</b> {esc(app['activity'])}"
-        )
-        await bot.send_message(chat_id, text, parse_mode="HTML")
-        try:
-            await query.message.delete()
-        except:
-            pass
-        await bot.send_message(chat_id, f"✅ Анкета опубликована! Добро пожаловать в игру, {esc(name)}!",
-                               reply_markup=main_menu_kb(query.from_user.id))
-        return
-
+    # =======================================================
+    # 1. СНАЧАЛА ВЫДАЕМ ТЕГ (ЧТОБЫ ОН РАБОТАЛ В ЛЮБОМ СЛУЧАЕ)
+    # =======================================================
     chat = query.message.chat
     ts = ""
 
@@ -272,6 +253,7 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
                 ts = "\n\n⚠️ <b>Ошибка:</b> У бота нет прав на выдачу титула! Включите галочку «Добавлять новых администраторов» в настройках группы."
             else:
                 try:
+                    # Снимаем права, чтобы просто выдать титул
                     try:
                         await bot.promote_chat_member(
                             chat_id=chat.id, user_id=query.from_user.id,
@@ -300,6 +282,35 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
             print(f"Глобальная ошибка прав: {e}")
             ts = "\n\n⚠️ Ошибка проверки прав бота."
 
+    # =======================================================
+    # 2. ТЕПЕРЬ ПРОВЕРЯЕМ АНКЕТУ
+    # =======================================================
+    app = await get_application(query.from_user.id, chat_id)
+    if app and app['status'] == 'waiting_char':
+        await update_application_status(query.from_user.id, chat_id, 'joined')
+        text = (
+            f"🎉 <b>У нас новенький! Встречайте!</b>\n\n"
+            f"🎭 <b>Роль:</b> {esc(name)}\n\n"
+            f"📖 <b>Опыт:</b> {esc(app['experience'])}\n"
+            f"🌟 <b>О себе:</b> {esc(app['about'])}\n"
+            f"🕒 <b>Часовой пояс:</b> {esc(app['timezone'])}\n"
+            f"⚠️ <b>Триггеры:</b> {esc(app['triggers'])}\n"
+            f"⚡ <b>Активность:</b> {esc(app['activity'])}"
+        )
+        await bot.send_message(chat_id, text, parse_mode="HTML")
+        try:
+            await query.message.delete()
+        except:
+            pass
+
+        # Отправляем приветствие с учетом статуса тега
+        await bot.send_message(chat_id, f"✅ Анкета опубликована! Добро пожаловать в игру, {esc(name)}!{ts}",
+                               reply_markup=main_menu_kb(query.from_user.id), parse_mode="HTML")
+        return
+
+    # =======================================================
+    # 3. ОБЫЧНОЕ ПРИВЕТСТВИЕ (ЕСЛИ БЕЗ АНКЕТЫ)
+    # =======================================================
     text = f"── 〔 🎉 ДОБРО ПОЖАЛОВАТЬ! 〕 ──\n\n╭ Теперь ты — <b>{esc(name)}</b>!{ts}\n├\n╰ Орион рад за тебя! 💛"
 
     try:
