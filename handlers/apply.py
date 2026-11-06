@@ -9,8 +9,7 @@ import time
 from bot_instance import bot, dp
 from config import OWNER_ID
 from constants import DIV
-from db import get_user, update_user, get_application, update_application_status, get_taken_characters, \
-    save_application, get_trusted_admins
+from db import get_user, update_user, get_application, update_application_status, get_taken_characters, save_application
 from characters import CHARACTERS
 from helpers import esc
 
@@ -26,13 +25,13 @@ class ApplyForm(StatesGroup):
 
 
 FORM_STEPS = [
-    (ApplyForm.age, "age"),
-    (ApplyForm.age_visibility, "age_visibility"),
-    (ApplyForm.experience, "experience"),
-    (ApplyForm.about, "about"),
-    (ApplyForm.timezone, "timezone"),
-    (ApplyForm.triggers, "triggers"),
-    (ApplyForm.activity, "activity")
+    (ApplyForm.age, "age"),  # 0
+    (ApplyForm.age_visibility, "age_visibility"),  # 1
+    (ApplyForm.experience, "experience"),  # 2
+    (ApplyForm.about, "about"),  # 3
+    (ApplyForm.timezone, "timezone"),  # 4
+    (ApplyForm.triggers, "triggers"),  # 5
+    (ApplyForm.activity, "activity")  # 6
 ]
 
 
@@ -81,8 +80,6 @@ async def send_step(chat_id: int, step_index: int, state: FSMContext):
 
     await bot.send_message(chat_id, text, reply_markup=b.as_markup(), parse_mode="HTML")
 
-
-# ==================== ОБРАБОТЧИКИ КНОПОК НАВИГАЦИИ ====================
 
 @dp.callback_query(F.data == "apply_nav_back", StateFilter(ApplyForm))
 async def cb_nav_back(query: types.CallbackQuery, state: FSMContext):
@@ -153,8 +150,6 @@ async def cb_age_hide(query: types.CallbackQuery, state: FSMContext):
     await send_step(query.from_user.id, 2, state)
     await query.answer()
 
-
-# ==================== ОБРАБОТЧИКИ ТЕКСТОВЫХ ОТВЕТОВ ====================
 
 @dp.message(ApplyForm.age)
 async def process_age(message: types.Message, state: FSMContext):
@@ -242,16 +237,19 @@ async def process_activity(message: types.Message, state: FSMContext):
         b.button(text="💬 Связаться", url=f"tg://user?id={message.from_user.id}")
         b.adjust(2, 1)
 
-        # ИСПРАВЛЕНИЕ: Владелец ВСЕГДА получает анкету, остальные - только если они в списке доверенных
-        admins_to_send = set([OWNER_ID])
-        trusted = await get_trusted_admins()
-        admins_to_send.update(trusted)
-
-        for admin_id in admins_to_send:
+        try:
+            admins = await bot.get_chat_administrators(data["target_chat_id"])
+            for admin in admins:
+                if not admin.user.is_bot:
+                    try:
+                        await bot.send_message(admin.user.id, text, reply_markup=b.as_markup(), parse_mode="HTML")
+                    except Exception:
+                        pass
+        except Exception as e:
             try:
-                await bot.send_message(admin_id, text, reply_markup=b.as_markup(), parse_mode="HTML")
-            except Exception as e:
-                print(f"Ошибка отправки анкеты админу {admin_id}: {e}")
+                await bot.send_message(OWNER_ID, text, reply_markup=b.as_markup(), parse_mode="HTML")
+            except:
+                pass
 
     except Exception as e:
         print(f"Ошибка при отправке анкеты: {e}")
@@ -259,7 +257,11 @@ async def process_activity(message: types.Message, state: FSMContext):
             "❌ Произошла ошибка при сохранении анкеты. Пожалуйста, напишите ответ еще раз или начните заново.")
 
 
-# --- Обработчики для владельца и админов ---
+# ЗАЩИТА ОТ ФОТО/СТИКЕРОВ В АНКЕТЕ
+@dp.message(StateFilter(ApplyForm), ~F.text)
+async def process_non_text(message: types.Message, state: FSMContext):
+    await message.answer("⚠️ Пожалуйста, отвечайте на вопросы <b>текстом</b> (сообщением).", parse_mode="HTML")
+
 
 async def is_admin_of_chat(user_id: int, chat_id: int) -> bool:
     if user_id == OWNER_ID: return True

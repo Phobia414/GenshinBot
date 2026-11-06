@@ -41,7 +41,6 @@ EDITABLE_TEXTS = {
     "text_tops": "🏆 Топы", "text_reputation": "🎖 Репутация",
 }
 
-# Базовые картинки
 EDITABLE_PHOTOS = {
     "start": "✨ Приветствие (/start)",
     "menu": "🌟 Главное меню",
@@ -49,11 +48,18 @@ EDITABLE_PHOTOS = {
     "regions": "🌍 Выбор региона (общее меню)",
     "profile": "👤 Профиль",
     "shop": "🛒 Лавка Тейвата",
+    "gacha": "🔮 Молитвы (Гача)",
     "relations": "💕 Отношения",
     "adventurers": "🏛 Гильдия искателей",
     "dungeons": "⚔️ Подземелья",
+    "artifacts": "🎒 Артефакты",
     "board": "📋 Доска занятости",
-    "guild": "🏰 Гильдии",
+    "world_boss": "🐉 Мировые боссы",
+    "guild": "🏰 Гильдии (главное)",
+    "guild_manage": "⚙ Управление гильдией",
+    "guild_members": "👥 Состав гильдии",
+    "guild_shop": "🛒 Магазин гильдии",
+    "guild_craft": "⚒ Крафт гильдии",
     "reputation": "🎖 Репутация",
     "tops": "🏆 Топы (общее)",
     "tops_balance": "💰 Топ по балансу",
@@ -67,7 +73,6 @@ EDITABLE_PHOTOS = {
     "rolelist": "📜 Баннер списка ролей (в канале)"
 }
 
-# Автоматически добавляем кнопки для каждого региона
 for reg_key, reg_name in REGIONS.items():
     clean_name = reg_name.split(" ", 1)[1] if " " in reg_name else reg_name
     EDITABLE_PHOTOS[f"region_{reg_key}"] = f"🗺 Регион: {clean_name}"
@@ -292,7 +297,7 @@ async def process_gacha_photo(message, state):
     data = await state.get_data()
     file_id = get_media_file_id(message)
     if not file_id: return await message.answer("❌ Отправь фото.")
-    await save_gacha_image(data["gacha_image_name"], file_id)
+    await save_gacha_image(data["gacha_img_name"], file_id)
     await state.set_state(None)
     b = InlineKeyboardBuilder()
     b.button(text="🎨 Ещё", callback_data=f"admin_gimg_cat_{data['gimg_cat']}_page_0")
@@ -472,8 +477,6 @@ async def cb_edit_photos(query):
     b = InlineKeyboardBuilder()
     for key, name in EDITABLE_PHOTOS.items(): b.button(text=f"⊱ {name} ⊰", callback_data=f"admin_photo_{key}")
     b.button(text="⊱ ‹ Назад ⊰", callback_data="admin_back")
-
-    # Настраиваем вывод кнопок, чтобы не было каши (по 2 штуки в ряд)
     b.adjust(1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2)
     await query.message.edit_text("🖼 **Выбери раздел:**", reply_markup=b.as_markup())
 
@@ -482,11 +485,43 @@ async def cb_edit_photos(query):
 async def cb_set_photo(query, state):
     if query.from_user.id != OWNER_ID: return
     key = query.data.replace("admin_photo_", "")
+
+    b = InlineKeyboardBuilder()
+    b.button(text="📸 Загрузить фото", callback_data=f"admin_upload_photo_{key}")
+    b.button(text="🗑 Удалить фото", callback_data=f"admin_delete_photo_{key}")
+    b.button(text="❌ Отмена", callback_data="admin_edit_photos")
+    b.adjust(1)
+
+    await query.message.edit_text(f"🖼 Управление фото для: **{EDITABLE_PHOTOS.get(key, key)}**\n\nВыбери действие:",
+                                  reply_markup=b.as_markup(), parse_mode="Markdown")
+
+
+@dp.callback_query(F.data.startswith("admin_upload_photo_"))
+async def cb_upload_photo(query, state):
+    if query.from_user.id != OWNER_ID: return
+    key = query.data.replace("admin_upload_photo_", "")
     await state.update_data(setting_key=f"image_{key}")
     await state.set_state(AdminEdit.waiting_for_photo)
     b = InlineKeyboardBuilder()
-    b.button(text="❌ Отмена", callback_data="admin_edit_photos")
+    b.button(text="❌ Отмена", callback_data=f"admin_photo_{key}")
     await query.message.edit_text(f"🖼 Отправь фото для: **{EDITABLE_PHOTOS.get(key, key)}**",
+                                  reply_markup=b.as_markup(), parse_mode="Markdown")
+
+
+@dp.callback_query(F.data.startswith("admin_delete_photo_"))
+async def cb_delete_photo(query, state):
+    if query.from_user.id != OWNER_ID: return
+    key = query.data.replace("admin_delete_photo_", "")
+
+    data = await state.get_data()
+    target_chat_id = data.get("target_chat_id", 0)
+
+    await set_local_setting(f"image_{key}", "", target_chat_id)
+    await query.answer("✅ Фото удалено! Теперь здесь будет только текст.", show_alert=True)
+
+    b = InlineKeyboardBuilder()
+    b.button(text="‹ Назад", callback_data="admin_edit_photos")
+    await query.message.edit_text(f"🖼 Фото для **{EDITABLE_PHOTOS.get(key, key)}** удалено.",
                                   reply_markup=b.as_markup(), parse_mode="Markdown")
 
 

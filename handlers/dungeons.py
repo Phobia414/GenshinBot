@@ -38,7 +38,7 @@ async def cb_dungeons(query: types.CallbackQuery, callback_data: MenuCB, user: d
         tt = f"⏱️ След. смола: {format_resin_time(RESIN_REGEN_SECONDS - (now - last) % RESIN_REGEN_SECONDS)}"
 
     default_text = (
-        f"─ [ ⚔️ ПОДЗЕМЕЛЬЯ ] ─\n\n"
+        f"── 〔 ⚔️ ПОДЗЕМЕЛЬЯ 〕 ──\n\n"
         f"╭ 💧 Смола: {{resin}} / {{resin_max}}\n"
         f"├ {{time_to_next}}\n"
         f"├\n"
@@ -127,7 +127,7 @@ async def cb_dungeon_enter(query: types.CallbackQuery, callback_data: DungeonCB,
     name = esc(user_display_name(user))
     fl = f"\n🍳 Бафф еды: +{food_value}%" if food_value else ""
     text = (
-        f"─ [ ⚔️ {d['name'].upper()} ] ─\n\n"
+        f"── 〔 ⚔️ {d['name'].upper()} 〕 ──\n\n"
         f"╭ ✨ Отличная работа, {name}!\n"
         f"├\n"
         f"├ 💰 Монет: {reward}\n"
@@ -157,7 +157,7 @@ async def cb_artifacts(query: types.CallbackQuery, callback_data: MenuCB, user: 
     total_earn = earn_b + rep_earn + fv
     total_drop = drop_b + rep_drop
     text = (
-        f"─ [ 🎒 АРТЕФАКТЫ ] ─\n\n"
+        f"── 〔 🎒 АРТЕФАКТЫ 〕 ──\n\n"
         f"╭ 💰 Баланс: {user['balance']}\n"
         f"├ 🎒 В инвентаре: {len(arts)} шт.\n"
         f"├\n"
@@ -183,8 +183,12 @@ async def cb_artifacts_inv(query: types.CallbackQuery, callback_data: ArtCB, use
         await query.answer("❌ Инвентарь пуст.", show_alert=True)
         return
 
-    text = f"─ [ 🎒 ИНВЕНТАРЬ ({len(arts)} шт.) ] ─"
-    await edit_or_send(query, text, inventory_kb(query.from_user.id, arts), image_url="")
+    display_arts = arts[:20]
+    text = f"── 〔 🎒 ИНВЕНТАРЬ ({len(arts)} шт.) 〕 ──\n"
+    if len(arts) > 20:
+        text += "<i>(Показаны первые 20. Остальные можно продать через меню предметов)</i>\n"
+
+    await edit_or_send(query, text, inventory_kb(query.from_user.id, display_arts), image_url="")
 
 
 @dp.callback_query(ArtifactCB.filter(F.action == "view"))
@@ -204,7 +208,7 @@ async def cb_art_view(query: types.CallbackQuery, callback_data: ArtifactCB, use
     stars = "⭐" * art["rarity"]
     eq_line = "\n✅ Экипирован" if eq else ""
     text = (
-        f"─ [ 🎒 {art['name']} ] ─\n\n"
+        f"── 〔 🎒 {art['name']} 〕 ──\n\n"
         f"╭ {stars}\n"
         f"├\n"
         f"├ 💎 Бонус: +{art['bonus_value']}% к {bn}\n"
@@ -282,10 +286,13 @@ async def cb_art_sell(query: types.CallbackQuery, callback_data: ArtifactCB, use
 
     arts = await get_user_artifacts(query.from_user.id, chat_id)
     if arts:
-        text = f"─ [ 🎒 ИНВЕНТАРЬ ({len(arts)} шт.) ] ─"
-        await edit_or_send(query, text, inventory_kb(query.from_user.id, arts), image_url="")
+        display_arts = arts[:20]
+        text = f"── 〔 🎒 ИНВЕНТАРЬ ({len(arts)} шт.) 〕 ──\n"
+        if len(arts) > 20:
+            text += "<i>(Показаны первые 20)</i>\n"
+        await edit_or_send(query, text, inventory_kb(query.from_user.id, display_arts), image_url="")
     else:
         b = InlineKeyboardBuilder()
         b.button(text="‹ К артефактам", callback_data=MenuCB(action="artifacts", owner_id=query.from_user.id))
-        text = f"─ [ 🎒 ИНВЕНТАРЬ ] ─\n\n╭ Пусто.\n╰"
+        text = f"── 〔 🎒 ИНВЕНТАРЬ 〕 ──\n\n╭ Пусто.\n╰"
         await edit_or_send(query, text, b.as_markup(), image_url="")

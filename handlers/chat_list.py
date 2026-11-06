@@ -17,7 +17,6 @@ import state
 
 
 async def update_chat_list(group_id: int):
-    return False # Отключение списка вручную
     channel_id, msg_id = await get_group_channel(group_id)
     if not channel_id or not msg_id:
         return False
@@ -26,7 +25,6 @@ async def update_chat_list(group_id: int):
     font_style = await get_group_font(group_id)
     custom_fonts = await get_custom_names(group_id)
 
-    # ИСПРАВЛЕНИЕ 1: Нормализуем имена из БД, чтобы они точно совпадали с базой персонажей
     taken_users = {}
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
@@ -34,10 +32,9 @@ async def update_chat_list(group_id: int):
                 "SELECT character_name, search_rp_partner FROM users WHERE character_name IS NOT NULL AND character_name != '' AND chat_id = ?",
                 (group_id,)) as cur:
             for row in await cur.fetchall():
-                norm_db_name = normalize_character_name(row["character_name"])
-                taken_users[norm_db_name] = row["search_rp_partner"] or ""
+                taken_users[row["character_name"]] = row["search_rp_partner"] or ""
 
-    lines = ["▰▰▰ 〔 Список ролей 〕 ▰▰▰\n"]
+    lines = ["▰▰▰ 〔 Список персонажей 〕 ▰▰▰\n"]
 
     for reg_key, reg_name in REGIONS.items():
         display_reg = reg_name.split(" ", 1)[1] if " " in reg_name else reg_name
@@ -59,9 +56,8 @@ async def update_chat_list(group_id: int):
             if norm_name in custom_fonts:
                 display_name = custom_fonts[norm_name]
 
-            # ИСПРАВЛЕНИЕ 2: Проверяем наличие нормализованного имени в базе
-            if norm_name in taken_users:
-                partner = taken_users[norm_name]
+            if ch in taken_users:
+                partner = taken_users[ch]
                 if partner:
                     searching.append(f"{partner} (Для {display_name})")
                 else:
@@ -89,9 +85,7 @@ async def update_chat_list(group_id: int):
     inner_text = "\n\n".join(lines)
     full_text = f"<b><code>{inner_text}</code></b>"
 
-    # === РЕЖИМ 1: Текст короткий (до 1024 символов) ===
     if len(full_text) <= 1024:
-        # Если есть старое текстовое сообщение от длинного списка, удаляем его
         if text_msg_id:
             try:
                 await bot.delete_message(chat_id=channel_id, message_id=int(text_msg_id))
@@ -100,17 +94,11 @@ async def update_chat_list(group_id: int):
             await set_local_setting("list_text_msg", "", group_id)
 
         try:
-            await bot.edit_message_caption(
-                chat_id=channel_id,
-                message_id=msg_id,
-                caption=full_text,
-                parse_mode="HTML"
-            )
+            await bot.edit_message_caption(chat_id=channel_id, message_id=msg_id, caption=full_text, parse_mode="HTML")
             return True
         except TelegramBadRequest as e:
             if "message is not modified" in str(e):
                 return True
-            # Если отредактировать не вышло (например, сменилось фото), пытаемся обновить медиа
             try:
                 custom_img = await get_local_setting("image_rolelist", group_id)
                 media = InputMediaPhoto(media=custom_img or FSInputFile("images/list_banner.jpg"), caption=full_text,
@@ -118,35 +106,35 @@ async def update_chat_list(group_id: int):
                 await bot.edit_message_media(chat_id=channel_id, message_id=msg_id, media=media)
                 return True
             except Exception as e2:
-                print(f"❌ Ошибка при редактировании фото: {e2}")
-                return False
+                print(f"❌ Ошибка при редактировании (сообщение удалено?): {e2}")
+                try:
+                    custom_img = await get_local_setting("image_rolelist", group_id)
+                    new_msg = await bot.send_photo(channel_id, custom_img or FSInputFile("images/list_banner.jpg"),
+                                                   caption=full_text, parse_mode="HTML")
+                    await set_group_channel(group_id, channel_id, new_msg.message_id)
+                    try:
+                        await bot.pin_chat_message(channel_id, new_msg.message_id, disable_notification=True)
+                    except:
+                        pass
+                    return True
+                except Exception as e3:
+                    return False
 
-    # === РЕЖИМ 2: Текст длинный (больше 1024 символов) ===
     else:
         caption = "👇 Список персонажей ниже 👇"
-
-        # ИСПРАВЛЕНИЕ 3: Пытаемся отредактировать существующие сообщения, а не удаляем их
         if text_msg_id:
             try:
-                # Сначала редактируем подпись у фото
                 try:
                     await bot.edit_message_caption(chat_id=channel_id, message_id=msg_id, caption=caption,
                                                    parse_mode="HTML")
                 except TelegramBadRequest:
-                    pass  # Игнорируем, если подпись не изменилась
-
-                # Затем редактируем сам текст
-                await bot.edit_message_text(
-                    chat_id=channel_id,
-                    message_id=int(text_msg_id),
-                    text=full_text,
-                    parse_mode="HTML"
-                )
+                    pass
+                await bot.edit_message_text(chat_id=channel_id, message_id=int(text_msg_id), text=full_text,
+                                            parse_mode="HTML")
                 return True
             except Exception as e:
-                print(f"⚠️ Не удалось отредактировать старые сообщения (возможно, удалены), создаем новые: {e}")
+                print(f"⚠️ Не удалось отредактировать, создаем новые: {e}")
 
-        # Если отредактировать не удалось (сообщений нет), создаем с нуля
         try:
             await bot.delete_message(chat_id=channel_id, message_id=msg_id)
         except Exception:
@@ -159,25 +147,15 @@ async def update_chat_list(group_id: int):
 
         custom_img = await get_local_setting("image_rolelist", group_id)
         try:
-            if custom_img:
-                photo_msg = await bot.send_photo(channel_id, custom_img, caption=caption, parse_mode="HTML")
-            else:
-                photo_msg = await bot.send_photo(channel_id, FSInputFile("images/list_banner.jpg"), caption=caption,
-                                                 parse_mode="HTML")
-        except Exception as e:
-            print(f"❌ Ошибка отправки фото: {e}")
-            return False
-
-        try:
+            photo_msg = await bot.send_photo(channel_id, custom_img or FSInputFile("images/list_banner.jpg"),
+                                             caption=caption, parse_mode="HTML")
             text_msg = await bot.send_message(channel_id, full_text, parse_mode="HTML",
                                               reply_to_message_id=photo_msg.message_id)
         except Exception as e:
-            print(f"❌ Ошибка отправки текста: {e}")
             return False
 
         await set_group_channel(group_id, channel_id, photo_msg.message_id)
         await set_local_setting("list_text_msg", text_msg.message_id, group_id)
-
         try:
             await bot.pin_chat_message(channel_id, photo_msg.message_id, disable_notification=True)
         except Exception:
