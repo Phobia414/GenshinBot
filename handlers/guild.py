@@ -48,17 +48,18 @@ async def cb_guild(query: types.CallbackQuery, callback_data: MenuCB, user: dict
         if g and g["owner_id"] == query.from_user.id:
             is_owner = True
 
-        title_line = "\n🔥 <b>НЕПОКОРНЫЕ</b> 🔥" if g.get("is_unbroken") else ""
+        title_line = "\n🔥 НЕПОКОРНЫЕ 🔥" if g.get("is_unbroken") else ""
         desc_text = f"\n\n📜 Описание: {esc(g['description'])}" if g and g.get('description') else ""
         members = await get_guild_members(g['guild_id'])
         members_count = len(members)
         max_slots = g.get('max_members', 5)
 
         default_text = (
-            f"─ [ 🏰 ГИЛЬДИЯ ] ─\n\n"
-            f"🛡 <b>{esc(g['name']).upper()}</b>{title_line}\n"
+            f"— [ 🏰 ГИЛЬДИЯ ] —\n\n"
+            f"🛡 <b>{esc(g['name']).upper()}</b>{title_line}\n\n"
             f"👑 Ранг: <b>{esc(user['guild_rank'])}</b>\n"
-            f"💰 Вклад: <b>{user['guild_contribution']}</b>\n"
+            f"💰 Личный вклад: <b>{user['guild_contribution']}</b>\n"
+            f"💰 Казна: <b>{g['treasury']}</b>\n"
             f"📊 Уровень: <b>{g.get('level', 1)}</b>\n"
             f"👥 Слоты: <b>{members_count} / {max_slots}</b>{desc_text}"
         )
@@ -67,9 +68,9 @@ async def cb_guild(query: types.CallbackQuery, callback_data: MenuCB, user: dict
         img = g.get("image_url") if g and g.get("image_url") else await get_local_setting("image_guild", chat_id)
     else:
         default_text = (
-            f"─ [ 🏰 ГИЛЬДИИ ] ─\n\n"
-            f"🍃 {esc(user_display_name(user))}, ты пока без гильдии.\n"
-            f"Создай за {GUILD_CREATE_PRICE} монет или вступи в существующую.\n"
+            f"— [ 🏰 ГИЛЬДИИ ] —\n\n"
+            f"🍃 {esc(user_display_name(user))}, ты пока без гильдии.\n\n"
+            f"Создай за {GUILD_CREATE_PRICE} монет или вступи в существующую.\n\n"
             f"🎖️ За создание: +{REP_PER_GUILD_CREATE} репутации"
         )
         raw_text = await get_local_setting("text_guild", chat_id, default_text)
@@ -85,8 +86,8 @@ async def render_guild_manage(query: types.CallbackQuery, user: dict, chat_id: i
         await query.answer("❌ Только лидер.", show_alert=True)
         return
     text = (
-        f"─ [ ⚙️ УПРАВЛЕНИЕ ] ─\n\n"
-        f"🛡 <b>{esc(g['name'])}</b>\n"
+        f"— [ ⚙️ УПРАВЛЕНИЕ ] —\n\n"
+        f"🛡 <b>{esc(g['name'])}</b>\n\n"
         f"💡 /disbandguild — распустить\n"
         f"💡 /donate Сумма — пополнить казну\n"
         f"💡 /transfer_ally Сумма — передать союзу"
@@ -117,7 +118,7 @@ async def render_guild_members(query: types.CallbackQuery, user: dict, chat_id: 
     g = await get_guild(user["guild_id"])
     members = await get_guild_members(user["guild_id"])
     is_owner = g and g["owner_id"] == query.from_user.id
-    text = f"─ [ 👥 СОСТАВ ГИЛЬДИИ ] ─\n\nНажми на участника, чтобы управлять им:\n\nВсего: {len(members)} чел."
+    text = f"— [ 👥 СОСТАВ ГИЛЬДИИ ] —\n\nНажми на участника, чтобы управлять им:\n\nВсего: {len(members)} чел."
     img = await get_local_setting("image_guild_members", chat_id)
     await edit_or_send(query, text, guild_members_kb(query.from_user.id, members, is_owner), image_url=img or "")
 
@@ -145,8 +146,8 @@ async def render_gmem_view(query: types.CallbackQuery, user: dict, chat_id: int,
         return
     is_owner = g["owner_id"] == query.from_user.id
     text = (
-        f"─ [ 👤 УЧАСТНИК ] ─\n\n"
-        f"🎭 <b>{esc(target['character_name'])}</b>\n"
+        f"— [ 👤 УЧАСТНИК ] —\n\n"
+        f"🎭 <b>{esc(target['character_name'])}</b>\n\n"
         f"👑 Ранг: <b>{esc(target['guild_rank'])}</b>\n"
         f"💰 Вклад: <b>{target['guild_contribution']}</b>"
     )
@@ -213,13 +214,13 @@ async def render_guild_craft(query: types.CallbackQuery, user: dict, chat_id: in
     req_p = count * 2
     req_b = count * 1
     text = (
-        f"─ [ ⚒ КРАФТ БАФФОВ ] ─\n\n"
-        f"Скрафти награду для всех участников (сгорает через 14 дней).\n"
+        f"— [ ⚒ КРАФТ БАФФОВ ] —\n\n"
+        f"Скрафти награду для всех участников (сгорает через 14 дней).\n\n"
         f"💬 Сообщения: {stats['m']} / {req_m}\n"
         f"🎭 Стикеры: {stats['s']} / {req_s}\n"
         f"↩️ Ответы: {stats['r']} / {req_r}\n"
         f"🖼 Фото: {stats['p']} / {req_p}\n"
-        f"🐉 Убито боссов: {stats['b']} / {req_b}\n"
+        f"🐉 Убито боссов: {stats['b']} / {req_b}\n\n"
         f"🎁 Награда: Баффы на 14 дней + 500-1000 монет в казну + 50-100 💎\n"
         f"<i>(Любой 1 участник может нафармить это сам)</i>"
     )
@@ -250,10 +251,10 @@ async def do_guild_craft(query: types.CallbackQuery, item_type: str, user: dict,
     stats = await get_guild_craft_stats(g["guild_id"])
     members = await get_guild_members(g["guild_id"])
     count = max(5, len(members))
-    req_m = count * 400;
-    req_s = count * 40;
-    req_r = count * 200;
-    req_p = count * 2;
+    req_m = count * 400
+    req_s = count * 40
+    req_r = count * 200
+    req_p = count * 2
     req_b = count * 1
     if stats['m'] < req_m or stats['s'] < req_s or stats['r'] < req_r or stats['p'] < req_p or stats['b'] < req_b:
         await query.answer("❌ Недостаточно ресурсов.", show_alert=True)
@@ -304,7 +305,7 @@ async def cb_guild_shop(query: types.CallbackQuery, user: dict, chat_id: int, st
     g = await get_guild(user["guild_id"])
     if not g or g["owner_id"] != query.from_user.id:
         return await query.answer("❌ Только лидер.", show_alert=True)
-    text = f"─ [ 🛒 МАГАЗИН ГИЛЬДИИ ] ─\n\n💰 Казна: {g['treasury']}\n\nВыбери товар:"
+    text = f"— [ 🛒 МАГАЗИН ГИЛЬДИИ ] —\n\n💰 Казна: {g['treasury']}\n\nВыбери товар:"
     img = await get_local_setting("image_guild_shop", chat_id)
     await edit_or_send(query, text, guild_shop_kb(query.from_user.id), image_url=img or "")
 
@@ -316,11 +317,20 @@ async def cb_guild_shop_buy(query: types.CallbackQuery, user: dict, chat_id: int
     g = await get_guild(user["guild_id"])
     if not g or g["owner_id"] != query.from_user.id:
         return await query.answer("❌ Только лидер.", show_alert=True)
+
     if action == "slots":
         cost = 5000
-        if g["treasury"] < cost: return await query.answer("❌ Недостаточно монет в казне.", show_alert=True)
-        await update_guild(g["guild_id"], treasury=g["treasury"] - cost, max_members=g.get("max_members", 5) + 5)
+        if g["treasury"] < cost:
+            return await query.answer("❌ Недостаточно монет в казне.", show_alert=True)
+
+        current_bonus = g.get('bonus_slots', 0) or 0
+        if current_bonus >= 5:
+            return await query.answer("❌ Вы уже купили максимум дополнительных слотов (+5). Повышайте уровень гильдии!",
+                                      show_alert=True)
+
+        await update_guild(g["guild_id"], treasury=g["treasury"] - cost, bonus_slots=current_bonus + 5)
         await query.answer("✅ Куплено +5 слотов!", show_alert=True)
+
     elif action == "chest":
         cost = 3000
         if g["treasury"] < cost: return await query.answer("❌ Недостаточно монет в казне.", show_alert=True)
@@ -338,8 +348,9 @@ async def cb_guild_shop_buy(query: types.CallbackQuery, user: dict, chat_id: int
         await update_guild(g["guild_id"], treasury=g["treasury"] - cost)
         await update_primogems(query.from_user.id, chat_id, 160)
         await query.answer("✅ Куплено 160 примогемов!", show_alert=True)
+
     g = await get_guild(user["guild_id"])
-    text = f"─ [ 🛒 МАГАЗИН ГИЛЬДИИ ] ─\n\n💰 Казна: {g['treasury']}\n\nВыбери товар:"
+    text = f"— [ 🛒 МАГАЗИН ГИЛЬДИИ ] —\n\n💰 Казна: {g['treasury']}\n\nВыбери товар:"
     img = await get_local_setting("image_guild_shop", chat_id)
     await edit_or_send(query, text, guild_shop_kb(query.from_user.id), image_url=img or "")
 
@@ -352,7 +363,7 @@ async def cb_guild_edit_desc(query: types.CallbackQuery, state: FSMContext, user
     await state.set_state(GuildEdit.waiting_for_desc)
     b = InlineKeyboardBuilder()
     b.button(text="❌ Отмена", callback_data="guild_manage_back")
-    await edit_or_send(query, f"── 〔 📝 ОПИСАНИЕ 〕 ──\n\nОтправь новый текст описания (до 300 символов):",
+    await edit_or_send(query, f"— [ 📝 ОПИСАНИЕ ] —\n\nОтправь новый текст описания (до 300 символов):",
                        b.as_markup(), image_url="")
 
 
@@ -379,7 +390,7 @@ async def cb_guild_edit_photo(query: types.CallbackQuery, state: FSMContext, use
     b = InlineKeyboardBuilder()
     b.button(text="❌ Отмена", callback_data="guild_manage_back")
     await edit_or_send(query,
-                       f"─ [ 🖼 ФОТО ГИЛЬДИИ ] ─\n\nОтправь мне фотографию, которая будет гербом твоей гильдии.",
+                       f"— [ 🖼 ФОТО ГИЛЬДИИ ] —\n\nОтправь мне фотографию, которая будет гербом твоей гильдии.",
                        b.as_markup(), image_url="")
 
 
@@ -413,7 +424,7 @@ async def cb_guild_create(query: types.CallbackQuery, callback_data: GuildCB, us
         rep_info = f"\n🎖️ Бонус: +{REP_PER_GUILD_CREATE} репутации"
     else:
         rep_info = "\n🎖️ Бонус за создание уже был получен"
-    text = f"─ [ 💰 СОЗДАНИЕ ГИЛЬДИИ ] ─\n\nСтоимость: {GUILD_CREATE_PRICE} монет{rep_info}\n\nНапиши:\n/createguild Название"
+    text = f"— [ 💰 СОЗДАНИЕ ГИЛЬДИИ ] —\n\nСтоимость: {GUILD_CREATE_PRICE} монет{rep_info}\n\nНапиши:\n/createguild Название"
     img = await get_local_setting("image_guild_create", chat_id)
     await edit_or_send(query, text, back_kb(query.from_user.id), image_url=img or "")
 
@@ -426,9 +437,9 @@ async def cb_guild_list(query: types.CallbackQuery, callback_data: GuildCB, user
         return
     guilds = await get_all_guilds(chat_id)
     if not guilds:
-        text = f"─ [ 📜 СПИСОК ГИЛЬДИЙ ] ─\n\nПока нет гильдий."
+        text = f"— [ 📜 СПИСОК ГИЛЬДИЙ ] —\n\nПока нет гильдий."
     else:
-        text = f"─ [ 📜 СПИСОК ГИЛЬДИЙ ] ─\n\nТоп по казне:\n\nВсего: {len(guilds)}"
+        text = f"— [ 📜 СПИСОК ГИЛЬДИЙ ] —\n\nТоп по уровню и казне:\n\nВсего: {len(guilds)}"
     img = await get_local_setting("image_guild_list", chat_id)
     await edit_or_send(query, text, guild_list_kb(query.from_user.id, guilds), image_url=img or "")
 
@@ -451,7 +462,7 @@ async def cb_guild_join(query: types.CallbackQuery, callback_data: GuildCB, user
         await query.answer("❌ В гильдии нет свободных мест!", show_alert=True)
         return
     await update_user(query.from_user.id, chat_id, guild_id=g["guild_id"], guild_rank="Участник", guild_contribution=0)
-    text = f"─ [ 🎉 ДОБРО ПОЖАЛОВАТЬ! ] ─\n\nТы вступил(а) в\n\n«{esc(g['name'])}»!"
+    text = f"— [ 🎉 ДОБРО ПОЖАЛОВАТЬ! ] —\n\nТы вступил(а) в\n\n«{esc(g['name'])}»!"
     await edit_or_send(query, text, back_kb(query.from_user.id), image_url="")
 
 
@@ -459,21 +470,33 @@ async def cb_guild_join(query: types.CallbackQuery, callback_data: GuildCB, user
 @inject_user
 async def cb_guild_info(query: types.CallbackQuery, callback_data: GuildCB, user: dict, chat_id: int):
     if query.from_user.id != callback_data.owner_id: return
-    if not user["guild_id"]: return await query.answer("❌ Ты не в гильдии.", show_alert=True)
+    if not user["guild_id"]:
+        return await query.answer("❌ Ты не в гильдии.", show_alert=True)
+
     g = await get_guild(user["guild_id"])
-    if not g: return await query.answer("❌ Не найдено", show_alert=True)
+    if not g:
+        return await query.answer("❌ Не найдено", show_alert=True)
+
     members = await get_guild_members(g["guild_id"])
     created = datetime.fromtimestamp(g["created_at"], timezone.utc).strftime("%d.%m.%Y")
+
     text = (
-        f"─ [ 🏰 ГИЛЬДИЯ «{esc(g['name']).upper()}» ] ─\n\n"
+        f"— [ 🏰 ГИЛЬДИЯ «{esc(g['name']).upper()}» ] —\n\n"
         f"👑 Лидер: {esc(g['owner_name'])}\n"
-        f"📅 Создана: {created}\n"
-        f"👥 Участники: {len(members)}/{g.get('max_members', 5)}\n"
-        f"💰 Казна: {g['treasury']}\n"
-        f"📊 Очки недели: {g['week_points']}"
+        f"📅 Создана: {created}\n\n"
+        f"📜 <b>Описание:</b>\n"
+        f"<i>{esc(g.get('description') or 'Пока нет описания...')}</i>\n\n"
+        f"📊 Уровень: <b>{g.get('level', 1)}</b>\n"
+        f"👥 Участники: <b>{len(members)} / {g.get('max_members', 5)}</b>\n"
+        f"💰 Казна: <b>{g['treasury']}</b> монет\n"
+        f"🏆 Очки недели: <b>{g.get('week_points', 0)}</b>"
     )
+
+    # Подтягиваем картинку гильдии (если загружена) или стандартную
+    img = g.get("image_url") if g and g.get("image_url") else await get_local_setting("image_guild", chat_id)
+
     await edit_or_send(query, text, guild_menu_kb(query.from_user.id, True, g["owner_id"] == query.from_user.id),
-                       image_url="")
+                       image_url=img or "")
 
 
 @dp.callback_query(GuildCB.filter(F.action == "treasury"))
@@ -483,11 +506,11 @@ async def cb_guild_treasury(query: types.CallbackQuery, callback_data: GuildCB, 
     if not user["guild_id"]: return await query.answer("❌ Ты не в гильдии.", show_alert=True)
     g = await get_guild(user["guild_id"])
     text = (
-        f"─ [ 💰 КАЗНА ГИЛЬДИИ ] ─\n\n"
-        f"«{esc(g['name'])}»\n"
-        f"В казне: {g['treasury']} монет\n"
+        f"— [ 💰 КАЗНА ГИЛЬДИИ ] —\n\n"
+        f"«{esc(g['name'])}»\n\n"
+        f"В казне: <b>{g['treasury']}</b> монет\n\n"
         f"Пополнить:\n"
-        f"/donate Сумма\n"
+        f"/donate Сумма\n\n"
         f"🎖️ За каждые {REP_PER_DONATE_UNIT} монет: +1 репутации"
     )
     b = InlineKeyboardBuilder()
@@ -504,7 +527,7 @@ async def cb_guild_leave(query: types.CallbackQuery, callback_data: GuildCB, use
     if g and g["owner_id"] == query.from_user.id:
         return await query.answer("❌ Владелец не может выйти. Используй /disbandguild", show_alert=True)
     await update_user(query.from_user.id, chat_id, guild_id=0, guild_rank="Участник", guild_contribution=0)
-    text = f"─ [ 👋 ПОКА! ] ─\n\nТы вышел(ла) из гильдии."
+    text = f"— [ 👋 ПОКА! ] —\n\nТы вышел(ла) из гильдии."
     await edit_or_send(query, text, back_kb(query.from_user.id), image_url="")
 
 
@@ -513,10 +536,10 @@ async def cb_guild_leave(query: types.CallbackQuery, callback_data: GuildCB, use
 async def cb_guild_top(query: types.CallbackQuery, user: dict, chat_id: int):
     guilds = await get_all_guilds(chat_id, 10)
     if not guilds: return await query.answer("Пока нет гильдий.", show_alert=True)
-    text = f"─ [ 🏆 ТОП ГИЛЬДИЙ ] ─\n\n"
+    text = f"— [ 🏆 ТОП ГИЛЬДИЙ ] —\n\n"
     for i, g in enumerate(guilds, 1):
         medal = "🥇" if i == 1 else ("🥈" if i == 2 else ("🥉" if i == 3 else f"{i}."))
-        title = " 🔥<b>НЕПОКОРНЫЕ</b>🔥" if g.get("is_unbroken") else ""
+        title = " 🔥НЕПОКОРНЫЕ🔥" if g.get("is_unbroken") else ""
         text += f"{medal} {esc(g['name'])}{title}\n📊 Ур: {g.get('level', 1)} | 💰 Казна: {g['treasury']}\n👥 {g.get('members', 0)}/{g.get('max_members', 5)}\n\n"
     b = InlineKeyboardBuilder()
     b.button(text="⊱ ‹ Назад ⊰", callback_data=MenuCB(action="guild", owner_id=query.from_user.id))
@@ -568,7 +591,7 @@ async def cmd_createguild(message: types.Message):
     else:
         rep_line = "\n🎖️ Бонус за создание уже получен ранее"
     await message.answer(
-        f"─ [ 🏰 ГИЛЬДИЯ СОЗДАНА! ] ─\n\n«{esc(name)}»\nТы — Лидер.\n\n-{GUILD_CREATE_PRICE} монет{rep_line}\nУдачи!",
+        f"— [ 🏰 ГИЛЬДИЯ СОЗДАНА! ] —\n\n«{esc(name)}»\nТы — Лидер.\n\n-{GUILD_CREATE_PRICE} монет{rep_line}\nУдачи!",
         reply_markup=back_kb(message.from_user.id))
 
 
@@ -662,9 +685,8 @@ async def cmd_invite(message: types.Message):
     inviter = f'<a href="tg://user?id={message.from_user.id}">{esc(user["character_name"])}</a>'
 
     await message.answer(
-        f"─ [ 🏰 ПРИГЛАШЕНИЕ В ГИЛЬДИЮ ] ─\n\n"
-        f"{mention}, игрок {inviter}\n"
-        f"приглашает тебя в гильдию:\n"
+        f"— [ 🏰 ПРИГЛАШЕНИЕ В ГИЛЬДИЮ ] —\n\n"
+        f"{mention}, игрок {inviter} приглашает тебя в гильдию:\n\n"
         f"🛡 <b>{esc(g['name'])}</b>",
         reply_markup=b.as_markup(), parse_mode="HTML"
     )
@@ -676,7 +698,7 @@ async def cb_guild_invite(query: types.CallbackQuery, callback_data: GuildInvite
         return await query.answer("❌ Это приглашение не для тебя!", show_alert=True)
 
     if callback_data.action == "decline":
-        await query.message.edit_text(f"─ [ 🕊️ ОТКЛОНЕНО ] ─\n\nТы отклонил приглашение в гильдию.",
+        await query.message.edit_text(f"— [ 🕊️ ОТКЛОНЕНО ] —\n\nТы отклонил приглашение в гильдию.",
                                       parse_mode="HTML")
         return
 
@@ -696,8 +718,8 @@ async def cb_guild_invite(query: types.CallbackQuery, callback_data: GuildInvite
     name = esc(target_user["character_name"] or query.from_user.first_name)
 
     await query.message.edit_text(
-        f"─ [ 🎉 ДОБРО ПОЖАЛОВАТЬ! ] ─\n\n"
-        f"{name} вступил(а) в гильдию!\n"
+        f"— [ 🎉 ДОБРО ПОЖАЛОВАТЬ! ] —\n\n"
+        f"{name} вступил(а) в гильдию!\n\n"
         f"🛡 <b>{esc(g['name'])}</b>",
         parse_mode="HTML"
     )

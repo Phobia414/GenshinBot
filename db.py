@@ -51,7 +51,7 @@ async def init_db():
                 owner_id INTEGER, owner_name TEXT, created_at INTEGER, treasury INTEGER DEFAULT 0,
                 week_points INTEGER DEFAULT 0, description TEXT DEFAULT '', image_url TEXT DEFAULT '',
                 level INTEGER DEFAULT 1, max_members INTEGER DEFAULT 5, is_unbroken INTEGER DEFAULT 0,
-                ally_id INTEGER DEFAULT 0, UNIQUE(chat_id, name)
+                ally_id INTEGER DEFAULT 0, bonus_slots INTEGER DEFAULT 0, UNIQUE(chat_id, name)
             )
         """)
         await db.execute("""
@@ -132,6 +132,12 @@ async def init_db():
                 await db.execute(f"ALTER TABLE users ADD COLUMN {col}")
             except Exception:
                 pass  # Колонка уже существует
+
+        # Миграция для гильдий (дополнительные слоты)
+        try:
+            await db.execute("ALTER TABLE guilds ADD COLUMN bonus_slots INTEGER DEFAULT 0")
+        except Exception:
+            pass
 
 
 # ============ ДОПОЛНИТЕЛЬНЫЕ ФУНКЦИИ ИНИЦИАЛИЗАЦИИ ============
@@ -266,7 +272,30 @@ async def get_custom_names(group_id):
 
 # ============ GUILDS ============
 async def get_guild(guild_id):
-    return await fetch_one("SELECT * FROM guilds WHERE guild_id = ?", (guild_id,))
+    g = await fetch_one("SELECT * FROM guilds WHERE guild_id = ?", (guild_id,))
+    if g:
+        # Уровень: каждые 15 000 монет в казне дают +1 уровень (макс 20)
+        new_level = max(1, min(20, (g['treasury'] // 15000) + 1))
+
+        # Базовые слоты
+        base_slots = 5
+        if new_level >= 15:
+            base_slots = 20
+        elif new_level >= 10:
+            base_slots = 15
+        elif new_level >= 5:
+            base_slots = 10
+
+        bonus_slots = g.get('bonus_slots', 0) or 0
+        new_max_members = base_slots + bonus_slots
+
+        if new_level != g.get('level', 1) or g.get('max_members', 5) != new_max_members:
+            await execute("UPDATE guilds SET level = ?, max_members = ? WHERE guild_id = ?",
+                          (new_level, new_max_members, guild_id))
+            g['level'] = new_level
+            g['max_members'] = new_max_members
+
+    return g
 
 
 async def get_guild_by_name(name, chat_id):

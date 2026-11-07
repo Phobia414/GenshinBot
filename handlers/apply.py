@@ -151,9 +151,13 @@ async def cb_age_hide(query: types.CallbackQuery, state: FSMContext):
     await query.answer()
 
 
-@dp.message(ApplyForm.age)
+# =======================================================
+# ФИКС: Добавлен фильтр ~F.text.startswith("/")
+# Теперь команды (например, /start) не записываются в анкету
+# =======================================================
+
+@dp.message(ApplyForm.age, F.text, ~F.text.startswith("/"))
 async def process_age(message: types.Message, state: FSMContext):
-    if not message.text: return
     text = message.text.strip()
     if not text.isdigit():
         await message.answer("❌ Пожалуйста, напишите возраст цифрой (например: 18).")
@@ -167,37 +171,32 @@ async def process_age(message: types.Message, state: FSMContext):
     await send_step(message.chat.id, 1, state)
 
 
-@dp.message(ApplyForm.experience)
+@dp.message(ApplyForm.experience, F.text, ~F.text.startswith("/"))
 async def process_experience(message: types.Message, state: FSMContext):
-    if not message.text: return
     await state.update_data(experience=message.text)
     await send_step(message.chat.id, 3, state)
 
 
-@dp.message(ApplyForm.about)
+@dp.message(ApplyForm.about, F.text, ~F.text.startswith("/"))
 async def process_about(message: types.Message, state: FSMContext):
-    if not message.text: return
     await state.update_data(about=message.text)
     await send_step(message.chat.id, 4, state)
 
 
-@dp.message(ApplyForm.timezone)
+@dp.message(ApplyForm.timezone, F.text, ~F.text.startswith("/"))
 async def process_timezone(message: types.Message, state: FSMContext):
-    if not message.text: return
     await state.update_data(timezone=message.text)
     await send_step(message.chat.id, 5, state)
 
 
-@dp.message(ApplyForm.triggers)
+@dp.message(ApplyForm.triggers, F.text, ~F.text.startswith("/"))
 async def process_triggers(message: types.Message, state: FSMContext):
-    if not message.text: return
     await state.update_data(triggers=message.text)
     await send_step(message.chat.id, 6, state)
 
 
-@dp.message(ApplyForm.activity)
+@dp.message(ApplyForm.activity, F.text, ~F.text.startswith("/"))
 async def process_activity(message: types.Message, state: FSMContext):
-    if not message.text: return
     try:
         await state.update_data(activity=message.text)
         data = await state.get_data()

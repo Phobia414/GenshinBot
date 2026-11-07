@@ -11,25 +11,35 @@ class AutoDeleteSession(AiohttpSession):
 
         if isinstance(method, (SendMessage, SendPhoto, SendAnimation)):
             if result and hasattr(result, 'chat'):
-                if result.chat.type != 'channel':
-                    is_boss_msg = False
-                    text = getattr(method, "text", "") or getattr(method, "caption", "") or ""
-                    if "БОСС" in text.upper():
-                        is_boss_msg = True
+                chat_type = result.chat.type
 
-                    reply_markup = getattr(method, "reply_markup", None)
-                    if reply_markup and hasattr(reply_markup, "inline_keyboard"):
-                        for row in reply_markup.inline_keyboard:
-                            for button in row:
-                                cb_data = getattr(button, "callback_data", "")
-                                if cb_data and ("boss:attack" in cb_data or "gboss_attack" in cb_data):
-                                    is_boss_msg = True
-                                    break
-                            if is_boss_msg:
+                # 1. Если это ЛС (private) или канал — НИКОГДА не ставим на автоудаление
+                if chat_type not in ('group', 'supergroup'):
+                    return result
+
+                # Дальше логика только для групп
+                is_excluded_msg = False
+                text = getattr(method, "text", "") or getattr(method, "caption", "") or ""
+                text_upper = text.upper()
+
+                # 2. Исключаем созыв (/call) и сообщения боссов из автоудаления
+                if "ПОЗЫВНОЙ" in text_upper or "БОСС" in text_upper:
+                    is_excluded_msg = True
+
+                reply_markup = getattr(method, "reply_markup", None)
+                if reply_markup and hasattr(reply_markup, "inline_keyboard"):
+                    for row in reply_markup.inline_keyboard:
+                        for button in row:
+                            cb_data = getattr(button, "callback_data", "")
+                            if cb_data and ("boss:attack" in cb_data or "gboss_attack" in cb_data):
+                                is_excluded_msg = True
                                 break
+                        if is_excluded_msg:
+                            break
 
-                    if not is_boss_msg:
-                        asyncio.create_task(self.delete_later(bot, result.chat.id, result.message_id, 300))
+                # 3. Ставим таймер на удаление, если это обычное сообщение в группе
+                if not is_excluded_msg:
+                    asyncio.create_task(self.delete_later(bot, result.chat.id, result.message_id, 300))
 
         return result
 
