@@ -32,6 +32,7 @@ def format_text(text: str, name: str, div: str) -> str:
 async def cmd_start(message: types.Message, state: FSMContext, command: CommandObject):
     current_state = await state.get_state()
 
+    # 1. Продолжение заполнения анкеты (если пользователь уже начал)
     if current_state and current_state.startswith("ApplyForm"):
         data = await state.get_data()
         old_target_chat_id = data.get("target_chat_id")
@@ -51,6 +52,7 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
     chat_id = message.chat.id
     user = await _ensure_user(message.from_user.id, chat_id)
 
+    # 2. Обработка перехода по ссылке на анкету
     if command.args and command.args.startswith("apply_"):
         target_chat_id = int(command.args.replace("apply_", ""))
 
@@ -82,6 +84,54 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
         await send_step(message.chat.id, 0, state)
         return
 
+    # =======================================================
+    # 3. БЛОКИРОВКА ВСЕГО, КРОМЕ АНКЕТ, В ЛИЧНЫХ СООБЩЕНИЯХ
+    # =======================================================
+    if message.chat.type == "private":
+        # Проверяем, есть ли одобренная анкета
+        if not user["character_name"]:
+            apps = await fetch_all(
+                "SELECT chat_id, status FROM applications WHERE user_id = ? AND status IN ('accepted', 'waiting_char')",
+                (message.from_user.id,))
+            if apps:
+                target_chat_id = apps[0]["chat_id"]
+                if apps[0]["status"] == 'accepted':
+                    await update_application_status(message.from_user.id, target_chat_id, 'waiting_char')
+
+                try:
+                    expire_date = int(time.time()) + 86400
+                    link = await bot.create_chat_invite_link(target_chat_id, member_limit=1, expire_date=expire_date)
+                    await message.answer(
+                        f"🎉 <b>Ваша анкета одобрена!</b>\n\n"
+                        f"Пожалуйста, перейдите в группу по ссылке ниже. Клавиатура с выбором региона появится автоматически при входе в чат:\n\n"
+                        f"🔗 {link.invite_link}",
+                        parse_mode="HTML"
+                    )
+                except Exception:
+                    await message.answer(
+                        "🎉 <b>Ваша анкета одобрена!</b>\n\nПожалуйста, перейдите в группу и нажмите там кнопку выбора персонажа.",
+                        parse_mode="HTML")
+            else:
+                await message.answer(
+                    f"── 〔 🌸 ДОБРО ПОЖАЛОВАТЬ 〕 ──\n\n"
+                    f"╭ Я — Орион, твой верный спутник.\n"
+                    f"├\n"
+                    f"├ Заполнение анкет и игра проходят <b>только в группе</b>.\n"
+                    f"├\n"
+                    f"╰ Пожалуйста, вернись в группу и напиши /start там."
+                )
+        else:
+            await message.answer(
+                f"── 〔 🌟 ПРИВЕТ 〕 ──\n\n"
+                f"╭ Ты уже зарегистрирован как <b>{esc(user['character_name'])}</b>.\n"
+                f"╰ Все игровые меню доступны <b>только в группе</b>."
+            )
+        return  # Выходим, чтобы в ЛС не показывалось ничего лишнего
+    # =======================================================
+
+    # =======================================================
+    # 4. ЛОГИКА ДЛЯ ГРУППЫ (ВЫБОР ПОЛА И ПЕРСОНАЖА)
+    # =======================================================
     if not user["character_name"]:
         apps = await fetch_all("SELECT chat_id FROM applications WHERE user_id = ? AND status = 'accepted'",
                                (message.from_user.id,))
@@ -225,7 +275,14 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
     if query.from_user.id != callback_data.owner_id:
         await query.answer("⚠️ Это чужое меню!", show_alert=True)
         return
+
     chat_id = query.message.chat.id
+
+    # Запрет на выбор персонажа в ЛС (на всякий случай)
+    if query.message.chat.type == "private":
+        await query.answer("❌ Выбор персонажа доступен только в группе!", show_alert=True)
+        return
+
     user = await get_user(query.from_user.id, chat_id)
     name = callback_data.character
 
@@ -240,50 +297,31 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
     await update_chat_list(chat_id)
 
     # =======================================================
-    # 1. СНАЧАЛА ВЫДАЕМ ТЕГ (ЧТОБЫ ОН РАБОТАЛ В ЛЮБОМ СЛУЧАЕ)
+    # ВЫДАЧА ТЕГА УЧАСТНИКА (БЕЗ ВЫДАЧИ АДМИНКИ)
     # =======================================================
     chat = query.message.chat
     ts = ""
 
-    if chat.type in ("group", "supergroup"):
-        try:
-            bot_member = await bot.get_chat_member(chat.id, bot.id)
+    try:
+        bot_member = await bot.get_chat_member(chat.id, bot.id)
 
-            if not bot_member.can_promote_members:
-                ts = "\n\n⚠️ <b>Ошибка:</b> У бота нет прав на выдачу титула! Включите галочку «Добавлять новых администраторов» в настройках группы."
-            else:
-                try:
-                    # Снимаем права, чтобы просто выдать титул
-                    try:
-                        await bot.promote_chat_member(
-                            chat_id=chat.id, user_id=query.from_user.id,
-                            can_change_info=False, can_delete_messages=False, can_invite_users=False,
-                            can_restrict_members=False, can_pin_messages=False, can_promote_members=False,
-                            can_manage_chat=False, can_manage_video_chats=False
-                        )
-                    except Exception:
-                        pass
-
-                    await bot.promote_chat_member(
-                        chat_id=chat.id, user_id=query.from_user.id,
-                        can_change_info=False, can_delete_messages=False, can_invite_users=False,
-                        can_restrict_members=False, can_pin_messages=False, can_promote_members=False,
-                        can_manage_chat=False, can_manage_video_chats=True
-                    )
-
-                    await bot.set_chat_administrator_custom_title(
-                        chat_id=chat.id, user_id=query.from_user.id, custom_title=name[:16]
-                    )
-                    ts = "\n\n👑 Титул установлен!"
-                except Exception as e:
-                    print(f"Ошибка выдачи титула: {e}")
-                    ts = f"\n\n⚠️ Не удалось установить титул (Telegram заблокировал)."
-        except Exception as e:
-            print(f"Глобальная ошибка прав: {e}")
-            ts = "\n\n⚠️ Ошибка проверки прав бота."
+        # Проверяем, что у бота есть право управлять тегами
+        if not getattr(bot_member, "can_manage_tags", False):
+            ts = "\n\n⚠️ <b>Ошибка:</b> У бота нет права «Управление тегами» в настройках группы."
+        else:
+            # ВАЖНО: Используется ТОЛЬКО set_chat_member_tag. Метод promote_chat_member удален.
+            await bot.set_chat_member_tag(
+                chat_id=chat.id,
+                user_id=query.from_user.id,
+                tag=name[:16]
+            )
+            ts = "\n\n🏷️ Тег участника установлен!"
+    except Exception as e:
+        print(f"Ошибка выдачи тега: {e}")
+        ts = f"\n\n⚠️ Не удалось установить тег (возможно, устарела версия aiogram)."
 
     # =======================================================
-    # 2. ТЕПЕРЬ ПРОВЕРЯЕМ АНКЕТУ
+    # ПРОВЕРКА АНКЕТЫ И ПУБЛИКАЦИЯ
     # =======================================================
     app = await get_application(query.from_user.id, chat_id)
     if app and app['status'] == 'waiting_char':
@@ -303,13 +341,12 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
         except:
             pass
 
-        # Отправляем приветствие с учетом статуса тега
         await bot.send_message(chat_id, f"✅ Анкета опубликована! Добро пожаловать в игру, {esc(name)}!{ts}",
                                reply_markup=main_menu_kb(query.from_user.id), parse_mode="HTML")
         return
 
     # =======================================================
-    # 3. ОБЫЧНОЕ ПРИВЕТСТВИЕ (ЕСЛИ БЕЗ АНКЕТЫ)
+    # ОБЫЧНОЕ ПРИВЕТСТВИЕ
     # =======================================================
     text = f"── 〔 🎉 ДОБРО ПОЖАЛОВАТЬ! 〕 ──\n\n╭ Теперь ты — <b>{esc(name)}</b>!{ts}\n├\n╰ Орион рад за тебя! 💛"
 
