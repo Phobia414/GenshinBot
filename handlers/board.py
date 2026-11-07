@@ -36,12 +36,10 @@ async def cb_board(query: types.CallbackQuery, callback_data: MenuCB):
     name = esc(user_display_name(user))
     text = (
         f"─ [ 📋 ДОСКА ЗАНЯТОСТИ ] ─\n\n"
-        f"╭ 🍃 Привет, {name}!\n"
-        f"┆\n"
-        f"├ Нажми «📌 Принять» на задании, потом выполняй его.\n"
-        f"├ Монеты и репутация зачислятся автоматически.\n"
-        f"┆\n"
-        f"╰ 🎖️ Награда за задание: +{REP_PER_BOARD_TASK} репутации"
+        f"🍃 Привет, {name}!\n"
+        f"Нажми «📌 Принять» на задании, потом выполняй его.\n"
+        f"Монеты и репутация зачислятся автоматически.\n"
+        f"🎖️ Награда за задание: +{REP_PER_BOARD_TASK} репутации"
     )
 
     # Теперь get_local_setting работает
@@ -82,7 +80,7 @@ async def cb_task(query: types.CallbackQuery, callback_data: TaskCB):
     user = await get_user(query.from_user.id, chat_id)
     tasks = user["board_tasks"].split(";") if user["board_tasks"] else []
 
-    text = f"─ [ 📋 ДОСКА ЗАНЯТОСТИ ] ─\n\n╭ Задание принято!\n├\n╰ Удачи в выполнении ✨"
+    text = f"─ [ 📋 ДОСКА ЗАНЯТОСТИ ] ─\n\nЗадание принято!\n\nУдачи в выполнении ✨"
 
     custom_img = await get_local_setting("image_board", chat_id)
     await edit_or_send(query, text, board_kb(query.from_user.id, user, tasks, accepted, claimed),

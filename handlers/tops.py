@@ -17,7 +17,7 @@ async def cb_tops(query: types.CallbackQuery, callback_data: MenuCB):
     if query.from_user.id != callback_data.owner_id:
         await query.answer("⚠️ Чужое меню!", show_alert=True)
         return
-    text = f"─ [ 🏆 ТОПЫ ] ─\n\n╭ Выбери категорию:\n╰"
+    text = f"─ [ 🏆 ТОПЫ ] ─\n\nВыбери категорию:\n"
     chat_id = query.message.chat.id
 
     custom_img = await get_local_setting("image_tops", chat_id)
@@ -31,9 +31,9 @@ def _render_top(users, value_key, title):
         medal = medals.get(i, f"{i}.")
         name = esc(u.get("character_name") or "?")
         val = u.get(value_key, 0)
-        lines.append(f"╭ {medal} {name} — {val}")
+        lines.append(f"{medal} {name} — {val}")
     if lines:
-        lines.append("╰")
+        lines.append("")
 
     text = "\n".join(lines)
     if len(text) > 3800:
@@ -84,9 +84,9 @@ async def cb_top_rep(query: types.CallbackQuery, callback_data: TopCB):
         medal = medals.get(i, f"{i}.")
         name = esc(u.get("character_name") or "?")
         lvl = get_rep_level(u.get("reputation") or 0)
-        lines.append(f"╭ {medal} {name} — ур. {lvl}")
+        lines.append(f"{medal} {name} — ур. {lvl}")
     if lines:
-        lines.append("╰")
+        lines.append("")
 
     text = "\n".join(lines)
     if len(text) > 3800:
@@ -107,16 +107,16 @@ async def cb_top_guilds(query: types.CallbackQuery, callback_data: TopCB):
     guilds = await get_all_guilds(chat_id, 50)
 
     if not guilds:
-        text = f"─ [ 🏰 ТОП-50 ГИЛЬДИЙ ] ─\n\n╭ (пока никого)\n╰"
+        text = f"─ [ 🏰 ТОП-50 ГИЛЬДИЙ ] ─\n\n(пока никого)\n"
     else:
         medals = {1: "🥇", 2: "🥈", 3: "🥉"}
         lines = [f"─ [ 🏰 ТОП-50 ГИЛЬДИЙ ] ─\n"]
         for i, g in enumerate(guilds, 1):
             medal = medals.get(i, f"{i}.")
-            lines.append(f"╭ {medal} {esc(g['name'])}")
-            lines.append(f"├ 💰 {g['treasury']} · 👥 {g['members']}")
-            lines.append("├")
-        lines.append("╰")
+            lines.append(f"{medal} {esc(g['name'])}")
+            lines.append(f"💰 {g['treasury']} · 👥 {g['members']}")
+            lines.append("")
+        lines.append("")
 
         text = "\n".join(lines)
         if len(text) > 3800:

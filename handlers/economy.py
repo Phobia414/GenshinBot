@@ -32,7 +32,7 @@ async def cmd_give_primogems(message: types.Message):
     if isinstance(target_ref, str):
         target_id = await resolve_user_id(target_ref)
         if not target_id:
-            await message.answer("❌ Игрок не найден.")
+            await message.answer("❌ Участник не найден.")
             return
     else:
         target_id = target_ref
@@ -52,7 +52,7 @@ async def cmd_give_primogems(message: types.Message):
     await update_primogems(target_id, chat_id, amount)
 
     await message.answer(
-        f"💎 Ты передал **{amount}** примогемов игроку {esc(display)}!",
+        f"💎 Ты передал **{amount}** примогемов участнику {esc(display)}!",
         parse_mode="Markdown",
         reply_markup=back_kb(message.from_user.id)
     )

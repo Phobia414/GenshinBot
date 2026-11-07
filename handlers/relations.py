@@ -43,19 +43,17 @@ async def cb_relations(query: types.CallbackQuery, callback_data: MenuCB, user: 
         started = (datetime.fromtimestamp(user["rel_started"], timezone.utc).strftime("%d.%m.%Y") if user["rel_started"] else "?")
         extra = ""
         if married and user["married_at"]:
-            extra += f"\n├ 💒 Свадьба: {datetime.fromtimestamp(user['married_at'], timezone.utc).strftime('%d.%m.%Y')}"
+            extra += f"\n💒 Свадьба: {datetime.fromtimestamp(user['married_at'], timezone.utc).strftime('%d.%m.%Y')}"
         if user["child_id"]:
-            extra += f"\n├ 👶 Ребёнок: {esc(user['child_name'])}"
+            extra += f"\n👶 Ребёнок: {esc(user['child_name'])}"
 
         default_text = (
             f"─ [ ❤️ ОТНОШЕНИЯ ] ─\n\n"
-            f"╭ 💕 {{name}} + {{partner_name}}\n"
-            f"┆\n"
-            f"├ 📅 Вместе с: {{rel_started}}\n"
-            f"├ 📊 Уровень: {{rel_level}} / {{max_level}}\n"
-            f"├ ✨ Опыт: {{rel_xp}} XP\n"
-            f"├ 💍 Статус: {{rel_status}}{{extra}}\n"
-            f"╰"
+            f"💕 {{name}} + {{partner_name}}\n"
+            f"📅 Вместе с: {{rel_started}}\n"
+            f"📊 Уровень: {{rel_level}} / {{max_level}}\n"
+            f"✨ Опыт: {{rel_xp}} XP\n"
+            f"💍 Статус: {{rel_status}}{{extra}}\n"
         )
         raw_text = await get_local_setting("text_relations", chat_id, default_text)
         text = raw_text.replace("{name}", name).replace("{partner_name}", esc(user['partner_name'])).replace("{rel_started}", started).replace("{rel_level}", str(level)).replace("{max_level}", str(MAX_LEVEL)).replace("{rel_xp}", str(user['rel_xp'])).replace("{rel_status}", status).replace("{extra}", extra).replace("{div}", DIV)
@@ -63,13 +61,11 @@ async def cb_relations(query: types.CallbackQuery, callback_data: MenuCB, user: 
     else:
         default_text = (
             f"─ [ ❤️ ОТНОШЕНИЯ ] ─\n\n"
-            f"╭ 🍃 {{name}}, твоё сердце\n"
-            f"├ свободно 💌\n"
-            f"┆\n"
-            f"├ Ответь на сообщение игрока\n"
-            f"├ и напиши /propose\n"
-            f"┆\n"
-            f"╰ или укажи @username: /propose @user"
+            f"🍃 {{name}}, твоё сердце\n"
+            f"свободно 💌\n"
+            f"Ответь на сообщение игрока\n"
+            f"и напиши /propose\n"
+            f"или укажи @username: /propose @user"
         )
         raw_text = await get_local_setting("text_relations", chat_id, default_text)
         text = raw_text.replace("{name}", name).replace("{div}", DIV)
@@ -88,5 +84,5 @@ async def cb_gifts(query: types.CallbackQuery, callback_data: RelCB, user: dict,
     if not user["partner_id"]:
         await query.answer("❌ Нет партнёра.", show_alert=True)
         return
-    text = f"─ [ 🎁 ПОДАРКИ ] ─\n\n╭ Для: {esc(user['partner_name'])}\n├\n╰ 💰 Баланс: {user['balance']}"
+    text = f"─ [ 🎁 ПОДАРКИ ] ─\n\nДля: {esc(user['partner_name'])}\n💰 Баланс: {user['balance']}"
     await edit_or_send(query, text, gifts_kb(query.from_user.id), image_url="")

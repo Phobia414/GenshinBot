@@ -42,7 +42,7 @@ async def cb_menu(query, callback_data, user, chat_id):
     rep_title = get_reputation_title(rep, reg_name_for_title)
 
     text = (
-        f"── 〔 🖼 ГЛАВНОЕ МЕНЮ 〕 ──\n\n"
+        f" ─ [ 🖼 ГЛАВНОЕ МЕНЮ ] ─\n\n"
         f"╭ 🍃 <b>{name}</b> · {region_display}\n"
         f"├\n"
         f"├ 📊 Статус: {rep_title}\n"
@@ -87,20 +87,14 @@ async def cb_profile(query, callback_data, user, chat_id):
     rep_title = get_reputation_title(rep, reg_name_for_title)
 
     text = (
-        f"── 〔 🖼 ПРОФИЛЬ 〕 ──\n\n"
-        f"╭ 🍃 {name}\n"
-        f"├\n"
-        f"├ 💰 Баланс: <b>{user['balance']}</b>\n"
-        f"├\n"
-        f"├ 💎 Примогемы: <b>{user.get('primogems', 0)}</b>\n"
-        f"├\n"
-        f"├ 💧 Смола: <b>{resin} / {RESIN_MAX}</b>\n"
-        f"├\n"
-        f"├ 🎖️ Репутация: <b>{rep_title}</b>\n"
-        f"├\n"
-        f"├ {partner_line}\n"
-        f"├\n"
-        f"╰ 🏰 {guild_line}"
+        f"─ [ 🖼 ПРОФИЛЬ ] ─\n\n"
+        f"🍃 {name}\n\n"
+        f"💰 Баланс: <b>{user['balance']}</b>\n"
+        f"💎 Примогемы: <b>{user.get('primogems', 0)}</b>\n\n"
+        f"💧 Смола: <b>{resin} / {RESIN_MAX}</b>\n\n"
+        f"🎖️ Репутация: <b>{rep_title}</b>\n\n"
+        f"{partner_line}\n\n"
+        f"{guild_line}"
     )
 
     # ВОЗВРАЩЕНО: подстановка картинки персонажа, если нет кастомной
@@ -125,11 +119,10 @@ async def cb_freerole(query, callback_data, user, chat_id):
 async def cb_adventurers(query, callback_data, user, chat_id):
     if query.from_user.id != callback_data.owner_id: return
     text = (
-        f"── 〔 🏛 ГИЛЬДИЯ ИСКАТЕЛЕЙ 〕 ──\n\n"
-        f"╭ 🍃 Добро пожаловать,\n"
-        f"├ <b>{esc(user_display_name(user))}</b>!\n"
-        f"├\n"
-        f"╰ Выбери направление:"
+        f"─ [ 🏛 ГИЛЬДИЯ ИСКАТЕЛЕЙ ] ─\n\n"
+        f"🍃 Добро пожаловать,\n"
+        f"<b>{esc(user_display_name(user))}</b>!\n\n"
+        f"Выбери направление:"
     )
     image = await get_section_image("adventurers", chat_id=chat_id)
     await edit_or_send(query, text, adventurers_kb(query.from_user.id), image_url=image)
@@ -150,14 +143,11 @@ async def cb_reputation(query, callback_data, user, chat_id):
     pt = "Максимум!" if level >= 10 else f"{'█' * (cur * 10 // 500)}{'░' * (10 - (cur * 10 // 500))} {cur}/500"
 
     text = (
-        f"── 〔 🎖️ РЕПУТАЦИЯ 〕 ──\n\n"
-        f"╭ {title}\n"
-        f"├\n"
-        f"├ 📊 Уровень: <b>{level} / 10</b>\n"
-        f"├\n"
-        f"├ 🌟 Очки: <b>{rep}</b>\n"
-        f"├\n"
-        f"╰ 📈 Прогресс: {pt}"
+        f"─ [ 🎖️ РЕПУТАЦИЯ ] ─\n\n"
+        f"{title}\n\n"
+        f"📊 Уровень: <b>{level} / 10</b>\n\n"
+        f"🌟 Очки: <b>{rep}</b>\n\n"
+        f"📈 Прогресс: {pt}"
     )
     image = await get_section_image("reputation", chat_id=chat_id)
     await edit_or_send(query, text, reputation_kb(query.from_user.id), image_url=image)

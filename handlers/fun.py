@@ -31,9 +31,8 @@ async def cb_fun(query: types.CallbackQuery, callback_data: MenuCB):
 
     default_text = (
         f"─ [ 🎲 РАЗВЛЕЧЕНИЯ ] ─\n\n"
-        f"╭ 🍃 {name}, чем займёмся?\n"
-        f"┆\n"
-        f"╰ ⚔ Дуэль"
+        f"🍃 {name}, чем займёмся?\n"
+        f"⚔ Дуэль"
     )
     raw_text = await get_local_setting("text_fun", chat_id, default_text)
     text = raw_text.replace("{name}", name).replace("{div}", DIV)
@@ -52,11 +51,10 @@ async def cb_duel_help(query: types.CallbackQuery, callback_data: FunCB):
 
     default_text = (
         f"─ [ ⚔️ ДУЭЛЬ ] ─\n\n"
-        f"╭ Ответь на сообщение игрока и напиши:\n"
-        f"├ <code>/duel Сумма</code> или <code>Вызвать на дуэль Сумма</code>\n"
-        f"┆\n"
-        f"├ Или укажи его @username:\n"
-        f"╰ <code>/duel @user Сумма</code>"
+        f"Ответь на сообщение игрока и напиши:\n"
+        f"<code>/duel Сумма</code> или <code>Вызвать на дуэль Сумма</code>\n"
+        f"Или укажи его @username:\n"
+        f"<code>/duel @user Сумма</code>"
     )
     raw_text = await get_local_setting("text_duel_help", query.message.chat.id, default_text)
     text = raw_text.replace("{div}", DIV)
@@ -126,10 +124,9 @@ async def start_duel_logic(message: types.Message, target_ref, display: str, bet
 
     await message.answer(
         f"─ [ ⚔️ ВЫЗОВ НА ДУЭЛЬ ] ─\n\n"
-        f"╭ {mention}, {ch}\n"
-        f"├ вызывает тебя на дуэль!\n"
-        f"┆\n"
-        f"╰ 💰 Ставка: {bet}",
+        f"{mention}, {ch}\n"
+        f"вызывает тебя на дуэль!\n"
+        f"💰 Ставка: {bet}",
         reply_markup=b.as_markup(), parse_mode="HTML")
 
 
@@ -161,7 +158,7 @@ async def cb_duel(query: types.CallbackQuery, callback_data: DuelCB):
         return
     chat_id = query.message.chat.id
     if callback_data.action == "decline":
-        text = f"─ [ 🕊️ ОТКЛОНЕНО ] ─\n\n╭ Мирное решение!\n╰"
+        text = f"─ [ 🕊️ ОТКЛОНЕНО ] ─\n\nМирное решение!\n"
         await query.message.edit_text(text, reply_markup=back_kb(query.from_user.id), parse_mode="HTML")
         return
     ch = await get_user(callback_data.challenger_id, chat_id)
@@ -183,10 +180,8 @@ async def cb_duel(query: types.CallbackQuery, callback_data: DuelCB):
 
     text = (
         f"─ [ ⚔️ ДУЭЛЬ ЗАВЕРШЕНА ] ─\n\n"
-        f"╭ 🎲 {r1} vs {r2}\n"
-        f"┆\n"
-        f"├ 🏆 {winner_text}\n"
-        f"┆\n"
-        f"╰ 💰 Забирает {callback_data.bet} монет!"
+        f"🎲 {r1} vs {r2}\n"
+        f"🏆 {winner_text}\n\n"
+        f"💰 Забирает {callback_data.bet} монет!"
     )
     await query.message.edit_text(text, reply_markup=back_kb(query.from_user.id), parse_mode="HTML")

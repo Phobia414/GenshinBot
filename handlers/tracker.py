@@ -51,7 +51,7 @@ async def cmd_rppartner(message: types.Message):
     if len(parts) < 2:
         await message.answer(
             "Использование:\n"
-            "<code>/rppartner Имя_Роли</code> — искать напарника (можно несколько через запятую)\n"
+            "<code>/rppartner Имя_Роли</code> — искать сорола (можно несколько через запятую)\n"
             "<code>/rppartner off</code> — отменить поиск",
             parse_mode="HTML"
         )
@@ -60,10 +60,10 @@ async def cmd_rppartner(message: types.Message):
     target = parts[1].strip()
     if target.lower() == "off":
         await update_user(message.from_user.id, chat_id, search_rp_partner="")
-        await message.answer("✅ Поиск со-роли отменен.")
+        await message.answer("✅ Поиск сорола отменен.")
     else:
         await update_user(message.from_user.id, chat_id, search_rp_partner=target)
-        await message.answer(f"✅ Теперь ты ищешь со-роль: <b>{esc(target)}</b>! Твоя роль в списке помечена как ⨂.",
+        await message.answer(f"✅ Теперь ты ищешь сорола: <b>{esc(target)}</b>! Твоя роль в списке помечена как ⨂.",
                              parse_mode="HTML")
 
     await update_chat_list(chat_id)
@@ -378,14 +378,12 @@ async def show_user_card(message, user, tg_user, chat_id):
 
     text = (
         f"─ [ КАРТОЧКА ПУТЕШЕСТВЕННИКА ] ─\n\n"
-        f"╭ 🎭 {name} · ⚧ {gtext}\n"
-        f"├\n"
-        f"├ 💬 Сообщений: {user['messages_count']}\n"
-        f"├ 🎖️ Репутация: {rep_level} / 10\n"
-        f"├ 💰 Баланс: {user['balance']}\n"
-        f"├\n"
-        f"├ {partner_line}{child_line}\n"
-        f"╰ {guild_line}"
+        f"🎭 {name} · ⚧ {gtext}\n"
+        f"💬 Сообщений: {user['messages_count']}\n"
+        f"🎖️ Репутация: {rep_level} / 10\n"
+        f"💰 Баланс: {user['balance']}\n"
+        f"{partner_line}{child_line}\n"
+        f"{guild_line}"
     )
     candidates = []
     if user["character_name"]:
@@ -526,8 +524,8 @@ async def on_chat_member_update(event: types.ChatMemberUpdated):
                     mention = f'<a href="tg://user?id={affected_user.id}">{esc(affected_user.first_name)}</a>'
                     await bot.send_message(
                         event.chat.id,
-                        f"👋 {mention}, добро пожаловать в Тейват!\n\n"
-                        f"Чтобы начать играть, выбери свой пол:",
+                        f"👋 {mention}, добро пожаловать в Обитель ветра!\n\n"
+                        f"Чтобы войти во флуд, выбери свой пол:",
                         reply_markup=gender_kb(affected_user.id), parse_mode="HTML"
                     )
     except Exception as e:

@@ -29,8 +29,8 @@ async def cmd_daily(message: types.Message):
     await update_primogems(message.from_user.id, chat_id, 80)
 
     text = (
-        f"🎁 **ЕЖЕДНЕВНАЯ НАГРАДА**\n{DIV}\n\n"
-        f"Ты получил **80 Примогемов** 💎!\n\n"
+        f"🎁 [ ЕЖЕДНЕВНАЯ НАГРАДА ]\n{DIV}\n\n"
+        f"Ты получил 80 Примогемов 💎!\n\n"
         f"Заходи завтра!"
     )
     await message.answer(text, parse_mode="Markdown", reply_markup=back_kb(message.from_user.id))
