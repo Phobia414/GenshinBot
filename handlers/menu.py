@@ -43,11 +43,9 @@ async def cb_menu(query, callback_data, user, chat_id):
 
     text = (
         f" ─ [ 🖼 ГЛАВНОЕ МЕНЮ ] ─\n\n"
-        f"╭ 🍃 <b>{name}</b> · {region_display}\n"
-        f"├\n"
-        f"├ 📊 Статус: {rep_title}\n"
-        f"├\n"
-        f"╰ ⏳ В Тейвате: <b>{days}</b> дн."
+        f"🍃 <b>{name}</b> · {region_display}\n\n"
+        f"📊 Статус: {rep_title}\n\n"
+        f"⏳ В Тейвате: <b>{days}</b> дн."
     )
     final_text = format_text(await get_local_setting("text_menu", chat_id, text), user, DIV)
 

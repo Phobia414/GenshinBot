@@ -49,10 +49,10 @@ async def cb_relations(query: types.CallbackQuery, callback_data: MenuCB, user: 
 
         default_text = (
             f"─ [ ❤️ ОТНОШЕНИЯ ] ─\n\n"
-            f"💕 {{name}} + {{partner_name}}\n"
-            f"📅 Вместе с: {{rel_started}}\n"
+            f"💕 {{name}} + {{partner_name}}\n\n"
+            f"📅 Вместе с: {{rel_started}}\n\n"
             f"📊 Уровень: {{rel_level}} / {{max_level}}\n"
-            f"✨ Опыт: {{rel_xp}} XP\n"
+            f"✨ Опыт: {{rel_xp}} XP\n\n"
             f"💍 Статус: {{rel_status}}{{extra}}\n"
         )
         raw_text = await get_local_setting("text_relations", chat_id, default_text)
@@ -62,7 +62,7 @@ async def cb_relations(query: types.CallbackQuery, callback_data: MenuCB, user: 
         default_text = (
             f"─ [ ❤️ ОТНОШЕНИЯ ] ─\n\n"
             f"🍃 {{name}}, твоё сердце\n"
-            f"свободно 💌\n"
+            f"свободно 💌\n\n"
             f"Ответь на сообщение игрока\n"
             f"и напиши /propose\n"
             f"или укажи @username: /propose @user"

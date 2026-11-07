@@ -112,8 +112,8 @@ async def render_gacha_menu(message_or_query, user_id, chat_id, is_edit=True):
 
     text = (
         f"─ [ 🔮 МОЛИТВЫ ] ─\n\n"
-        f"🎰 Баннер: <b>{b_info['name']}</b>\n"
-        f"💎 Примогемы: <b>{user.get('primogems', 0)}</b>\n"
+        f"🎰 Баннер: <b>{b_info['name']}</b>\n\n"
+        f"💎 Примогемы: <b>{user.get('primogems', 0)}</b>\n\n"
         f"🔮 До гаранта 5★: <b>{b_info['pity_max'] - p5}</b>\n"
         f"🟡 До гаранта 4★: <b>{10 - p4}</b>\n"
         f"🎯 Гарант: <b>{'Да' if g5 else 'Нет (50/50)'}</b>"
@@ -168,11 +168,11 @@ async def cb_gacha_info(query, user, chat_id):
     b_info = BANNERS[user.get("gacha_banner", "event_char")]
     text = (
         f"─ [ 📜 ИНФОРМАЦИЯ ] ─\n\n"
-        f"Текущий баннер: {b_info['icon']} <b>{b_info['name']}</b>\n"
-        f"📝 {b_info['desc']}\n"
+        f"Текущий баннер: {b_info['icon']} <b>{b_info['name']}</b>\n\n"
+        f"📝 {b_info['desc']}\n\n"
         f"🔴 <b>5★</b>: 0.6% (Гарант {b_info['pity_max']})\n"
         f"🟡 <b>4★</b>: 5.1% (Гарант 10)\n"
-        f"💖 Розовая анимация — выигрыш 50/50 или гарант!"
+        f"💖 Сияние — выигрыш 50/50 или гарант!"
     )
     b = InlineKeyboardBuilder().button(text="⊱ ‹ Назад ⊰", callback_data="gacha_back")
     await edit_or_send(query, text, b.as_markup(), image_url="")

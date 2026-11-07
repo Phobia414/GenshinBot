@@ -168,7 +168,7 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
     default_menu = (
         f"─ [ 🌟 ГЛАВНОЕ МЕНЮ ] ─\n\n"
         f"🍃 Привет, <b>{{name}}</b>!\n"
-        f"Куда отправимся сегодня?\n"
+        f"Куда отправимся сегодня?\n\n"
         f"🧭 Меня создал {CREATOR_USERNAME}"
     )
     raw_menu = await get_local_setting("text_menu", chat_id, default_menu)
