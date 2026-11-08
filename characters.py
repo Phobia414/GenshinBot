@@ -178,7 +178,7 @@ CHARACTERS = {
     "Николь": {"region": "hexenzirkel", "image": "https://avatars.mds.yandex.net/i?id=5f52ba1038a6f52ca3a058805fc4367a_l-12734301-images-thumbs&n=13"},
     "Октавия": {"region": "hexenzirkel", "image": "https://avatars.mds.yandex.net/i?id=3dc0f1f3628f4d3d5bac4adb9cf5a3d7_l-8211189-images-thumbs&n=13"},
     "Иванова": {"region": "hexenzirkel", "image": "https://genshin.jmp.blue/characters/paimon/portrait"},
-    "Рэндоттир": {"region": "hexenzirkel", "image": "https://static.wikia.nocookie.net/gensin-impact/images/6/69/Rhinedottir_Teaser_Portrait.png/revision/latest/scale-to-width-down/1200?cb=20260525204739"},
+    "Рэйндоттир": {"region": "hexenzirkel", "image": "https://static.wikia.nocookie.net/gensin-impact/images/6/69/Rhinedottir_Teaser_Portrait.png/revision/latest/scale-to-width-down/1200?cb=20260525204739"},
     "Барбелот": {"region": "hexenzirkel", "image": "https://wotpack.ru/wp-content/uploads/2026/06/barbelot-v-genshin-impact-chto-izvestno-ob-astromante-trismegistus-e1781291121451.jpg"},
     "Андерсдоттер": {"region": "hexenzirkel", "image": "https://wotpack.ru/wp-content/uploads/2025/12/oblozhka-dlya-video-pro-andersdotter-genshin-impact-4qp7m.jpg"},
 

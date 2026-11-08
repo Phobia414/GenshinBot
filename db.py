@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
-        # Проверяем старые таблицы (миграция)
         for table in ["users", "guilds", "artifacts", "protected_users", "gacha_inventory", "world_boss", "guild_boss",
                       "guild_member_stats"]:
             try:
@@ -16,7 +15,6 @@ async def init_db():
             except Exception:
                 pass
 
-        # ТАБЛИЦЫ
         await db.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER, chat_id INTEGER DEFAULT 0, username TEXT DEFAULT '',
@@ -114,7 +112,6 @@ async def init_db():
         await db.execute("CREATE TABLE IF NOT EXISTS known_groups (chat_id INTEGER PRIMARY KEY)")
         await db.commit()
 
-        # Миграция: добавляем новые колонки, если их нет (для старых баз)
         missing_columns = [
             "rel_image TEXT DEFAULT ''",
             "search_rp_partner TEXT DEFAULT ''",
@@ -131,16 +128,14 @@ async def init_db():
             try:
                 await db.execute(f"ALTER TABLE users ADD COLUMN {col}")
             except Exception:
-                pass  # Колонка уже существует
+                pass
 
-        # Миграция для гильдий (дополнительные слоты)
         try:
             await db.execute("ALTER TABLE guilds ADD COLUMN bonus_slots INTEGER DEFAULT 0")
         except Exception:
             pass
 
 
-# ============ ДОПОЛНИТЕЛЬНЫЕ ФУНКЦИИ ИНИЦИАЛИЗАЦИИ ============
 async def init_settings_db(): pass
 
 
@@ -160,7 +155,6 @@ async def load_gacha_images():
         state._gacha_images[r['item_name']] = r['image_url']
 
 
-# ============ ШОРТКАТЫ ДЛЯ БД ============
 async def fetch_one(query, params=()):
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
@@ -183,7 +177,6 @@ async def execute(query, params=()):
         return cur.lastrowid
 
 
-# ============ USERS ============
 async def get_user(user_id, chat_id=0):
     return await fetch_one("SELECT * FROM users WHERE user_id = ? AND chat_id = ?", (user_id, chat_id))
 
@@ -237,7 +230,6 @@ async def get_top_reputation(chat_id=0, limit=10):
         (chat_id, limit))
 
 
-# ============ CHAT LIST / GROUP SETTINGS ============
 async def set_group_channel(group_id, channel_id, message_id):
     await execute("INSERT OR REPLACE INTO group_channels (group_id, channel_id, message_id) VALUES (?, ?, ?)",
                   (group_id, channel_id, message_id))
@@ -270,14 +262,12 @@ async def get_custom_names(group_id):
     return {r['default_name']: r['custom_name'] for r in rows}
 
 
-# ============ GUILDS ============
+# ИСПРАВЛЕНИЕ: Защита от понижения уровня гильдии
 async def get_guild(guild_id):
     g = await fetch_one("SELECT * FROM guilds WHERE guild_id = ?", (guild_id,))
     if g:
-        # Уровень: каждые 15 000 монет в казне дают +1 уровень (макс 20)
         new_level = max(1, min(20, (g['treasury'] // 15000) + 1))
 
-        # Базовые слоты
         base_slots = 5
         if new_level >= 15:
             base_slots = 20
@@ -289,11 +279,18 @@ async def get_guild(guild_id):
         bonus_slots = g.get('bonus_slots', 0) or 0
         new_max_members = base_slots + bonus_slots
 
-        if new_level != g.get('level', 1) or g.get('max_members', 5) != new_max_members:
+        # Обновляем ТОЛЬКО если новые значения больше текущих
+        current_level = g.get('level', 1)
+        current_max = g.get('max_members', 5)
+
+        final_level = max(new_level, current_level)
+        final_max = max(new_max_members, current_max)
+
+        if final_level > current_level or final_max > current_max:
             await execute("UPDATE guilds SET level = ?, max_members = ? WHERE guild_id = ?",
-                          (new_level, new_max_members, guild_id))
-            g['level'] = new_level
-            g['max_members'] = new_max_members
+                          (final_level, final_max, guild_id))
+            g['level'] = final_level
+            g['max_members'] = final_max
 
     return g
 
@@ -335,7 +332,6 @@ async def get_guild_craft_stats(guild_id):
     return row
 
 
-# ============ ARTIFACTS ============
 async def add_artifact(user_id, chat_id, slot, rarity, bonus_type, bonus_value, name):
     return await execute(
         "INSERT INTO artifacts (user_id, chat_id, slot, rarity, bonus_type, bonus_value, name) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -371,7 +367,6 @@ async def get_total_bonuses(user_id, chat_id):
     return earn, drop
 
 
-# ============ WARNS / REPUTATION ============
 async def add_warn(user_id, chat_id, amount=1):
     user = await get_user(user_id, chat_id)
     if not user: return 0
@@ -409,7 +404,6 @@ async def add_reputation(user_id, chat_id, amount=1):
     return new_rep
 
 
-# ============ RESIN ============
 RESIN_MAX = 160
 RESIN_REGEN_SECONDS = 480
 RESIN_COST_DUNGEON = 40
@@ -434,7 +428,6 @@ async def update_resin(user_id, chat_id):
     return current
 
 
-# ============ COOKING ============
 INGREDIENTS = {
     "apple": {"name": "🍎 Яблоко", "emoji": "🍎"}, "mushroom": {"name": "🍄 Гриб", "emoji": "🍄"},
     "fish": {"name": "🐟 Рыба", "emoji": "🐟"}, "meat": {"name": "🥩 Мясо", "emoji": "🥩"},
@@ -489,7 +482,6 @@ async def get_food_buff(user_id, chat_id):
     return "", 0
 
 
-# ============ BOSSES ============
 async def get_world_boss(chat_id):
     return await fetch_one("SELECT * FROM world_boss WHERE chat_id = ?", (chat_id,))
 
@@ -526,7 +518,6 @@ async def damage_guild_boss(chat_id, amount):
     return new_hp
 
 
-# ============ PROTECTED USERS / SETTINGS ============
 async def add_protected_user(user_id, chat_id, owner_id):
     await execute("INSERT OR REPLACE INTO protected_users (user_id, chat_id, owner_id) VALUES (?, ?, ?)",
                   (user_id, chat_id, owner_id))
@@ -564,7 +555,6 @@ async def set_local_setting(key, value, chat_id=0):
         await set_setting(key, value)
 
 
-# ============ CUSTOM DATA ============
 async def load_custom_data_to_state():
     import state
     rows = await fetch_all("SELECT name, image_url FROM char_photos")
@@ -600,7 +590,6 @@ async def save_gacha_image(name, url):
     await execute("INSERT OR REPLACE INTO gacha_custom_images (item_name, image_url) VALUES (?, ?)", (name, url))
 
 
-# ============ GROUPS / GACHA ============
 async def add_known_group(chat_id):
     await execute("INSERT OR IGNORE INTO known_groups (chat_id) VALUES (?)", (chat_id,))
 
@@ -635,7 +624,6 @@ async def get_gacha_inventory(user_id, chat_id):
                            (user_id, chat_id))
 
 
-# ============ APPLICATIONS ============
 async def save_application(user_id, chat_id, character_name, age, experience, about, timezone, triggers, metagaming,
                            activity):
     await execute("""
@@ -652,7 +640,6 @@ async def update_application_status(user_id, chat_id, status):
     await execute("UPDATE applications SET status = ? WHERE user_id = ? AND chat_id = ?", (status, user_id, chat_id))
 
 
-# ============ АВТО-ЧИСТКА ============
 async def get_cleanup_settings(chat_id):
     row = await fetch_one("SELECT * FROM chat_cleanup_settings WHERE chat_id = ?", (chat_id,))
     if not row:
@@ -672,7 +659,6 @@ async def update_cleanup_settings(chat_id, **kwargs):
     await execute(f"UPDATE chat_cleanup_settings SET {fields} WHERE chat_id = ?", values)
 
 
-# ============ ДОВЕРЕННЫЕ АДМИНЫ (НОВОЕ) ============
 async def add_trusted_admin(user_id: int):
     await execute("INSERT OR IGNORE INTO bot_settings (key, value) VALUES (?, ?)", (f"trusted_admin_{user_id}", "1"))
 

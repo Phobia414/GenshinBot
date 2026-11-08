@@ -32,22 +32,24 @@ def format_text(text: str, name: str, div: str) -> str:
 async def cmd_start(message: types.Message, state: FSMContext, command: CommandObject):
     current_state = await state.get_state()
 
-    # 1. Продолжение заполнения анкеты
-    if current_state and current_state.startswith("ApplyForm"):
-        data = await state.get_data()
-        old_target_chat_id = data.get("target_chat_id")
+    # 1. ИСПРАВЛЕНИЕ: Правильный сброс состояний (анкета, гильдия, админка)
+    if current_state:
+        if current_state.startswith("ApplyForm"):
+            data = await state.get_data()
+            old_target_chat_id = data.get("target_chat_id")
 
-        if command.args and command.args.startswith("apply_"):
-            new_target_chat_id = int(command.args.replace("apply_", ""))
-            if old_target_chat_id == new_target_chat_id:
-                idx = next((i for i, (st, _) in enumerate(FORM_STEPS) if st.state == current_state), 0)
-                await send_step(message.chat.id, idx, state)
-                return
+            if command.args and command.args.startswith("apply_"):
+                new_target_chat_id = int(command.args.replace("apply_", ""))
+                if old_target_chat_id == new_target_chat_id:
+                    idx = next((i for i, (st, _) in enumerate(FORM_STEPS) if st.state == current_state), 0)
+                    await send_step(message.chat.id, idx, state)
+                    return
 
-        await message.answer("⚠️ Предыдущая анкета отменена.")
-        await state.clear()
-    else:
-        await state.clear()
+            await message.answer("⚠️ Предыдущая анкета отменена.")
+            await state.clear()
+        else:
+            # Сбрасываем состояния гильдии, админки и т.д.
+            await state.clear()
 
     chat_id = message.chat.id
     user = await _ensure_user(message.from_user.id, chat_id)
@@ -64,7 +66,7 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
                 await message.answer(
                     f"✅ Вы уже зарегистрированы в этой ролевой как <b>{esc(group_user['character_name'])}</b>!\n\n"
                     f"🔗 <b>Ваша ссылка для вступления в группу:</b>\n{link.invite_link}\n\n"
-                    f"<i>Если вы хотите сменить персонажа, зайдите в группу и напишите /freerole, но надо будет купить смену персонажа. </i>",
+                    f"<i>Если вы хотите сменить персонажа, зайдите в группу и напишите /freerole</i>",
                     parse_mode="HTML"
                 )
                 return
@@ -84,9 +86,7 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
         await send_step(message.chat.id, 0, state)
         return
 
-    # =======================================================
-    # 3. РАБОТА В ЛИЧНЫХ СООБЩЕНИЯХ (ТОЛЬКО АНКЕТЫ)
-    # =======================================================
+    # 3. Работа в личных сообщениях (только анкеты)
     if message.chat.type == "private":
         apps = await fetch_all(
             "SELECT chat_id, status FROM applications WHERE user_id = ? ORDER BY status='accepted' DESC, status='waiting_char' DESC, status='pending' DESC LIMIT 1",
@@ -118,58 +118,54 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
                     "⏳ <b>Ваша анкета находится на рассмотрении у администраторов.</b>\n\nПожалуйста, ожидайте.",
                     parse_mode="HTML")
             elif status == 'joined':
-                await message.answer("✅ <b>Вы уже приняты в группу!</b>\n\nВсе меню доступно в чате группы.",
+                await message.answer("✅ <b>Вы уже приняты в игру!</b>\n\nВсе игровые меню доступны в чате группы.",
                                      parse_mode="HTML")
         else:
             await message.answer(
-                f"─ [ 🌸 ДОБРО ПОЖАЛОВАТЬ! ] ─\n\n"
-                f"Я — Орион, твой верный спутник.\n\n"
-                f"Чтобы попасть во флуд, вам нужно заполнить анкету.\n\n"
-                f"🔗 Возьмите ссылку для заполнения анкеты у администраторов группы."
+                f"── 〔 🌸 ДОБРО ПОЖАЛОВАТЬ 〕 ──\n\n"
+                f"╭ Я — Орион, твой верный спутник.\n"
+                f"├\n"
+                f"├ Чтобы попасть в ролевую, вам нужно заполнить анкету.\n"
+                f"├\n"
+                f"╰ 🔗 Возьмите ссылку для заполнения анкеты у администраторов группы."
             )
         return
-    # =======================================================
 
-    # =======================================================
-    # 4. РАБОТА В ГРУППЕ (ВЫБОР ПОЛА И ПЕРСОНАЖА)
-    # =======================================================
+    # 4. Работа в группе (выбор пола и персонажа)
     if not user["character_name"]:
-        # Если пользователь не выбрал персонажа, проверяем, одобрена ли его анкета для этой группы
         app = await get_application(message.from_user.id, chat_id)
 
         if app and app['status'] == 'accepted':
             await update_application_status(message.from_user.id, chat_id, 'waiting_char')
-            # Спрашиваем пол перед выбором региона
-            text = f"─ [ ✨ ПРИВЕТСТВИЕ ] ─\n\nДобро пожаловать в Обитель ветра!\n\nДля начала выбери свой пол:"
+            text = f"── 〔 ✨ ПРИВЕТСТВИЕ 〕 ──\n\n╭ Добро пожаловать в Тейват!\n├\n╰ Для начала выбери свой пол:"
             msg = await message.answer(text, reply_markup=gender_kb(message.from_user.id), parse_mode="HTML")
             bot_state._last_bot_msg[chat_id] = msg.message_id
             return
 
         elif app and app['status'] == 'waiting_char':
-            # Если пол уже выбран, но персонаж нет
             if not user["gender"]:
-                text = f"─ [ ✨ ПРИВЕТСТВИЕ ] ─\n\nДобро пожаловать в Обитель ветра!\n\nДля начала выбери свой пол:"
+                text = f"── 〔 ✨ ПРИВЕТСТВИЕ 〕 ──\n\n╭ Добро пожаловать в Тейват!\n├\n╰ Для начала выбери свой пол:"
                 msg = await message.answer(text, reply_markup=gender_kb(message.from_user.id), parse_mode="HTML")
             else:
-                text = f"─ [ 🌸 ВЫБОР ПЕРСОНАЖА ] ─\n\nВыбери регион, откуда родом твой герой 🎭"
+                text = f"── 〔 🌸 ВЫБОР ПЕРСОНАЖА 〕 ──\n\n╭ Выбери регион,\n╰ откуда родом твой герой 🎭"
                 msg = await message.answer(text, reply_markup=regions_kb(message.from_user.id), parse_mode="HTML")
             bot_state._last_bot_msg[chat_id] = msg.message_id
             return
         else:
-            # Если анкеты нет или она не одобрена
             try:
                 await message.delete()
             except:
                 pass
             return
 
-    # Если персонаж уже выбран — показываем главное меню
     name = esc(user_display_name(user))
     default_menu = (
-        f"─ [ 🌟 ГЛАВНОЕ МЕНЮ ] ─\n\n"
-        f"🍃 Привет, <b>{{name}}</b>!\n"
-        f"Куда отправимся сегодня?\n\n"
-        f"🧭 Меня создал {CREATOR_USERNAME}"
+        f"── 〔 🌟 ГЛАВНОЕ МЕНЮ 〕 ──\n\n"
+        f"╭ 🍃 Привет, <b>{{name}}</b>!\n"
+        f"├\n"
+        f"├ Куда отправимся сегодня?\n"
+        f"├\n"
+        f"╰ 🧭 Меня создал {CREATOR_USERNAME}"
     )
     raw_menu = await get_local_setting("text_menu", chat_id, default_menu)
     text = format_text(raw_menu, name, DIV)
@@ -197,12 +193,12 @@ async def cb_gender(query: types.CallbackQuery, callback_data: MenuCB):
     user = await get_user(query.from_user.id, chat_id)
 
     if user and user.get("character_name"):
-        text = f"─ [ 💖 ОТЛИЧНО! ] ─\n\nПол успешно обновлен.\nТвой персонаж: <b>{esc(user['character_name'])}</b>"
+        text = f"── 〔 💖 ОТЛИЧНО! 〕 ──\n\n╭ Пол успешно обновлен.\n╰ Твой персонаж: <b>{esc(user['character_name'])}</b>"
         fallback = get_character_image(user["character_name"]) if user["character_name"] else None
         image = await get_section_image("menu", fallback, chat_id)
         await edit_or_send(query, text, main_menu_kb(query.from_user.id), image_url=image)
     else:
-        text = f"─ [ 💖 ОТЛИЧНО! ] ─\n\nТеперь выбери регион, откуда родом твой герой 🎭"
+        text = f"── 〔 💖 ОТЛИЧНО! 〕 ──\n\n╭ Теперь выбери регион,\n╰ откуда родом твой герой 🎭"
         image = await get_section_image("regions", chat_id=chat_id)
         await edit_or_send(query, text, regions_kb(query.from_user.id), image_url=image)
 
@@ -212,7 +208,7 @@ async def cb_regions(query: types.CallbackQuery, callback_data: MenuCB):
     if query.from_user.id != callback_data.owner_id:
         await query.answer("⚠️ Это чужое меню!", show_alert=True)
         return
-    text = f"─ [ 🌍 ВЫБОР РЕГИОНА ] ─\n\nВыбери регион, путешественник:"
+    text = f"── 〔 🌍 ВЫБОР РЕГИОНА 〕 ──\n\n╭ Выбери регион,\n╰ Путешественник:"
     image = await get_section_image("regions", chat_id=query.message.chat.id)
     await edit_or_send(query, text, regions_kb(query.from_user.id), image_url=image)
 
@@ -225,7 +221,7 @@ async def cb_region(query: types.CallbackQuery, callback_data: RegionCB):
     chat_id = query.message.chat.id
     taken = await get_taken_characters(chat_id)
     region_name = REGIONS[callback_data.region]
-    text = f"─ [ 🎭 РЕГИОН: {region_name.upper()} ] ─\n\nВыбери того, кто станет твоим воплощением ✨"
+    text = f"── 〔 🎭 РЕГИОН: {region_name.upper()} 〕 ──\n\n╭ Выбери того, кто станет\n╰ твоим воплощением ✨"
 
     image = await get_section_image(f"region_{callback_data.region}", chat_id=chat_id)
     if not image:
@@ -242,7 +238,6 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
 
     chat_id = query.message.chat.id
 
-    # Запрет на выбор персонажа в ЛС
     if query.message.chat.type == "private":
         await query.answer("❌ Выбор персонажа доступен только в группе!", show_alert=True)
         return
@@ -260,16 +255,12 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
     await update_user(query.from_user.id, chat_id, character_name=name, char_change_paid=0)
     await update_chat_list(chat_id)
 
-    # =======================================================
-    # ВЫДАЧА ТЕГА УЧАСТНИКА (БЕЗ ВЫДАЧИ АДМИНКИ)
-    # =======================================================
+    # ВЫДАЧА ТЕГА УЧАСТНИКА
     chat = query.message.chat
     ts = ""
 
     try:
         bot_member = await bot.get_chat_member(chat.id, bot.id)
-
-        # Проверяем наличие права «Управление тегами»
         if not getattr(bot_member, "can_manage_tags", False):
             ts = "\n\n⚠️ <b>Ошибка:</b> У бота нет права «Управление тегами» в настройках группы."
         else:
@@ -278,14 +269,12 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
                 user_id=query.from_user.id,
                 tag=name[:16]
             )
-            ts = "\n\n🏷️ Роль выдана!"
+            ts = "\n\n🏷️ Тег участника установлен!"
     except Exception as e:
         print(f"Ошибка выдачи тега: {e}")
         ts = f"\n\n⚠️ Не удалось установить тег (возможно, устарела версия aiogram)."
 
-    # =======================================================
-    # ПУБЛИКАЦИЯ АНКЕТЫ И ПРИВЕТСТВИЕ
-    # =======================================================
+    # ПУБЛИКАЦИЯ АНКЕТЫ
     app = await get_application(query.from_user.id, chat_id)
     if app and app['status'] == 'waiting_char':
         await update_application_status(query.from_user.id, chat_id, 'joined')
@@ -308,7 +297,7 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
                                reply_markup=main_menu_kb(query.from_user.id), parse_mode="HTML")
         return
 
-    text = f"─ [ 🎉 ДОБРО ПОЖАЛОВАТЬ! ] ─\n\nТеперь ты — <b>{esc(name)}</b>!{ts}\n\nОрион рад за тебя! 💛"
+    text = f"── 〔 🎉 ДОБРО ПОЖАЛОВАТЬ! 〕 ──\n\n╭ Теперь ты — <b>{esc(name)}</b>!{ts}\n├\n╰ Орион рад за тебя! 💛"
 
     try:
         await query.message.delete()
@@ -329,14 +318,3 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
                                      parse_mode="HTML")
 
     bot_state._last_bot_msg[chat.id] = msg.message_id
-
-
-@dp.message(Command("freerole"))
-async def cmd_freerole(message):
-    chat_id = message.chat.id
-    user = await _ensure_user(message.from_user.id, chat_id)
-    if not user["character_name"]: return await message.answer("У тебя нет персонажа.")
-    old = user["character_name"]
-    await update_user(message.from_user.id, chat_id, character_name="")
-    await message.answer(f"✅ Роль «{esc(old)}» освобождена.\n\n⚠️ Вернуть можно за 25000 монет, купив смену персонажа.", parse_mode="HTML")
-    await update_chat_list(chat_id)
