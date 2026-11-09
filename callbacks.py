@@ -100,8 +100,13 @@ class GachaInvCB(CallbackData, prefix="ginv"):
     rarity: int = 0
     owner_id: int = 0
 
-# НОВЫЙ КОЛБЭК ДЛЯ ПРИГЛАШЕНИЙ В ГИЛЬДИЮ
 class GuildInviteCB(CallbackData, prefix="ginvite"):
     action: str
     guild_id: int
     target_id: int
+
+class ReportCB(CallbackData, prefix="rep"):
+    action: str
+
+class SubCB(CallbackData, prefix="sub"):
+    action: str

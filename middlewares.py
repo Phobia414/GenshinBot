@@ -2,7 +2,7 @@ import asyncio
 from aiogram import types
 from bot_instance import dp
 from config import OWNER_ID, CMD_COOLDOWN, CB_COOLDOWN
-from db import get_user, update_user, add_known_group
+from db import get_user, update_user, add_known_group, get_setting
 from helpers import _ensure_user, _now_ts
 from state import _username_cache, _cb_cooldown, _cmd_cooldown
 import state
@@ -24,6 +24,39 @@ async def auto_register_msg(handler, event: types.Message, data: dict):
         if event.from_user.username and u and u.get("username") != event.from_user.username:
             await update_user(event.from_user.id, event.chat.id, username=event.from_user.username)
     return await handler(event, data)
+
+
+# --- НОВЫЙ MIDDLEWARE ДЛЯ ПРОВЕРКИ ПОДПИСКИ ---
+@dp.message.middleware()
+async def check_subscription_middleware(handler, event: types.Message, data: dict):
+    if event.chat.type not in ("group", "supergroup"):
+        return await handler(event, data)
+
+    if not event.from_user or event.from_user.is_bot:
+        return await handler(event, data)
+
+    # Проверяем, включена ли функция подписки
+    sub_enabled = await get_setting("sub_enabled", "0")
+    if sub_enabled != "1":
+        return await handler(event, data)
+
+    user = await get_user(event.from_user.id, event.chat.id)
+    if not user:
+        return await handler(event, data)
+
+    # Если человек уже подписан или пишет /start (чтобы бот мог показать меню), пропускаем
+    if user.get("sub_passed") == 1 or (event.text and event.text.startswith("/start")):
+        return await handler(event, data)
+
+    # Если не подписан - молча удаляем сообщение
+    try:
+        await event.delete()
+    except:
+        pass
+    return
+
+
+# ----------------------------------------------
 
 
 @dp.message.middleware()
@@ -59,7 +92,7 @@ async def auto_register_cb(handler, event: types.CallbackQuery, data: dict):
 
     allowed_prefixes = (
         "menu:gender_", "menu:regions", "reg:", "char:", "menu:tops", "top:",
-        "menu:lists", "lists:", "cmd:", "apply_", "appr_", "newchar_"
+        "menu:lists", "lists:", "cmd:", "apply_", "appr_", "newchar_", "sub:", "report_"
     )
     cb_data = event.data or ""
 

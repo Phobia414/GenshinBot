@@ -19,15 +19,14 @@ from db import RESIN_COST_DUNGEON, RECIPES, INGREDIENTS
 def main_menu_kb(uid):
     b = InlineKeyboardBuilder()
     b.button(text="⊱ 👤 Профиль ⊰", callback_data=MenuCB(action="profile", owner_id=uid))
-    b.button(text="⊱ 🔮 Молитвы (Гача) ⊰", callback_data=MenuCB(action="gacha", owner_id=uid))
     b.button(text="⊱ 🏛 Гильдия искателей ⊰", callback_data=MenuCB(action="adventurers", owner_id=uid))
     b.button(text="⊱ 💕 Отношения ⊰", callback_data=MenuCB(action="relations", owner_id=uid))
     b.button(text="⊱ 🏆 Топы ⊰", callback_data=MenuCB(action="tops", owner_id=uid))
     b.button(text="⊱ 📖 Списки ⊰", callback_data=MenuCB(action="lists", owner_id=uid))
     b.button(text="⊱ 🛒 Лавка Тейвата ⊰", callback_data=MenuCB(action="shop", owner_id=uid))
+    b.button(text="⊱ 🚨 Написать жалобу ⊰", callback_data=MenuCB(action="report_start", owner_id=uid))
     b.adjust(1)
     return b.as_markup()
-
 
 def adventurers_kb(uid):
     b = InlineKeyboardBuilder()
@@ -41,7 +40,6 @@ def adventurers_kb(uid):
     b.adjust(1)
     return b.as_markup()
 
-
 def lists_kb(uid):
     b = InlineKeyboardBuilder()
     b.button(text="⊱ 📜 Команды ⊰", callback_data=ListsCB(action="commands", owner_id=uid))
@@ -50,12 +48,10 @@ def lists_kb(uid):
     b.adjust(1)
     return b.as_markup()
 
-
 def back_kb(uid):
     b = InlineKeyboardBuilder()
     b.button(text="⊱ ‹ Назад в меню ⊰", callback_data=MenuCB(action="menu", owner_id=uid))
     return b.as_markup()
-
 
 def profile_kb(uid):
     b = InlineKeyboardBuilder()
@@ -64,7 +60,6 @@ def profile_kb(uid):
     b.adjust(1)
     return b.as_markup()
 
-
 def gender_kb(uid):
     b = InlineKeyboardBuilder()
     b.button(text="⊱ 👨 Мужской ⊰", callback_data=MenuCB(action="gender_male", owner_id=uid))
@@ -72,14 +67,12 @@ def gender_kb(uid):
     b.adjust(2)
     return b.as_markup()
 
-
 def regions_kb(uid):
     b = InlineKeyboardBuilder()
     for key, name in REGIONS.items():
         b.button(text=f"⊱ {name} ⊰", callback_data=RegionCB(region=key, owner_id=uid))
     b.adjust(2)
     return b.as_markup()
-
 
 def characters_kb(uid, region_key, taken):
     b = InlineKeyboardBuilder()
@@ -90,7 +83,6 @@ def characters_kb(uid, region_key, taken):
     b.button(text="⊱ ‹ К регионам ⊰", callback_data=MenuCB(action="regions", owner_id=uid))
     b.adjust(2)
     return b.as_markup()
-
 
 def board_kb(uid, user, tasks, accepted, claimed):
     from helpers import get_progress
@@ -108,7 +100,6 @@ def board_kb(uid, user, tasks, accepted, claimed):
     b.adjust(1)
     return b.as_markup()
 
-
 def shop_kb(uid, discount=0):
     def p(x):
         return int(x * (100 - discount) / 100) if discount else x
@@ -121,7 +112,6 @@ def shop_kb(uid, discount=0):
     b.button(text="⊱ ‹ Назад в меню ⊰", callback_data=MenuCB(action="menu", owner_id=uid))
     b.adjust(1)
     return b.as_markup()
-
 
 def relations_kb(uid, has_partner, married, can_marry, has_child, gender):
     b = InlineKeyboardBuilder()
@@ -142,7 +132,6 @@ def relations_kb(uid, has_partner, married, can_marry, has_child, gender):
     b.adjust(1)
     return b.as_markup()
 
-
 def gifts_kb(uid):
     b = InlineKeyboardBuilder()
     for k, g in GIFTS.items():
@@ -150,7 +139,6 @@ def gifts_kb(uid):
     b.button(text="⊱ ‹ Назад ⊰", callback_data=MenuCB(action="relations", owner_id=uid))
     b.adjust(1)
     return b.as_markup()
-
 
 def guild_menu_kb(uid, has_guild, is_owner):
     b = InlineKeyboardBuilder()
@@ -171,16 +159,13 @@ def guild_menu_kb(uid, has_guild, is_owner):
     b.adjust(1)
     return b.as_markup()
 
-
 def guild_list_kb(uid, guilds):
     b = InlineKeyboardBuilder()
     for g in guilds:
-        b.button(text=f"⊱ 🏰 {g['name']} · 💰 {g['treasury']} ⊰",
-                 callback_data=GuildCB(action="join", owner_id=uid, guild_id=g["guild_id"]))
+        b.button(text=f"⊱ 🏰 {g['name']} · 💰 {g['treasury']} ⊰", callback_data=GuildCB(action="join", owner_id=uid, guild_id=g["guild_id"]))
     b.button(text="⊱ ‹ Назад ⊰", callback_data=MenuCB(action="guild", owner_id=uid))
     b.adjust(1)
     return b.as_markup()
-
 
 def guild_manage_kb(uid):
     b = InlineKeyboardBuilder()
@@ -188,11 +173,9 @@ def guild_manage_kb(uid):
     b.button(text="⊱ 🖼 Изменить фото ⊰", callback_data="guild_edit_photo")
     b.button(text="⊱ 🛒 Магазин Гильдии ⊰", callback_data="guild_shop")
     b.button(text="⊱ ⚒ Крафт Баффов ⊰", callback_data="guild_craft")
-    # ИСПРАВЛЕНО: Кнопка ведет в главное меню гильдии
     b.button(text="⊱ ‹ Назад ⊰", callback_data=MenuCB(action="guild", owner_id=uid))
     b.adjust(1)
     return b.as_markup()
-
 
 def guild_shop_kb(uid):
     b = InlineKeyboardBuilder()
@@ -203,7 +186,6 @@ def guild_shop_kb(uid):
     b.adjust(1)
     return b.as_markup()
 
-
 def guild_members_kb(uid, members, is_owner):
     b = InlineKeyboardBuilder()
     for m in members:
@@ -212,7 +194,6 @@ def guild_members_kb(uid, members, is_owner):
     b.button(text="⊱ ‹ Назад ⊰", callback_data=MenuCB(action="guild", owner_id=uid))
     b.adjust(1)
     return b.as_markup()
-
 
 def guild_member_manage_kb(uid, target_id, is_owner, target_rank):
     b = InlineKeyboardBuilder()
@@ -226,7 +207,6 @@ def guild_member_manage_kb(uid, target_id, is_owner, target_rank):
     b.adjust(1)
     return b.as_markup()
 
-
 def guild_craft_kb(uid):
     b = InlineKeyboardBuilder()
     b.button(text="⊱ 🎭 Смена персонажа для всех ⊰", callback_data="gcraft_do_char")
@@ -236,14 +216,12 @@ def guild_craft_kb(uid):
     b.adjust(1)
     return b.as_markup()
 
-
 def fun_menu_kb(uid):
     b = InlineKeyboardBuilder()
     b.button(text="⊱ ⚔ Дуэль ⊰", callback_data=FunCB(action="duel_help", owner_id=uid))
     b.button(text="⊱ ‹ Назад в меню ⊰", callback_data=MenuCB(action="menu", owner_id=uid))
     b.adjust(1)
     return b.as_markup()
-
 
 def tops_kb(uid):
     b = InlineKeyboardBuilder()
@@ -255,7 +233,6 @@ def tops_kb(uid):
     b.adjust(1)
     return b.as_markup()
 
-
 def reputation_kb(uid):
     b = InlineKeyboardBuilder()
     b.button(text="⊱ 🏆 Топ по репутации ⊰", callback_data=TopCB(action="reputation", owner_id=uid))
@@ -263,16 +240,13 @@ def reputation_kb(uid):
     b.adjust(1)
     return b.as_markup()
 
-
 def dungeons_kb(uid):
     b = InlineKeyboardBuilder()
     for key, d in DUNGEONS.items():
-        b.button(text=f"⊱ {d['name']} · {RESIN_COST_DUNGEON}💧 ⊰",
-                 callback_data=DungeonCB(action="enter", dungeon=key, owner_id=uid))
+        b.button(text=f"⊱ {d['name']} · {RESIN_COST_DUNGEON}💧 ⊰", callback_data=DungeonCB(action="enter", dungeon=key, owner_id=uid))
     b.button(text="⊱ ‹ Назад ⊰", callback_data=MenuCB(action="adventurers", owner_id=uid))
     b.adjust(1)
     return b.as_markup()
-
 
 def artifacts_menu_kb(uid, has):
     b = InlineKeyboardBuilder()
@@ -283,16 +257,13 @@ def artifacts_menu_kb(uid, has):
     b.adjust(1)
     return b.as_markup()
 
-
 def inventory_kb(uid, arts):
     b = InlineKeyboardBuilder()
     for a in arts:
-        b.button(text=f"⊱ {a['name']} · +{a['bonus_value']}% ⊰",
-                 callback_data=ArtifactCB(action="view", art_id=a["artifact_id"], owner_id=uid))
+        b.button(text=f"⊱ {a['name']} · +{a['bonus_value']}% ⊰", callback_data=ArtifactCB(action="view", art_id=a["artifact_id"], owner_id=uid))
     b.button(text="⊱ ‹ Назад ⊰", callback_data=MenuCB(action="artifacts", owner_id=uid))
     b.adjust(1)
     return b.as_markup()
-
 
 def artifact_view_kb(uid, art_id, equipped):
     b = InlineKeyboardBuilder()
@@ -305,11 +276,9 @@ def artifact_view_kb(uid, art_id, equipped):
     b.adjust(2, 1)
     return b.as_markup()
 
-
 def commands_cats_kb(uid, is_chat_admin=False):
     b = InlineKeyboardBuilder()
     b.button(text="⊱ 🎮 Основные ⊰", callback_data=CmdCatCB(cat="main", owner_id=uid))
-    b.button(text="⊱ 🔮 Гача ⊰", callback_data=CmdCatCB(cat="gacha", owner_id=uid))
     b.button(text="⊱ 🎭 Взаимодействия ⊰", callback_data=CmdCatCB(cat="interactions", owner_id=uid))
     b.button(text="⊱ 💕 Отношения ⊰", callback_data=CmdCatCB(cat="relations", owner_id=uid))
     b.button(text="⊱ 🏰 Гильдия ⊰", callback_data=CmdCatCB(cat="guild", owner_id=uid))

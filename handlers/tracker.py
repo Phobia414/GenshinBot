@@ -51,7 +51,7 @@ async def cmd_rppartner(message: types.Message):
     if len(parts) < 2:
         await message.answer(
             "Использование:\n"
-            "<code>/rppartner Имя_Роли</code> — искать сорола (можно несколько через запятую)\n"
+            "<code>/rppartner Имя_Роли</code> — искать напарника (можно несколько через запятую)\n"
             "<code>/rppartner off</code> — отменить поиск",
             parse_mode="HTML"
         )
@@ -60,10 +60,10 @@ async def cmd_rppartner(message: types.Message):
     target = parts[1].strip()
     if target.lower() == "off":
         await update_user(message.from_user.id, chat_id, search_rp_partner="")
-        await message.answer("✅ Поиск сорола отменен.")
+        await message.answer("✅ Поиск со-роли отменен.")
     else:
         await update_user(message.from_user.id, chat_id, search_rp_partner=target)
-        await message.answer(f"✅ Теперь ты ищешь сорола: <b>{esc(target)}</b>! Твоя роль в списке помечена как ⨂.",
+        await message.answer(f"✅ Теперь ты ищешь со-роль: <b>{esc(target)}</b>! Твоя роль в списке помечена как ⨂.",
                              parse_mode="HTML")
 
     await update_chat_list(chat_id)
@@ -169,9 +169,11 @@ async def track_text(message: types.Message, user: dict, chat_id: int):
         if text_lower == phrase or text_lower.startswith(phrase + " "):
             matched = phrase
             break
+
     if matched or text_lower in ("усыновить", "удочерить"):
         if await handle_interaction(message, user, matched or text_lower, chat_id):
             return
+
     if text_lower == "кто я":
         await show_user_card(message, user, message.from_user, chat_id)
         return
@@ -273,7 +275,7 @@ async def track_photo(message: types.Message, user: dict, chat_id: int):
             await db.commit()
 
 
-async def handle_interaction(message, user, text_lower, chat_id):
+async def handle_interaction(message, user, matched_phrase, chat_id):
     target_ref, target_disp = extract_target(message)
     target_id = None
     if isinstance(target_ref, int):
@@ -291,7 +293,8 @@ async def handle_interaction(message, user, text_lower, chat_id):
     if not target or not target["character_name"]:
         await message.reply("❌ Игрок ещё не зарегистрирован или не выбрал персонажа.")
         return True
-    if text_lower in ("усыновить", "удочерить"):
+
+    if matched_phrase in ("усыновить", "удочерить"):
         if not user["is_married"]:
             await message.reply("👶 Усыновить можно только в браке.")
             return True
@@ -308,8 +311,10 @@ async def handle_interaction(message, user, text_lower, chat_id):
             f"👶 {esc(user['character_name'])} {verb} {esc(target['character_name'])}!\n\nОрион плачет от умиления 💛",
             reply_markup=back_kb(message.from_user.id))
         return True
-    inter = INTERACTIONS.get(text_lower)
+
+    inter = INTERACTIONS.get(matched_phrase)
     if not inter: return False
+
     now = int(datetime.now(timezone.utc).timestamp())
     last = _inter_cooldown.get(message.from_user.id, 0)
     if now - last < 2:
@@ -318,6 +323,7 @@ async def handle_interaction(message, user, text_lower, chat_id):
         except:
             pass
         return True
+
     xp = inter.get("xp", 0)
     if inter.get("pair_only"):
         if user["partner_id"] != target_id:
@@ -327,24 +333,35 @@ async def handle_interaction(message, user, text_lower, chat_id):
             await update_user(message.from_user.id, chat_id, rel_xp=(user["rel_xp"] or 0) + xp)
             await update_user(target_id, chat_id, rel_xp=(target["rel_xp"] or 0) + xp)
             user = await get_user(message.from_user.id, chat_id)
+
     verb = inter["verb_f"] if user["gender"] == "female" else inter["verb_m"]
     emoji = inter["emoji"]
     xp_line = f"\n💕 +{xp} XP" if xp else ""
-    if text_lower == "подарить цветок":
-        sender_mention = _mention(message.from_user.id, user.get("username"),
-                                  user.get("character_name"), message.from_user.first_name)
-        target_mention = _mention(target_id, target.get("username"),
-                                  target.get("character_name"), None)
-        text = f"🌸 {sender_mention} {verb} цветок {target_mention}!\n\n💐 Орион тоже хочет цветочек..."
-    else:
-        text = f"{emoji} <b>{esc(user['character_name'])}</b> {verb} <b>{esc(target['character_name'])}</b>!{xp_line}"
-    try:
-        await message.delete()
-    except Exception:
-        pass
-    await message.answer(text, parse_mode="HTML", reply_markup=back_kb(message.from_user.id))
-    _inter_cooldown[message.from_user.id] = now
-    return True
+
+    original_text = message.text or ""
+    reply_text = original_text[len(matched_phrase):].strip()
+
+    if text_lower := (message.text or "").lower().strip():
+        if text_lower == "подарить цветок":
+            sender_mention = _mention(message.from_user.id, user.get("username"),
+                                      user.get("character_name"), message.from_user.first_name)
+            target_mention = _mention(target_id, target.get("username"),
+                                      target.get("character_name"), None)
+            text = f"🌸 {sender_mention} {verb} цветок {target_mention}!"
+        else:
+            text = f"{emoji} <b>{esc(user['character_name'])}</b> {verb} <b>{esc(target['character_name'])}</b>!{xp_line}"
+
+        if reply_text:
+            reply_text = reply_text.strip("()[] ")
+            text += f"\n💬 <i>«{esc(reply_text)}»</i>"
+
+        try:
+            await message.delete()
+        except Exception:
+            pass
+        await message.answer(text, parse_mode="HTML", reply_markup=back_kb(message.from_user.id))
+        _inter_cooldown[message.from_user.id] = now
+        return True
 
 
 async def show_user_card(message, user, tg_user, chat_id):
@@ -377,11 +394,10 @@ async def show_user_card(message, user, tg_user, chat_id):
     rep_level = get_rep_level(user["reputation"])
 
     text = (
-        f"─ [ КАРТОЧКА ПУТЕШЕСТВЕННИКА ] ─\n\n"
-        f"🎭 {name} · ⚧ {gtext}\n"
+        f"🎭 {name} · ⚧ {gtext}\n\n"
         f"💬 Сообщений: {user['messages_count']}\n"
         f"🎖️ Репутация: {rep_level} / 10\n"
-        f"💰 Баланс: {user['balance']}\n"
+        f"💰 Баланс: {user['balance']}\n\n"
         f"{partner_line}{child_line}\n"
         f"{guild_line}"
     )
@@ -454,7 +470,11 @@ async def _check_board_auto_locked(message):
             mention = f'<a href="tg://user?id={message.from_user.id}">{esc(message.from_user.first_name)}</a>'
             try:
                 await message.answer(
-                    f"🎉 {mention}, задание выполнено!\n\n«{t['text']}»\n💰 Награда: {coins_reward} монет\n💎 +{primo_reward} Примогемов\n🎖️ +{REP_PER_BOARD_TASK} репутации",
+                    f"🎉 {mention}, задание выполнено!\n\n"
+                    f"«{t['text']}»\n"
+                    f"💰 Награда: {coins_reward} монет\n"
+                    f"💎 +{primo_reward} Примогемов\n"
+                    f"🎖️ +{REP_PER_BOARD_TASK} репутации",
                     parse_mode="HTML",
                     reply_markup=back_kb(message.from_user.id)
                 )
@@ -465,7 +485,6 @@ async def _check_board_auto_locked(message):
 @dp.chat_member()
 async def on_chat_member_update(event: types.ChatMemberUpdated):
     try:
-        # ИСПРАВЛЕНИЕ: Игнорируем каналы. Бот должен работать только в группах/супергруппах.
         if event.chat.type not in ("group", "supergroup"):
             return
 
@@ -524,8 +543,8 @@ async def on_chat_member_update(event: types.ChatMemberUpdated):
                     mention = f'<a href="tg://user?id={affected_user.id}">{esc(affected_user.first_name)}</a>'
                     await bot.send_message(
                         event.chat.id,
-                        f"👋 {mention}, добро пожаловать в Обитель ветра!\n\n"
-                        f"Чтобы войти во флуд, выбери свой пол:",
+                        f"👋 {mention}, добро пожаловать в Тейват!\n\n"
+                        f"Чтобы начать играть, выбери свой пол:",
                         reply_markup=gender_kb(affected_user.id), parse_mode="HTML"
                     )
     except Exception as e:

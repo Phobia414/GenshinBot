@@ -3,11 +3,13 @@ from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+import json
+
 from bot_instance import bot, dp
 from config import OWNER_ID
 from constants import DIV
 from db import get_local_setting, set_local_setting, save_char_photo, save_custom_char, delete_custom_char, \
-    get_known_groups, set_gacha_gif, save_gacha_image
+    get_known_groups, set_gacha_gif, save_gacha_image, get_setting, set_setting
 from characters import REGIONS, get_characters_by_region
 from gacha_data import POOL_3_STAR, POOL_4_STAR, POOL_5_STAR
 import state
@@ -22,6 +24,10 @@ class AdminEdit(StatesGroup):
     waiting_for_gif = State()
     waiting_for_gacha_photo = State()
     setting_key = State()
+    # Новые состояния для каналов
+    waiting_for_channel_title = State()
+    waiting_for_channel_url = State()
+    waiting_for_channel_id = State()
 
 
 def get_media_file_id(message):
@@ -83,6 +89,8 @@ async def render_admin_menu(message, state):
     target_chat_id = data.get("target_chat_id", 0)
     context_text = "🌐 ВСЕ ЧАТЫ (Глобально)" if target_chat_id == 0 else f"💬 Чат ID: {target_chat_id}"
 
+    sub_status = "🟢 Вкл" if await get_setting("sub_enabled", "0") == "1" else "🔴 Выкл"
+
     b = InlineKeyboardBuilder()
     b.button(text=f"⊱ Контекст: {context_text} ⊰", callback_data="admin_change_context")
     b.button(text="⊱ 📝 Изменить тексты ⊰", callback_data="admin_edit_texts")
@@ -90,9 +98,11 @@ async def render_admin_menu(message, state):
     b.button(text="⊱ 🎭 Персонажи ⊰", callback_data="admin_edit_chars")
     b.button(text="⊱ 🎬 Гифки Гачи ⊰", callback_data="admin_edit_gifs")
     b.button(text="⊱ 🎨 Картинки Гачи ⊰", callback_data="admin_edit_gacha_imgs")
+    b.button(text=f"⊱ 🔒 Обязательная подписка: {sub_status} ⊰", callback_data="admin_toggle_sub")
+    b.button(text="⊱ 📢 Настроить каналы ⊰", callback_data="admin_edit_channels")
     b.adjust(1)
 
-    text = f"╓───────────────────────╖\n   ⚙️ АДМИН-ПАНЕЛЬ\n╙───────────────────────╜\n\n🌐 Контекст: <b>{context_text}</b>\n\n╞═══════════════════════╡\n\nВыбери категорию:"
+    text = f"⚙️ АДМИН-ПАНЕЛЬ\n\n🌐 Контекст: <b>{context_text}</b>\n\nВыбери категорию:"
     await message.edit_text(text, reply_markup=b.as_markup(), parse_mode="HTML")
 
 
@@ -103,6 +113,8 @@ async def cmd_admin(message, state):
     await state.clear()
     await state.update_data(target_chat_id=0)
 
+    sub_status = "🟢 Вкл" if await get_setting("sub_enabled", "0") == "1" else "🔴 Выкл"
+
     b = InlineKeyboardBuilder()
     b.button(text="⊱ Контекст: 🌐 ВСЕ ЧАТЫ (Глобально) ⊰", callback_data="admin_change_context")
     b.button(text="⊱ 📝 Изменить тексты ⊰", callback_data="admin_edit_texts")
@@ -110,9 +122,11 @@ async def cmd_admin(message, state):
     b.button(text="⊱ 🎭 Персонажи ⊰", callback_data="admin_edit_chars")
     b.button(text="⊱ 🎬 Гифки Гачи ⊰", callback_data="admin_edit_gifs")
     b.button(text="⊱ 🎨 Картинки Гачи ⊰", callback_data="admin_edit_gacha_imgs")
+    b.button(text=f"⊱ 🔒 Обязательная подписка: {sub_status} ⊰", callback_data="admin_toggle_sub")
+    b.button(text="⊱ 📢 Настроить каналы ⊰", callback_data="admin_edit_channels")
     b.adjust(1)
 
-    text = f"╓───────────────────────╖\n   ⚙️ АДМИН-ПАНЕЛЬ\n╙───────────────────────╜\n\n🌐 Контекст: <b>ВСЕ ЧАТЫ (Глобально)</b>\n\n╞═══════════════════════╡\n\nВыбери категорию:"
+    text = f"⚙️ АДМИН-ПАНЕЛЬ\n\n🌐 Контекст: <b>ВСЕ ЧАТЫ (Глобально)</b>\n\nВыбери категорию:"
     await message.answer(text, reply_markup=b.as_markup(), parse_mode="HTML")
 
 
@@ -130,8 +144,7 @@ async def cb_change_context(query, state):
     b.button(text="⊱ ✍️ Ввести ID вручную ⊰", callback_data="admin_manual_chat")
     b.button(text="⊱ ‹ Назад ⊰", callback_data="admin_back")
     b.adjust(1)
-    await query.message.edit_text("🌐 **ВЫБОР КОНТЕКСТА**\n\nВыбери чат:", reply_markup=b.as_markup(),
-                                  parse_mode="Markdown")
+    await query.message.edit_text("🌐 ВЫБОР КОНТЕКСТА\n\nВыбери чат:", reply_markup=b.as_markup(), parse_mode="Markdown")
 
 
 @dp.callback_query(F.data.startswith("admin_set_context_"))
@@ -172,7 +185,194 @@ async def cb_admin_back(query, state):
     await render_admin_menu(query.message, state)
 
 
-# ==================== ГИФКИ ГАЧИ ====================
+# ==================== ОБЯЗАТЕЛЬНАЯ ПОДПИСКА ====================
+
+@dp.callback_query(F.data == "admin_toggle_sub")
+async def cb_admin_toggle_sub(query: types.CallbackQuery, state: FSMContext):
+    if query.from_user.id != OWNER_ID: return
+    current = await get_setting("sub_enabled", "0")
+    new_val = "0" if current == "1" else "1"
+    await set_setting("sub_enabled", new_val)
+    await query.answer(f"Подписка теперь: {'ВКЛ' if new_val == '1' else 'ВЫКЛ'}", show_alert=True)
+    await render_admin_menu(query.message, state)
+
+
+@dp.callback_query(F.data == "admin_edit_channels")
+async def cb_admin_edit_channels(query: types.CallbackQuery):
+    if query.from_user.id != OWNER_ID: return
+    channels = json.loads(await get_setting("sub_channels", "[]"))
+
+    text = "📢 СПИСОК КАНАЛОВ ДЛЯ ПОДПИСКИ\n\n"
+    if not channels:
+        text += "Список пуст. Добавь первый канал."
+    else:
+        for i, ch in enumerate(channels, 1):
+            text += f"{i}. {ch['title']} ({ch['id']})\n"
+
+    b = InlineKeyboardBuilder()
+    b.button(text="➕ Добавить канал", callback_data="admin_add_channel")
+    if channels:
+        b.button(text="🗑 Очистить всё", callback_data="admin_clear_channels")
+    b.button(text="‹ Назад", callback_data="admin_back")
+    b.adjust(1)
+
+    await query.message.edit_text(text, reply_markup=b.as_markup(), parse_mode="HTML")
+
+
+@dp.callback_query(F.data == "admin_add_channel")
+async def cb_admin_add_channel(query: types.CallbackQuery, state: FSMContext):
+    if query.from_user.id != OWNER_ID: return
+    await state.set_state(AdminEdit.waiting_for_channel_title)
+    b = InlineKeyboardBuilder().button(text="❌ Отмена", callback_data="admin_edit_channels")
+    await query.message.edit_text("1️⃣ Введи <b>название канала</b> (как будет на кнопке):", reply_markup=b.as_markup(),
+                                  parse_mode="HTML")
+
+
+@dp.message(AdminEdit.waiting_for_channel_title)
+async def process_channel_title(message: types.Message, state: FSMContext):
+    if message.from_user.id != OWNER_ID: return
+    await state.update_data(ch_title=message.text)
+    await state.set_state(AdminEdit.waiting_for_channel_url)
+    await message.answer("2️⃣ Введи <b>ссылку</b> на канал (например, https://t.me/mychannel):")
+
+
+@dp.message(AdminEdit.waiting_for_channel_url)
+async def process_channel_url(message: types.Message, state: FSMContext):
+    if message.from_user.id != OWNER_ID: return
+    await state.update_data(ch_url=message.text)
+    await state.set_state(AdminEdit.waiting_for_channel_id)
+    await message.answer(
+        "3️⃣ Введи <b>@юзернейм или ID</b> канала (например, @mychannel или -100123456789).\n\n<i>⚠️ Бот ОБЯЗАТЕЛЬНО должен быть админом в этом канале, иначе он не сможет проверить подписку!</i>",
+        parse_mode="HTML")
+
+
+@dp.message(AdminEdit.waiting_for_channel_id)
+async def process_channel_id(message: types.Message, state: FSMContext):
+    if message.from_user.id != OWNER_ID: return
+    data = await state.get_data()
+
+    channels = json.loads(await get_setting("sub_channels", "[]"))
+    channels.append({
+        "title": data["ch_title"],
+        "url": data["ch_url"],
+        "id": message.text
+    })
+    await set_setting("sub_channels", json.dumps(channels))
+    await state.clear()
+
+    b = InlineKeyboardBuilder().button(text="‹ К списку каналов", callback_data="admin_edit_channels")
+    await message.answer("✅ Канал успешно добавлен!", reply_markup=b.as_markup())
+
+
+@dp.callback_query(F.data == "admin_clear_channels")
+async def cb_admin_clear_channels(query: types.CallbackQuery):
+    if query.from_user.id != OWNER_ID: return
+    await set_setting("sub_channels", "[]")
+    await query.answer("Список каналов очищен!", show_alert=True)
+    await cb_admin_edit_channels(query)
+
+
+# ==================== ТЕКСТЫ И КАРТИНКИ (Старый код) ====================
+
+@dp.callback_query(F.data == "admin_edit_texts")
+async def cb_edit_texts(query):
+    if query.from_user.id != OWNER_ID: return
+    b = InlineKeyboardBuilder()
+    for key, name in EDITABLE_TEXTS.items(): b.button(text=f"⊱ {name} ⊰", callback_data=f"admin_set_{key}")
+    b.button(text="⊱ ‹ Назад ⊰", callback_data="admin_back")
+    b.adjust(2, 2, 2, 2, 2, 1)
+    await query.message.edit_text("📝 Выбери текст:", reply_markup=b.as_markup())
+
+
+@dp.callback_query(F.data.startswith("admin_set_"))
+async def cb_set_text(query, state):
+    if query.from_user.id != OWNER_ID: return
+    key = query.data.replace("admin_set_", "")
+    await state.update_data(setting_key=key)
+    await state.set_state(AdminEdit.waiting_for_text)
+    b = InlineKeyboardBuilder()
+    b.button(text="❌ Отмена", callback_data="admin_edit_texts")
+    await query.message.edit_text(
+        f"📝 Отправь новый текст для: **{EDITABLE_TEXTS.get(key, key)}**\n\nПеременные: `{name}`, `{div}`",
+        reply_markup=b.as_markup(), parse_mode="Markdown")
+
+
+@dp.message(AdminEdit.waiting_for_text, F.text)
+async def process_new_text(message, state):
+    if message.from_user.id != OWNER_ID: return
+    data = await state.get_data()
+    await set_local_setting(data["setting_key"], message.html_text, data.get("target_chat_id", 0))
+    await state.set_state(None)
+    b = InlineKeyboardBuilder()
+    b.button(text="⊱ ‹ В меню текстов ⊰", callback_data="admin_edit_texts")
+    await message.answer("✅ Текст сохранён!", reply_markup=b.as_markup())
+
+
+@dp.callback_query(F.data == "admin_edit_photos")
+async def cb_edit_photos(query):
+    if query.from_user.id != OWNER_ID: return
+    b = InlineKeyboardBuilder()
+    for key, name in EDITABLE_PHOTOS.items(): b.button(text=f"⊱ {name} ⊰", callback_data=f"admin_photo_{key}")
+    b.button(text="⊱ ‹ Назад ⊰", callback_data="admin_back")
+    b.adjust(1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2)
+    await query.message.edit_text("🖼 Выбери раздел:", reply_markup=b.as_markup())
+
+
+@dp.callback_query(F.data.startswith("admin_photo_"))
+async def cb_set_photo(query, state):
+    if query.from_user.id != OWNER_ID: return
+    key = query.data.replace("admin_photo_", "")
+    b = InlineKeyboardBuilder()
+    b.button(text="📸 Загрузить фото", callback_data=f"admin_upload_photo_{key}")
+    b.button(text="🗑 Удалить фото", callback_data=f"admin_delete_photo_{key}")
+    b.button(text="❌ Отмена", callback_data="admin_edit_photos")
+    b.adjust(1)
+    await query.message.edit_text(f"🖼 Управление фото для: **{EDITABLE_PHOTOS.get(key, key)}**\n\nВыбери действие:",
+                                  reply_markup=b.as_markup(), parse_mode="Markdown")
+
+
+@dp.callback_query(F.data.startswith("admin_upload_photo_"))
+async def cb_upload_photo(query, state):
+    if query.from_user.id != OWNER_ID: return
+    key = query.data.replace("admin_upload_photo_", "")
+    await state.update_data(setting_key=f"image_{key}")
+    await state.set_state(AdminEdit.waiting_for_photo)
+    b = InlineKeyboardBuilder()
+    b.button(text="❌ Отмена", callback_data=f"admin_photo_{key}")
+    await query.message.edit_text(f"🖼 Отправь фото для: **{EDITABLE_PHOTOS.get(key, key)}**",
+                                  reply_markup=b.as_markup(), parse_mode="Markdown")
+
+
+@dp.callback_query(F.data.startswith("admin_delete_photo_"))
+async def cb_delete_photo(query, state):
+    if query.from_user.id != OWNER_ID: return
+    key = query.data.replace("admin_delete_photo_", "")
+    data = await state.get_data()
+    target_chat_id = data.get("target_chat_id", 0)
+    await set_local_setting(f"image_{key}", "", target_chat_id)
+    await query.answer("✅ Фото удалено! Теперь здесь будет только текст.", show_alert=True)
+    b = InlineKeyboardBuilder()
+    b.button(text="‹ Назад", callback_data="admin_edit_photos")
+    await query.message.edit_text(f"🖼 Фото для **{EDITABLE_PHOTOS.get(key, key)}** удалено.",
+                                  reply_markup=b.as_markup(), parse_mode="Markdown")
+
+
+@dp.message(AdminEdit.waiting_for_photo, F.photo | F.document)
+async def process_new_photo(message, state):
+    if message.from_user.id != OWNER_ID: return
+    data = await state.get_data()
+    file_id = get_media_file_id(message)
+    if not file_id: return await message.answer("❌ Отправь фото.")
+    await set_local_setting(data["setting_key"], file_id, data.get("target_chat_id", 0))
+    await state.set_state(None)
+    b = InlineKeyboardBuilder()
+    b.button(text="🖼 Ещё", callback_data="admin_edit_photos")
+    b.button(text="‹ В админ-панель", callback_data="admin_back")
+    b.adjust(1)
+    await message.answer("✅ Картинка обновлена!", reply_markup=b.as_markup())
+
+
+# ==================== ПЕРСОНАЖИ И ГАЧА ====================
 @dp.callback_query(F.data == "admin_edit_gifs")
 async def cb_edit_gifs(query):
     if query.from_user.id != OWNER_ID: return
@@ -210,7 +410,6 @@ async def process_gif(message, state):
     await message.answer("✅ Гифка сохранена!", reply_markup=b.as_markup())
 
 
-# ==================== КАРТИНКИ ГАЧИ ====================
 @dp.callback_query(F.data == "admin_edit_gacha_imgs")
 async def cb_edit_gacha_imgs(query):
     if query.from_user.id != OWNER_ID: return
@@ -306,7 +505,6 @@ async def process_gacha_photo(message, state):
     await message.answer("✅ Фото обновлено!", reply_markup=b.as_markup())
 
 
-# ==================== ПЕРСОНАЖИ ====================
 @dp.callback_query(F.data == "admin_edit_chars")
 async def cb_edit_chars(query, state):
     if query.from_user.id != OWNER_ID: return
@@ -317,7 +515,7 @@ async def cb_edit_chars(query, state):
     b.button(text="⊱ 🗑 Удалить персонажа ⊰", callback_data="admin_char_delete")
     b.button(text="⊱ ‹ Назад ⊰", callback_data="admin_back")
     b.adjust(1)
-    await query.message.edit_text("🎭 **Управление персонажами**", reply_markup=b.as_markup())
+    await query.message.edit_text("🎭 Управление персонажами", reply_markup=b.as_markup())
 
 
 @dp.callback_query(F.data == "admin_char_change_photo")
@@ -433,108 +631,3 @@ async def process_char_photo(message, state):
     b.button(text="‹ В админ-панель", callback_data="admin_back")
     b.adjust(1)
     await message.answer(msg, reply_markup=b.as_markup())
-
-
-# ==================== ТЕКСТЫ ====================
-@dp.callback_query(F.data == "admin_edit_texts")
-async def cb_edit_texts(query):
-    if query.from_user.id != OWNER_ID: return
-    b = InlineKeyboardBuilder()
-    for key, name in EDITABLE_TEXTS.items(): b.button(text=f"⊱ {name} ⊰", callback_data=f"admin_set_{key}")
-    b.button(text="⊱ ‹ Назад ⊰", callback_data="admin_back")
-    b.adjust(2, 2, 2, 2, 2, 1)
-    await query.message.edit_text("📝 **Выбери текст:**", reply_markup=b.as_markup())
-
-
-@dp.callback_query(F.data.startswith("admin_set_"))
-async def cb_set_text(query, state):
-    if query.from_user.id != OWNER_ID: return
-    key = query.data.replace("admin_set_", "")
-    await state.update_data(setting_key=key)
-    await state.set_state(AdminEdit.waiting_for_text)
-    b = InlineKeyboardBuilder()
-    b.button(text="❌ Отмена", callback_data="admin_edit_texts")
-    await query.message.edit_text(
-        f"📝 Отправь новый текст для: **{EDITABLE_TEXTS.get(key, key)}**\n\nПеременные: `{name}`, `{div}`",
-        reply_markup=b.as_markup(), parse_mode="Markdown")
-
-
-@dp.message(AdminEdit.waiting_for_text, F.text)
-async def process_new_text(message, state):
-    if message.from_user.id != OWNER_ID: return
-    data = await state.get_data()
-    await set_local_setting(data["setting_key"], message.html_text, data.get("target_chat_id", 0))
-    await state.set_state(None)
-    b = InlineKeyboardBuilder()
-    b.button(text="⊱ ‹ В меню текстов ⊰", callback_data="admin_edit_texts")
-    await message.answer("✅ Текст сохранён!", reply_markup=b.as_markup())
-
-
-# ==================== КАРТИНКИ РАЗДЕЛОВ ====================
-@dp.callback_query(F.data == "admin_edit_photos")
-async def cb_edit_photos(query):
-    if query.from_user.id != OWNER_ID: return
-    b = InlineKeyboardBuilder()
-    for key, name in EDITABLE_PHOTOS.items(): b.button(text=f"⊱ {name} ⊰", callback_data=f"admin_photo_{key}")
-    b.button(text="⊱ ‹ Назад ⊰", callback_data="admin_back")
-    b.adjust(1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2)
-    await query.message.edit_text("🖼 **Выбери раздел:**", reply_markup=b.as_markup())
-
-
-@dp.callback_query(F.data.startswith("admin_photo_"))
-async def cb_set_photo(query, state):
-    if query.from_user.id != OWNER_ID: return
-    key = query.data.replace("admin_photo_", "")
-
-    b = InlineKeyboardBuilder()
-    b.button(text="📸 Загрузить фото", callback_data=f"admin_upload_photo_{key}")
-    b.button(text="🗑 Удалить фото", callback_data=f"admin_delete_photo_{key}")
-    b.button(text="❌ Отмена", callback_data="admin_edit_photos")
-    b.adjust(1)
-
-    await query.message.edit_text(f"🖼 Управление фото для: **{EDITABLE_PHOTOS.get(key, key)}**\n\nВыбери действие:",
-                                  reply_markup=b.as_markup(), parse_mode="Markdown")
-
-
-@dp.callback_query(F.data.startswith("admin_upload_photo_"))
-async def cb_upload_photo(query, state):
-    if query.from_user.id != OWNER_ID: return
-    key = query.data.replace("admin_upload_photo_", "")
-    await state.update_data(setting_key=f"image_{key}")
-    await state.set_state(AdminEdit.waiting_for_photo)
-    b = InlineKeyboardBuilder()
-    b.button(text="❌ Отмена", callback_data=f"admin_photo_{key}")
-    await query.message.edit_text(f"🖼 Отправь фото для: **{EDITABLE_PHOTOS.get(key, key)}**",
-                                  reply_markup=b.as_markup(), parse_mode="Markdown")
-
-
-@dp.callback_query(F.data.startswith("admin_delete_photo_"))
-async def cb_delete_photo(query, state):
-    if query.from_user.id != OWNER_ID: return
-    key = query.data.replace("admin_delete_photo_", "")
-
-    data = await state.get_data()
-    target_chat_id = data.get("target_chat_id", 0)
-
-    await set_local_setting(f"image_{key}", "", target_chat_id)
-    await query.answer("✅ Фото удалено! Теперь здесь будет только текст.", show_alert=True)
-
-    b = InlineKeyboardBuilder()
-    b.button(text="‹ Назад", callback_data="admin_edit_photos")
-    await query.message.edit_text(f"🖼 Фото для **{EDITABLE_PHOTOS.get(key, key)}** удалено.",
-                                  reply_markup=b.as_markup(), parse_mode="Markdown")
-
-
-@dp.message(AdminEdit.waiting_for_photo, F.photo | F.document)
-async def process_new_photo(message, state):
-    if message.from_user.id != OWNER_ID: return
-    data = await state.get_data()
-    file_id = get_media_file_id(message)
-    if not file_id: return await message.answer("❌ Отправь фото.")
-    await set_local_setting(data["setting_key"], file_id, data.get("target_chat_id", 0))
-    await state.set_state(None)
-    b = InlineKeyboardBuilder()
-    b.button(text="🖼 Ещё", callback_data="admin_edit_photos")
-    b.button(text="‹ В админ-панель", callback_data="admin_back")
-    b.adjust(1)
-    await message.answer("✅ Картинка обновлена!", reply_markup=b.as_markup())

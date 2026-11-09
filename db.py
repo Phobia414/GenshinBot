@@ -94,6 +94,21 @@ async def init_db():
                 min_messages INTEGER DEFAULT 100, frequency_days INTEGER DEFAULT 7, last_cleanup INTEGER DEFAULT 0
             )
         """)
+
+        # НОВАЯ ТАБЛИЦА ДЛЯ ЖАЛОБ
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS complaints (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_id INTEGER,
+                reporter_id INTEGER,
+                target_id INTEGER,
+                target_name TEXT,
+                reason TEXT,
+                is_anonymous INTEGER,
+                created_at INTEGER
+            )
+        """)
+
         await db.execute(
             "CREATE TABLE IF NOT EXISTS chat_settings (chat_id INTEGER PRIMARY KEY, list_message_id INTEGER DEFAULT 0)")
         await db.execute(
@@ -113,17 +128,11 @@ async def init_db():
         await db.commit()
 
         missing_columns = [
-            "rel_image TEXT DEFAULT ''",
-            "search_rp_partner TEXT DEFAULT ''",
-            "msgs_week INTEGER DEFAULT 0",
-            "msgs_month INTEGER DEFAULT 0",
-            "gacha_banner TEXT DEFAULT 'event_char'",
-            "gacha_pity_4 INTEGER DEFAULT 0",
-            "gacha_pity_5 INTEGER DEFAULT 0",
-            "gacha_guaranteed_5 INTEGER DEFAULT 0",
-            "gacha_lost_50_50 INTEGER DEFAULT 0"
+            "rel_image TEXT DEFAULT ''", "search_rp_partner TEXT DEFAULT ''", "msgs_week INTEGER DEFAULT 0",
+            "msgs_month INTEGER DEFAULT 0", "gacha_banner TEXT DEFAULT 'event_char'", "gacha_pity_4 INTEGER DEFAULT 0",
+            "gacha_pity_5 INTEGER DEFAULT 0", "gacha_guaranteed_5 INTEGER DEFAULT 0",
+            "gacha_lost_50_50 INTEGER DEFAULT 0", "sub_passed INTEGER DEFAULT 0"
         ]
-
         for col in missing_columns:
             try:
                 await db.execute(f"ALTER TABLE users ADD COLUMN {col}")
@@ -134,6 +143,14 @@ async def init_db():
             await db.execute("ALTER TABLE guilds ADD COLUMN bonus_slots INTEGER DEFAULT 0")
         except Exception:
             pass
+
+        app_cols = ["character_name TEXT", "age TEXT", "experience TEXT", "about TEXT", "timezone TEXT",
+                    "triggers TEXT", "metagaming TEXT", "activity TEXT", "status TEXT DEFAULT 'pending'"]
+        for col_def in app_cols:
+            try:
+                await db.execute(f"ALTER TABLE applications ADD COLUMN {col_def}")
+            except Exception:
+                pass
 
 
 async def init_settings_db(): pass
@@ -262,12 +279,10 @@ async def get_custom_names(group_id):
     return {r['default_name']: r['custom_name'] for r in rows}
 
 
-# ИСПРАВЛЕНИЕ: Защита от понижения уровня гильдии
 async def get_guild(guild_id):
     g = await fetch_one("SELECT * FROM guilds WHERE guild_id = ?", (guild_id,))
     if g:
         new_level = max(1, min(20, (g['treasury'] // 15000) + 1))
-
         base_slots = 5
         if new_level >= 15:
             base_slots = 20
@@ -275,11 +290,9 @@ async def get_guild(guild_id):
             base_slots = 15
         elif new_level >= 5:
             base_slots = 10
-
         bonus_slots = g.get('bonus_slots', 0) or 0
         new_max_members = base_slots + bonus_slots
 
-        # Обновляем ТОЛЬКО если новые значения больше текущих
         current_level = g.get('level', 1)
         current_max = g.get('max_members', 5)
 
@@ -291,7 +304,6 @@ async def get_guild(guild_id):
                           (final_level, final_max, guild_id))
             g['level'] = final_level
             g['max_members'] = final_max
-
     return g
 
 
@@ -645,8 +657,7 @@ async def get_cleanup_settings(chat_id):
     if not row:
         await execute(
             "INSERT OR IGNORE INTO chat_cleanup_settings (chat_id, enabled, min_messages, frequency_days, last_cleanup) VALUES (?, 0, 100, 7, 0)",
-            (chat_id,)
-        )
+            (chat_id,))
         row = await fetch_one("SELECT * FROM chat_cleanup_settings WHERE chat_id = ?", (chat_id,))
     return row
 
@@ -670,3 +681,12 @@ async def remove_trusted_admin(user_id: int):
 async def get_trusted_admins() -> list[int]:
     rows = await fetch_all("SELECT key FROM bot_settings WHERE key LIKE 'trusted_admin_%'")
     return [int(r['key'].replace('trusted_admin_', '')) for r in rows]
+
+
+# НОВАЯ ФУНКЦИЯ ДЛЯ ЖАЛОБ
+async def save_complaint(chat_id, reporter_id, target_id, target_name, reason, is_anonymous):
+    now = int(datetime.now(timezone.utc).timestamp())
+    await execute(
+        "INSERT INTO complaints (chat_id, reporter_id, target_id, target_name, reason, is_anonymous, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (chat_id, reporter_id, target_id, target_name, reason, is_anonymous, now)
+    )

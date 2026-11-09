@@ -20,3 +20,4 @@ from . import gacha
 from . import daily
 from . import economy
 from . import apply
+from . import reports  # <--- Добавлено
