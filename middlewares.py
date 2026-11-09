@@ -26,7 +26,7 @@ async def auto_register_msg(handler, event: types.Message, data: dict):
     return await handler(event, data)
 
 
-# --- НОВЫЙ MIDDLEWARE ДЛЯ ПРОВЕРКИ ПОДПИСКИ ---
+# --- MIDDLEWARE ДЛЯ ПРОВЕРКИ ПОДПИСКИ ---
 @dp.message.middleware()
 async def check_subscription_middleware(handler, event: types.Message, data: dict):
     if event.chat.type not in ("group", "supergroup"):
@@ -35,7 +35,6 @@ async def check_subscription_middleware(handler, event: types.Message, data: dic
     if not event.from_user or event.from_user.is_bot:
         return await handler(event, data)
 
-    # Проверяем, включена ли функция подписки
     sub_enabled = await get_setting("sub_enabled", "0")
     if sub_enabled != "1":
         return await handler(event, data)
@@ -44,19 +43,30 @@ async def check_subscription_middleware(handler, event: types.Message, data: dic
     if not user:
         return await handler(event, data)
 
-    # Если человек уже подписан или пишет /start (чтобы бот мог показать меню), пропускаем
+    # Если подписан или пишет /start - пропускаем
     if user.get("sub_passed") == 1 or (event.text and event.text.startswith("/start")):
         return await handler(event, data)
 
-    # Если не подписан - молча удаляем сообщение
+    # Если не подписан - удаляем и шлем временное предупреждение
     try:
         await event.delete()
-    except:
+        warning = await event.answer(
+            f"{event.from_user.first_name}, пожалуйста, напишите /start и подпишитесь на каналы, чтобы общаться!")
+
+        async def delete_warning():
+            await asyncio.sleep(10)
+            try:
+                await warning.delete()
+            except:
+                pass
+
+        asyncio.create_task(delete_warning())
+    except Exception:
         pass
     return
 
 
-# ----------------------------------------------
+# ---------------------------------------------
 
 
 @dp.message.middleware()

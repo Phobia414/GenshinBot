@@ -61,6 +61,15 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
     chat_id = message.chat.id
     user = await _ensure_user(message.from_user.id, chat_id)
 
+    # --- ПРОВЕРКА ПОДПИСКИ (ТЕПЕРЬ ДЛЯ ВСЕХ) ---
+    if message.chat.type in ("group", "supergroup"):
+        sub_enabled = await get_setting("sub_enabled", "0")
+        if sub_enabled == "1" and user.get("sub_passed") == 0:
+            sent = await send_sub_message(message, message.from_user.id, chat_id)
+            if sent:
+                return # Если бот показал меню подписки, останавливаемся
+    # --------------------------------------------
+
     # 2. Обработка перехода по ссылке на анкету
     if command.args and command.args.startswith("apply_"):
         target_chat_id = int(command.args.replace("apply_", ""))
@@ -138,13 +147,6 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
 
     # 4. Работа в группе (выбор пола и персонажа)
     if not user["character_name"]:
-        # --- ПРОВЕРКА ПОДПИСКИ ПРИ НАПИСАНИИ /start ---
-        sub_enabled = await get_setting("sub_enabled", "0")
-        if sub_enabled == "1" and user.get("sub_passed") == 0:
-            await send_sub_message(message, message.from_user.id, chat_id)
-            return
-        # ------------------------------------------------
-
         app = await get_application(message.from_user.id, chat_id)
 
         if app and app['status'] == 'accepted':
@@ -375,14 +377,12 @@ async def on_chat_member_update(event: types.ChatMemberUpdated):
                 await update_chat_list(event.chat.id)
 
         elif is_new:
-            # --- ПРОВЕРКА ПОДПИСКИ ПРИ ВХОДЕ ---
             sub_enabled = await get_setting("sub_enabled", "0")
             if sub_enabled == "1":
                 user = await get_user(affected_user.id, event.chat.id)
                 if not user or user.get("sub_passed") == 0:
                     await send_sub_message(event, affected_user.id, event.chat.id)
                     return
-            # ------------------------------------
 
             app = await get_application(affected_user.id, event.chat.id)
             if app and app['status'] == 'accepted':
