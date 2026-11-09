@@ -87,7 +87,8 @@ async def cb_report_evidence(query: types.CallbackQuery, callback_data: ReportCB
 
 
 # 5. Обработка самого материала и отправка админам
-@dp.message(ReportForm.evidence)
+# ФИКС: Добавлен фильтр ~F.text.startswith("/"), чтобы команды не записывались в жалобу
+@dp.message(ReportForm.evidence, ~F.text.startswith("/"))
 async def report_get_evidence(message: types.Message, state: FSMContext):
     data = await state.get_data()
     chat_id = data.get("report_chat_id")
