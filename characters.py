@@ -144,7 +144,6 @@ CHARACTERS = {
     # ===== Снежная =====
     "Алёша": {"region": "snezhnaya", "image": "https://i.pinimg.com/originals/e3/15/41/e315411f884980ecc476d55b6e6b2032.jpg?nii=t"},
     "Одетта": {"region": "snezhnaya", "image": "https://avatars.mds.yandex.net/i?id=5a6b4533ce63b79370c549bd4776df4f_l-5235953-images-thumbs&n=13"},
-    "Анастасия Федоровна Снежная": {"region": "snezhnaya", "image": "https://avatars.mds.yandex.net/i?id=db2a6708ea7303ce3aae534e6dd84e16_l-10303547-images-thumbs&n=13"},
     "Весна": {"region": "snezhnaya", "image": "https://avatars.mds.yandex.net/i?id=ae9583b77b4920b8a5a52b3c3c609025_l-5714596-images-thumbs&n=13"},
     "Водяница": {"region": "snezhnaya", "image": "https://avatars.mds.yandex.net/i?id=3a037def437c3c83babacca9d97679c1_l-8221351-images-thumbs&n=13"},
     "Валерий": {"region": "snezhnaya", "image": "https://wotpack.ru/wp-content/uploads/2026/06/litso-valeriya-vblizi-genshin-impact-1536x864.jpg"},
