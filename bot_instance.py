@@ -13,17 +13,14 @@ class AutoDeleteSession(AiohttpSession):
             if result and hasattr(result, 'chat'):
                 chat_type = result.chat.type
 
-                # 1. Если это ЛС (private) или канал — НИКОГДА не ставим на автоудаление
                 if chat_type not in ('group', 'supergroup'):
                     return result
 
-                # Дальше логика только для групп
                 is_excluded_msg = False
                 text = getattr(method, "text", "") or getattr(method, "caption", "") or ""
                 text_upper = text.upper()
 
-                # 2. Исключаем созыв (/call) и сообщения боссов из автоудаления
-                if "ПОЗЫВНОЙ" in text_upper or "БОСС" in text_upper:
+                if "ПОЗЫВНОЙ" in text_upper or "БОСС" in text_upper or "ОБЯЗАТЕЛЬНАЯ ПОДПИСКА" in text_upper:
                     is_excluded_msg = True
 
                 reply_markup = getattr(method, "reply_markup", None)
@@ -37,7 +34,6 @@ class AutoDeleteSession(AiohttpSession):
                         if is_excluded_msg:
                             break
 
-                # 3. Ставим таймер на удаление, если это обычное сообщение в группе
                 if not is_excluded_msg:
                     asyncio.create_task(self.delete_later(bot, result.chat.id, result.message_id, 300))
 

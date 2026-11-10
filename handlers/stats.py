@@ -23,14 +23,15 @@ async def cmd_stats(message: types.Message):
         return await message.answer("⚠️ Используй: <code>!статистика неделя</code> или <code>!статистика месяц</code>",
                                     parse_mode="HTML")
 
+    # ФИКС: Берем только тех, у кого есть персонаж
     users = await fetch_all(
-        f"SELECT user_id, character_name, username, {col_name} as msgs, last_msg_time "
-        f"FROM users WHERE chat_id = ? ORDER BY msgs DESC",
+        f"SELECT user_id, character_name, {col_name} as msgs, last_msg_time "
+        f"FROM users WHERE chat_id = ? AND character_name IS NOT NULL AND character_name != '' ORDER BY msgs DESC",
         (chat_id,)
     )
 
     if not users:
-        return await message.answer("В этом чате пока нет игроков.")
+        return await message.answer("В этом чате пока нет активных игроков.")
 
     now = int(datetime.now(timezone.utc).timestamp())
     active_lines = []
@@ -38,12 +39,7 @@ async def cmd_stats(message: types.Message):
 
     for u in users:
         msgs = u["msgs"] or 0
-        # Пропускаем пользователей без роли и без сообщений
-        if not u["character_name"] and msgs == 0:
-            continue
-
-        # Если есть сообщения, но нет роли - пишем "Без роли"
-        name = esc(u["character_name"] or f"Без роли ({u['username'] or u['user_id']})")
+        name = esc(u["character_name"])
         last_time = u["last_msg_time"] or 0
         days_inactive = (now - last_time) // 86400
 

@@ -1,4 +1,6 @@
 import time
+import hashlib
+import asyncio
 from aiogram import types, F
 from aiogram.filters import Command, CommandObject
 from aiogram.types import FSInputFile
@@ -25,22 +27,45 @@ from handlers.reports import process_report_start
 from handlers.subscription import send_sub_message
 import state as bot_state
 
+# ЗАМОК ОТ ДУБЛИРОВАНИЯ (БАГ 4)
+_sub_lock = {}
+
+
+async def safe_send_sub(message_or_event, user_id, chat_id):
+    if user_id in _sub_lock:
+        return
+    _sub_lock[user_id] = True
+    try:
+        await send_sub_message(message_or_event, user_id, chat_id)
+        await asyncio.sleep(10)
+    finally:
+        if user_id in _sub_lock:
+            del _sub_lock[user_id]
+
 
 def format_text(text: str, name: str, div: str) -> str:
     return text.replace("{name}", name).replace("{div}", div)
+
+
+def get_name_by_hash(chash: str) -> str:
+    for name in CHARACTERS.keys():
+        if hashlib.md5(name.encode()).hexdigest()[:10] == chash:
+            return name
+    for name in bot_state._custom_chars.keys():
+        if hashlib.md5(name.encode()).hexdigest()[:10] == chash:
+            return name
+    return chash
 
 
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext, command: CommandObject):
     current_state = await state.get_state()
 
-    # --- ОБРАБОТКА ЖАЛОБ ---
     if command.args and command.args.startswith("report_"):
         chat_id_report = int(command.args.replace("report_", ""))
         await process_report_start(message, chat_id_report, state)
         return
 
-    # 1. Сброс состояний
     if current_state:
         if current_state.startswith("ApplyForm"):
             data = await state.get_data()
@@ -61,16 +86,13 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
     chat_id = message.chat.id
     user = await _ensure_user(message.from_user.id, chat_id)
 
-    # --- ПРОВЕРКА ПОДПИСКИ (ТЕПЕРЬ ДЛЯ ВСЕХ) ---
     if message.chat.type in ("group", "supergroup"):
         sub_enabled = await get_setting("sub_enabled", "0")
         if sub_enabled == "1" and user.get("sub_passed") == 0:
             sent = await send_sub_message(message, message.from_user.id, chat_id)
             if sent:
-                return # Если бот показал меню подписки, останавливаемся
-    # --------------------------------------------
+                return
 
-    # 2. Обработка перехода по ссылке на анкету
     if command.args and command.args.startswith("apply_"):
         target_chat_id = int(command.args.replace("apply_", ""))
 
@@ -102,7 +124,6 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
         await send_step(message.chat.id, 0, state)
         return
 
-    # 3. Работа в личных сообщениях (только анкеты)
     if message.chat.type == "private":
         apps = await fetch_all(
             "SELECT chat_id, status FROM applications WHERE user_id = ? ORDER BY status='accepted' DESC, status='waiting_char' DESC, status='pending' DESC LIMIT 1",
@@ -145,7 +166,6 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
             )
         return
 
-    # 4. Работа в группе (выбор пола и персонажа)
     if not user["character_name"]:
         app = await get_application(message.from_user.id, chat_id)
 
@@ -256,7 +276,7 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
         return
 
     user = await get_user(query.from_user.id, chat_id)
-    name = callback_data.character
+    name = get_name_by_hash(callback_data.character)
 
     if user["character_name"] and not user["char_change_paid"]:
         await query.answer("❌ У тебя уже есть персонаж. Смену можно купить в Лавке!", show_alert=True)
@@ -381,7 +401,8 @@ async def on_chat_member_update(event: types.ChatMemberUpdated):
             if sub_enabled == "1":
                 user = await get_user(affected_user.id, event.chat.id)
                 if not user or user.get("sub_passed") == 0:
-                    await send_sub_message(event, affected_user.id, event.chat.id)
+                    # ИСПОЛЬЗУЕМ БЕЗОПАСНУЮ ОТПРАВКУ
+                    await safe_send_sub(event, affected_user.id, event.chat.id)
                     return
 
             app = await get_application(affected_user.id, event.chat.id)
@@ -405,3 +426,22 @@ async def on_chat_member_update(event: types.ChatMemberUpdated):
                     )
     except Exception as e:
         print(f"ChatMemberUpdate error: {e}")
+
+
+@dp.message(F.new_chat_members)
+async def on_new_chat_members(message: types.Message):
+    try:
+        sub_enabled = await get_setting("sub_enabled", "0")
+        if sub_enabled != "1":
+            return
+
+        for user in message.new_chat_members:
+            if user.is_bot:
+                continue
+
+            db_user = await get_user(user.id, message.chat.id)
+            if not db_user or db_user.get("sub_passed") == 0:
+                # ИСПОЛЬЗУЕМ БЕЗОПАСНУЮ ОТПРАВКУ
+                await safe_send_sub(message, user.id, message.chat.id)
+    except Exception as e:
+        print(f"NewChatMembers error: {e}")
