@@ -24,7 +24,8 @@ async def send_sub_message(message_or_event, user_id: int, chat_id: int):
     for ch in channels:
         b.button(text=f"📢 {ch['title']}", url=ch['url'])
 
-    b.button(text="✅ Проверить подписку", callback_data=SubCB(action="check").pack())
+    # ПРИВЯЗЫВАЕМ КНОПКУ К КОНКРЕТНОМУ ПОЛЬЗОВАТЕЛЮ
+    b.button(text="✅ Проверить подписку", callback_data=SubCB(action="check", target_id=user_id).pack())
     b.adjust(1)
 
     user_mention = f'<a href="tg://user?id={user_id}">Новый участник</a>, ' if chat_id != user_id else ''
@@ -37,19 +38,16 @@ async def send_sub_message(message_or_event, user_id: int, chat_id: int):
 
     try:
         if isinstance(message_or_event, types.Message):
-            # ИСПРАВЛЕНИЕ: Если это системное сообщение о входе, отправляем отдельным сообщением в чат
             if message_or_event.new_chat_members:
                 await bot.send_message(chat_id, text, reply_markup=b.as_markup(), parse_mode="HTML")
             else:
                 await message_or_event.answer(text, reply_markup=b.as_markup(), parse_mode="HTML")
-
         elif isinstance(message_or_event, types.ChatMemberUpdated):
             await bot.send_message(chat_id, text, reply_markup=b.as_markup(), parse_mode="HTML")
         elif isinstance(message_or_event, types.CallbackQuery):
             await message_or_event.message.edit_text(text, reply_markup=b.as_markup(), parse_mode="HTML")
         else:
             await bot.send_message(chat_id, text, reply_markup=b.as_markup(), parse_mode="HTML")
-
     except Exception as e:
         print(f"Ошибка при отправке сообщения о подписке: {e}")
         return False
@@ -57,7 +55,12 @@ async def send_sub_message(message_or_event, user_id: int, chat_id: int):
 
 
 @dp.callback_query(SubCB.filter(F.action == "check"))
-async def cb_check_sub(query: types.CallbackQuery, state: FSMContext):
+async def cb_check_sub(query: types.CallbackQuery, callback_data: SubCB, state: FSMContext):
+    # ЗАЩИТА: Если нажал не тот, кому адресована кнопка
+    if query.from_user.id != callback_data.target_id:
+        await query.answer("❌ Это не ваша кнопка! Напишите /start, чтобы получить свою.", show_alert=True)
+        return
+
     await query.answer("Проверяем...", show_alert=False)
     chat_id = query.message.chat.id
     user_id = query.from_user.id
@@ -81,16 +84,21 @@ async def cb_check_sub(query: types.CallbackQuery, state: FSMContext):
 
     if all_subbed:
         await update_user(user_id, chat_id, sub_passed=1)
+        try:
+            await query.message.delete()
+        except:
+            pass
+
         user = await get_user(user_id, chat_id)
 
         if not user["gender"]:
             text = f"── 〔 ✨ ПРИВЕТСТВИЕ 〕 ──\n\nДобро пожаловать в Тейват!\n\nДля начала выбери свой пол:"
-            await query.message.edit_text(text, reply_markup=gender_kb(user_id), parse_mode="HTML")
+            await bot.send_message(chat_id, text, reply_markup=gender_kb(user_id), parse_mode="HTML")
         elif not user["character_name"]:
             text = f"── 〔 🌸 ВЫБОР ПЕРСОНАЖА 〕 ──\n\nВыбери регион, откуда родом твой герой 🎭"
-            await query.message.edit_text(text, reply_markup=regions_kb(user_id), parse_mode="HTML")
+            await bot.send_message(chat_id, text, reply_markup=regions_kb(user_id), parse_mode="HTML")
         else:
-            await query.message.edit_text(
-                "✅ Спасибо за подписку! Теперь вы можете общаться в чате. Напишите /start для вызова меню.")
+            await bot.send_message(chat_id,
+                                   "✅ Спасибо за подписку! Теперь вы можете общаться в чате. Напишите /start для вызова меню.")
     else:
         await query.answer("❌ Вы подписались не на все каналы!", show_alert=True)

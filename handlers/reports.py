@@ -33,7 +33,6 @@ async def process_report_start(message: types.Message, chat_id: int, state: FSMC
     await state.clear()
     await state.update_data(report_chat_id=chat_id)
     await state.set_state(ReportForm.start)
-
     b = InlineKeyboardBuilder()
     b.button(text="📝 Написать жалобу", callback_data=ReportCB(action="start_pm").pack())
     await message.answer(
@@ -52,9 +51,8 @@ async def cb_report_type(query: types.CallbackQuery, state: FSMContext):
     b.adjust(1)
     await query.message.edit_text(
         "Выбери какая у тебя будет жалоба, анонимная или подписанная?\n\n"
-        "🔒 <i>При анонимной жалобе, никто не увидит твой аккаунт, даже администраторы и создатель бота.</i>",
-        reply_markup=b.as_markup(),
-        parse_mode="HTML"
+        "🔒 <i>При анонимной жалобе, никто не увидит твой аккаунт, даже администраторы.</i>",
+        reply_markup=b.as_markup(), parse_mode="HTML"
     )
     await query.answer()
 
@@ -64,23 +62,27 @@ async def cb_report_evidence(query: types.CallbackQuery, callback_data: ReportCB
     is_anon = 1 if callback_data.action == "anon_yes" else 0
     await state.update_data(is_anon=is_anon)
     await state.set_state(ReportForm.evidence)
-
     await query.message.edit_text(
         "📥 <b>Отправь материал.</b>\n\n"
-        "Пришли фото/видео материал (Если есть) доказательства нарушения со стороны пользователя, "
+        "Пришли фото/видео материал доказательства нарушения со стороны пользователя, "
         "а также опиши ситуацию текстом в одном сообщении (или подпиши медиафайл).",
         parse_mode="HTML"
     )
-    await query.answer("Пришли фото/видео материал доказательства нарушения со стороны пользователя", show_alert=True)
+    await query.answer("Пришли фото/видео материал доказательства нарушения", show_alert=True)
 
 
-# ИСПРАВЛЕНИЕ: Добавлен фильтр ~F.text.startswith("/")
-@dp.message(ReportForm.evidence, ~F.text.startswith("/"))
+@dp.message(ReportForm.evidence)
 async def report_get_evidence(message: types.Message, state: FSMContext):
+    # ИСПРАВЛЕНИЕ (Баг 2): Проверяем и текст, и подпись к фото
+    check_text = message.text or message.caption or ""
+    if check_text.startswith("/"):
+        await state.clear() # <--- СБРОС СОСТОЯНИЯ
+        return  # Игнорируем команды в любом виде
+
     data = await state.get_data()
     chat_id = data.get("report_chat_id")
     is_anon = data.get("is_anon", 0)
-    reason_text = message.text or message.caption or "Без текста"
+    reason_text = check_text or "Без текста"
 
     await save_complaint(chat_id, message.from_user.id, 0, "Нарушитель", reason_text, is_anon)
     await state.clear()
@@ -88,7 +90,7 @@ async def report_get_evidence(message: types.Message, state: FSMContext):
     type_text = "🕵️ Анонимная" if is_anon else "👤 Подписанная"
     receipt_text = (
         f"✅ <b>Ваша жалоба успешно отправлена администрации!</b>\n\n"
-        f"<b>Тип:</b> {type_text}\n\n"
+        f"<b>Тип:</b> {type_text}\n"
         f"<b>Текст жалобы:</b>\n<i>{esc(reason_text)}</i>"
     )
     await message.answer(receipt_text, parse_mode="HTML")
@@ -96,9 +98,9 @@ async def report_get_evidence(message: types.Message, state: FSMContext):
     user_link = "Скрыт (Аноним)" if is_anon else f'<a href="tg://user?id={message.from_user.id}">{esc(message.from_user.first_name)}</a>'
 
     admin_header = (
-        f"🚨 <b>НОВАЯ ЖАЛОБА</b>\n\n"
-        f"Группа: <code>{chat_id}</code>\n\n"
-        f"Тип: {type_text}\n\n"
+        f"🚨 <b>НОВАЯ ЖАЛОБА</b>\n"
+        f"Группа: <code>{chat_id}</code>\n"
+        f"Тип: {type_text}\n"
         f"От кого: {user_link}\n\n"
         f"📝 <b>Описание:</b>\n<i>{esc(reason_text)}</i>\n\n"
         f"👇 <b>Доказательства (если есть) ниже:</b>"

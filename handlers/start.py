@@ -27,7 +27,7 @@ from handlers.reports import process_report_start
 from handlers.subscription import send_sub_message
 import state as bot_state
 
-# ЗАМОК ОТ ДУБЛИРОВАНИЯ (БАГ 4)
+# ЗАМОК ОТ ДУБЛИРОВАНИЯ
 _sub_lock = {}
 
 
@@ -48,6 +48,10 @@ def format_text(text: str, name: str, div: str) -> str:
 
 
 def get_name_by_hash(chash: str) -> str:
+    # ИСПРАВЛЕНИЕ: Защита от старых кнопок, где передавалось прямое имя
+    if len(chash) > 15:
+        return chash
+
     for name in CHARACTERS.keys():
         if hashlib.md5(name.encode()).hexdigest()[:10] == chash:
             return name
@@ -401,7 +405,6 @@ async def on_chat_member_update(event: types.ChatMemberUpdated):
             if sub_enabled == "1":
                 user = await get_user(affected_user.id, event.chat.id)
                 if not user or user.get("sub_passed") == 0:
-                    # ИСПОЛЬЗУЕМ БЕЗОПАСНУЮ ОТПРАВКУ
                     await safe_send_sub(event, affected_user.id, event.chat.id)
                     return
 
@@ -441,7 +444,6 @@ async def on_new_chat_members(message: types.Message):
 
             db_user = await get_user(user.id, message.chat.id)
             if not db_user or db_user.get("sub_passed") == 0:
-                # ИСПОЛЬЗУЕМ БЕЗОПАСНУЮ ОТПРАВКУ
                 await safe_send_sub(message, user.id, message.chat.id)
     except Exception as e:
         print(f"NewChatMembers error: {e}")

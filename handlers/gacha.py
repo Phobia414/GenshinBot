@@ -14,6 +14,9 @@ import state
 COST_1 = 160
 COST_10 = 1600
 
+# ИСПРАВЛЕНИЕ: Блокировка от спама
+_gacha_locks = set()
+
 BANNERS = {
     "event_char": {"name": "Ивентовый баннер", "icon": "🎭", "pity_max": 90, "desc": "50/50 на ивентового 5★"},
     "standard": {"name": "Стандартный баннер", "icon": "💠", "pity_max": 90, "desc": "Только стандартные 5★"},
@@ -207,67 +210,77 @@ async def cb_gacha_back(query, user, chat_id):
 @dp.callback_query(F.data.in_(["gacha_1", "gacha_10"]))
 @inject_user
 async def cb_do_pull(query, user, chat_id):
-    pulls = 1 if query.data == "gacha_1" else 10
-    cost = COST_1 if pulls == 1 else COST_10
-    if user.get("primogems", 0) < cost: return await query.answer(f"❌ Нужно {cost} 💎", show_alert=True)
+    # ИСПРАВЛЕНИЕ: Защита от спама кнопок
+    if query.from_user.id in _gacha_locks:
+        return await query.answer("⏳ Подождите, идет крутка...", show_alert=False)
 
-    await query.answer("Крутим...")
-    await update_primogems(query.from_user.id, chat_id, -cost)
-
-    banner = user.get("gacha_banner", "event_char")
-    p4, p5, g5, l50 = user.get("gacha_pity_4", 0), user.get("gacha_pity_5", 0), user.get("gacha_guaranteed_5",
-                                                                                         0), user.get(
-        "gacha_lost_50_50", 0)
-    results, max_rarity, is_pink, best_item = [], 3, False, None
-
-    for _ in range(pulls):
-        rarity, item, p4, p5, g5, l50, pink = get_pull_result(p4, p5, g5, l50, banner)
-        results.append((rarity, item))
-        img = state._gacha_images.get(item["name"], item["image"])
-        await add_gacha_item(query.from_user.id, chat_id, item["name"], item["type"], rarity, img)
-        if rarity > max_rarity:
-            max_rarity, is_pink, best_item = rarity, pink, item
-        elif rarity == 5 and pink:
-            is_pink, best_item = True, item
-        elif best_item is None:
-            best_item = item
-
-    await update_user(query.from_user.id, chat_id, gacha_pity_4=p4, gacha_pity_5=p5, gacha_guaranteed_5=g5,
-                      gacha_lost_50_50=l50)
-    gif_type = "blue" if max_rarity == 3 else ("purple" if max_rarity == 4 else ("pink" if is_pink else "gold"))
-
+    _gacha_locks.add(query.from_user.id)
     try:
-        await query.message.delete()
-    except:
-        pass
+        pulls = 1 if query.data == "gacha_1" else 10
+        cost = COST_1 if pulls == 1 else COST_10
+        if user.get("primogems", 0) < cost:
+            return await query.answer(f"❌ Нужно {cost} 💎", show_alert=True)
 
-    gif_id = await get_gacha_gif(gif_type)
-    if gif_id:
+        await query.answer("Крутим...")
+        await update_primogems(query.from_user.id, chat_id, -cost)
+
+        banner = user.get("gacha_banner", "event_char")
+        p4, p5, g5, l50 = user.get("gacha_pity_4", 0), user.get("gacha_pity_5", 0), user.get("gacha_guaranteed_5",
+                                                                                             0), user.get(
+            "gacha_lost_50_50", 0)
+        results, max_rarity, is_pink, best_item = [], 3, False, None
+
+        for _ in range(pulls):
+            rarity, item, p4, p5, g5, l50, pink = get_pull_result(p4, p5, g5, l50, banner)
+            results.append((rarity, item))
+            img = state._gacha_images.get(item["name"], item["image"])
+            await add_gacha_item(query.from_user.id, chat_id, item["name"], item["type"], rarity, img)
+            if rarity > max_rarity:
+                max_rarity, is_pink, best_item = rarity, pink, item
+            elif rarity == 5 and pink:
+                is_pink, best_item = True, item
+            elif best_item is None:
+                best_item = item
+
+        await update_user(query.from_user.id, chat_id, gacha_pity_4=p4, gacha_pity_5=p5, gacha_guaranteed_5=g5,
+                          gacha_lost_50_50=l50)
+        gif_type = "blue" if max_rarity == 3 else ("purple" if max_rarity == 4 else ("pink" if is_pink else "gold"))
+
         try:
-            gif_msg = await bot.send_animation(chat_id, gif_id)
-            await asyncio.sleep(3)
-            await gif_msg.delete()
+            await query.message.delete()
         except:
             pass
 
-    lines = [f"{'⭐' * rar} {it['name']}" for rar, it in results]
-    text = (
-            f"─ [ 🌟 РЕЗУЛЬТАТЫ (x{pulls}) ] ─\n\n"
-            f"" + "\n".join(lines) + "\n"
+        gif_id = await get_gacha_gif(gif_type)
+        if gif_id:
+            try:
+                gif_msg = await bot.send_animation(chat_id, gif_id)
+                await asyncio.sleep(3)
+                await gif_msg.delete()
+            except:
+                pass
+
+        lines = [f"{'⭐' * rar} {it['name']}" for rar, it in results]
+        text = (
+                f"─ [ 🌟 РЕЗУЛЬТАТЫ (x{pulls}) ] ─\n\n"
+                f"" + "\n".join(lines) + "\n"
                                          f"💎 Остаток: {user.get('primogems', 0) - cost}\n"
                                          f"🔮 До гаранта: {BANNERS[banner]['pity_max'] - p5}"
-    )
+        )
 
-    kb = InlineKeyboardBuilder().button(text="⊱ 🔮 К молитвам ⊰", callback_data="gacha_back")
-    kb.adjust(1)
+        kb = InlineKeyboardBuilder().button(text="⊱ 🔮 К молитвам ⊰", callback_data="gacha_back")
+        kb.adjust(1)
 
-    if best_item and max_rarity > 3:
-        best_img = state._gacha_images.get(best_item["name"], best_item["image"])
-        caption = text + f"\n\n✨ Лучшее: {'⭐' * max_rarity} <b>{best_item['name']}</b>"
-        try:
-            await bot.send_photo(chat_id=chat_id, photo=best_img, caption=caption, reply_markup=kb.as_markup(),
-                                 parse_mode="HTML")
-        except:
+        if best_item and max_rarity > 3:
+            best_img = state._gacha_images.get(best_item["name"], best_item["image"])
+            caption = text + f"\n\n✨ Лучшее: {'⭐' * max_rarity} <b>{best_item['name']}</b>"
+            try:
+                await bot.send_photo(chat_id=chat_id, photo=best_img, caption=caption, reply_markup=kb.as_markup(),
+                                     parse_mode="HTML")
+            except:
+                await bot.send_message(chat_id, text, reply_markup=kb.as_markup(), parse_mode="HTML")
+        else:
             await bot.send_message(chat_id, text, reply_markup=kb.as_markup(), parse_mode="HTML")
-    else:
-        await bot.send_message(chat_id, text, reply_markup=kb.as_markup(), parse_mode="HTML")
+
+    finally:
+        _gacha_locks.discard(query.from_user.id)

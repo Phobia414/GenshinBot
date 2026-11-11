@@ -492,7 +492,6 @@ async def cb_guild_info(query: types.CallbackQuery, callback_data: GuildCB, user
         f"🏆 Очки недели: <b>{g.get('week_points', 0)}</b>"
     )
 
-    # Подтягиваем картинку гильдии (если загружена) или стандартную
     img = g.get("image_url") if g and g.get("image_url") else await get_local_setting("image_guild", chat_id)
 
     await edit_or_send(query, text, guild_menu_kb(query.from_user.id, True, g["owner_id"] == query.from_user.id),
@@ -703,6 +702,12 @@ async def cb_guild_invite(query: types.CallbackQuery, callback_data: GuildInvite
         return
 
     chat_id = query.message.chat.id
+
+    # ИСПРАВЛЕНИЕ: Проверка, не вступил ли уже в другую гильдию
+    db_user = await get_user(query.from_user.id, chat_id)
+    if db_user and db_user["guild_id"]:
+        return await query.answer("❌ Вы уже состоите в гильдии!", show_alert=True)
+
     g = await get_guild(callback_data.guild_id)
     if not g:
         return await query.answer("❌ Гильдия больше не существует.", show_alert=True)

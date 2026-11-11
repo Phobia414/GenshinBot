@@ -21,6 +21,7 @@ async def cmd_call(message: types.Message):
     chat_id = message.chat.id
     now = int(datetime.now(timezone.utc).timestamp())
     is_owner = message.from_user.id == OWNER_ID
+
     if not is_owner:
         from state import _call_cooldown
         last = _call_cooldown.get(chat_id, 0)
@@ -44,9 +45,8 @@ async def cmd_call(message: types.Message):
     rows = []
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        # Берем ТОЛЬКО тех, у кого есть персонаж (то есть они в группе)
         async with db.execute(
-                "SELECT user_id, character_name FROM users "
+                "SELECT user_id, character_name, username FROM users "
                 "WHERE character_name IS NOT NULL AND character_name != '' AND chat_id = ? "
                 "AND (IFNULL(call_opt_out, 0) = 0 OR user_id = ?) "
                 "ORDER BY user_id",
@@ -63,13 +63,14 @@ async def cmd_call(message: types.Message):
     total = len(rows)
     shown = rows[:CALL_MAX_MENTIONS]
     mentions = []
-    n_emoji = len(CALL_EMOJIS)
 
     for i, r in enumerate(shown):
-        emoji = CALL_EMOJIS[i % n_emoji]
-        # ИСПРАВЛЕНИЕ: Добавляем имя персонажа, чтобы Telegram точно пинганул
-        mention_text = f'{emoji} {esc(r["character_name"])}'
-        mentions.append(f'<a href="tg://user?id={r["user_id"]}">{mention_text}</a>')
+        # ИСПРАВЛЕНИЕ: Если есть юзернейм, используем его. Если нет - ссылку на профиль с именем.
+        if r["username"]:
+            mention = f'<a href="tg://user?id={r["user_id"]}">@{r["username"]}</a>'
+        else:
+            mention = f'<a href="tg://user?id={r["user_id"]}">{esc(r["character_name"])}</a>'
+        mentions.append(mention)
 
     mentions_line = ", ".join(mentions)
     if total > CALL_MAX_MENTIONS:
@@ -77,7 +78,9 @@ async def cmd_call(message: types.Message):
 
     text = f"📢 ПОЗЫВНОЙ\n{DIV}\n\n{esc(call_text)}\n\n{DIV}\n\n{mentions_line}"
     try:
-        await message.answer(text, parse_mode="HTML", reply_markup=back_kb(message.from_user.id))
+        # Явно указываем disable_notification=False (хотя по умолчанию и так False)
+        await message.answer(text, parse_mode="HTML", reply_markup=back_kb(message.from_user.id),
+                             disable_notification=False)
     except Exception as e:
         await message.reply(f"⚠️ Не смог отправить позывной: {e}")
 

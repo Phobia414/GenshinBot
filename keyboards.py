@@ -1,3 +1,4 @@
+import hashlib # <--- ДОБАВЛЕНО
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from callbacks import (
@@ -14,7 +15,6 @@ from config import (
     PRICE_ROLE_CHANGE, PRICE_REST, PRICE_CLEAN, PRICE_ELIXIR, OWNER_ID,
 )
 from db import RESIN_COST_DUNGEON, RECIPES, INGREDIENTS
-
 
 def main_menu_kb(uid):
     b = InlineKeyboardBuilder()
@@ -79,7 +79,9 @@ def characters_kb(uid, region_key, taken):
     for ch in get_characters_by_region(region_key):
         if ch in taken:
             continue
-        b.button(text=f"⊱ {ch} ⊰", callback_data=CharCB(character=ch, owner_id=uid))
+        # ИСПРАВЛЕНИЕ: Используем хеш для безопасной длины callback_data
+        cid = hashlib.md5(ch.encode()).hexdigest()[:10]
+        b.button(text=f"⊱ {ch} ⊰", callback_data=CharCB(character=cid, owner_id=uid))
     b.button(text="⊱ ‹ К регионам ⊰", callback_data=MenuCB(action="regions", owner_id=uid))
     b.adjust(2)
     return b.as_markup()

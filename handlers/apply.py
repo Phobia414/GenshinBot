@@ -151,11 +151,6 @@ async def cb_age_hide(query: types.CallbackQuery, state: FSMContext):
     await query.answer()
 
 
-# =======================================================
-# ФИКС: Добавлен фильтр ~F.text.startswith("/")
-# Теперь команды (например, /start) не записываются в анкету
-# =======================================================
-
 @dp.message(ApplyForm.age, F.text, ~F.text.startswith("/"))
 async def process_age(message: types.Message, state: FSMContext):
     text = message.text.strip()
@@ -207,10 +202,12 @@ async def process_activity(message: types.Message, state: FSMContext):
                 "❌ Ошибка: не найден ID ролевой. Пожалуйста, начните заполнение анкеты заново по ссылке.")
             return
 
+        # ИСПРАВЛЕНИЕ: Используем .get(), чтобы не вылетал KeyError
         await save_application(
             message.from_user.id, data["target_chat_id"], "Не выбран",
-            data["age"], data["experience"], data["about"], data["timezone"],
-            data["triggers"], "", data["activity"]
+            data.get("age", "Не указан"), data.get("experience", "Не указан"),
+            data.get("about", "Не указано"), data.get("timezone", "Не указан"),
+            data.get("triggers", "Не указаны"), "", data.get("activity", "Не указана")
         )
         await state.clear()
 
@@ -222,12 +219,12 @@ async def process_activity(message: types.Message, state: FSMContext):
             f"📩 <b>НОВАЯ АНКЕТА</b>\n{DIV}\n\n"
             f"👤 <b>Пользователь:</b> {esc(message.from_user.first_name)} (@{message.from_user.username})\n"
             f"🎭 <b>Роль:</b> Будет выбрана при входе\n\n"
-            f"🎂 <b>Возраст:</b> {esc(data['age'])}\n"
-            f"📖 <b>Опыт:</b> {esc(data['experience'])}\n"
-            f"🌟 <b>О себе:</b> {esc(data['about'])}\n"
-            f"🕒 <b>Часовой пояс:</b> {esc(data['timezone'])}\n"
-            f"⚠️ <b>Триггеры:</b> {esc(data['triggers'])}\n"
-            f"⚡ <b>Активность:</b> {esc(data['activity'])}"
+            f"🎂 <b>Возраст:</b> {esc(data.get('age', 'Не указан'))}\n"
+            f"📖 <b>Опыт:</b> {esc(data.get('experience', 'Не указан'))}\n"
+            f"🌟 <b>О себе:</b> {esc(data.get('about', 'Не указано'))}\n"
+            f"🕒 <b>Часовой пояс:</b> {esc(data.get('timezone', 'Не указан'))}\n"
+            f"⚠️ <b>Триггеры:</b> {esc(data.get('triggers', 'Не указаны'))}\n"
+            f"⚡ <b>Активность:</b> {esc(data.get('activity', 'Не указана'))}"
         )
 
         b = InlineKeyboardBuilder()
@@ -256,7 +253,6 @@ async def process_activity(message: types.Message, state: FSMContext):
             "❌ Произошла ошибка при сохранении анкеты. Пожалуйста, напишите ответ еще раз или начните заново.")
 
 
-# ЗАЩИТА ОТ ФОТО/СТИКЕРОВ В АНКЕТЕ
 @dp.message(StateFilter(ApplyForm), ~F.text)
 async def process_non_text(message: types.Message, state: FSMContext):
     await message.answer("⚠️ Пожалуйста, отвечайте на вопросы <b>текстом</b> (сообщением).", parse_mode="HTML")

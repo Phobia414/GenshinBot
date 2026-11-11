@@ -1,6 +1,5 @@
 from aiogram.filters.callback_data import CallbackData
 
-
 class MenuCB(CallbackData, prefix="menu"):
     action: str
     owner_id: int
@@ -108,5 +107,7 @@ class GuildInviteCB(CallbackData, prefix="ginvite"):
 class ReportCB(CallbackData, prefix="rep"):
     action: str
 
+# ИСПРАВЛЕНИЕ: Добавлен target_id для защиты от чужих нажатий
 class SubCB(CallbackData, prefix="sub"):
     action: str
+    target_id: int = 0
