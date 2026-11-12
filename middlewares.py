@@ -28,13 +28,13 @@ async def auto_register_msg(handler, event: types.Message, data: dict):
 
 @dp.message.middleware()
 async def check_subscription_middleware(handler, event: types.Message, data: dict):
+    # ИСПРАВЛЕНИЕ: Проверяем подписку ТОЛЬКО в группах
     if event.chat.type not in ("group", "supergroup"):
         return await handler(event, data)
 
     if not event.from_user or event.from_user.is_bot:
         return await handler(event, data)
 
-    # Владелец всегда может писать
     if event.from_user.id == OWNER_ID:
         return await handler(event, data)
 
@@ -46,11 +46,9 @@ async def check_subscription_middleware(handler, event: types.Message, data: dic
     if not user:
         return await handler(event, data)
 
-    # Если подписан или пишет /start - пропускаем
     if user.get("sub_passed") == 1 or (event.text and event.text.startswith("/start")):
         return await handler(event, data)
 
-    # ИСПРАВЛЕНИЕ: Удаляем сообщение и шлем меню с кнопками
     try:
         await event.delete()
         from handlers.subscription import send_sub_message
@@ -80,8 +78,11 @@ async def cmd_antispam(handler, event: types.Message, data: dict):
 @dp.callback_query.middleware()
 async def auto_register_cb(handler, event: types.CallbackQuery, data: dict):
     chat_id = 0
+    chat_type = "private"
     try:
-        chat_id = event.message.chat.id if event.message else 0
+        if event.message:
+            chat_id = event.message.chat.id
+            chat_type = event.message.chat.type
     except:
         pass
 
@@ -91,15 +92,17 @@ async def auto_register_cb(handler, event: types.CallbackQuery, data: dict):
         if event.from_user.username and u and u.get("username") != event.from_user.username:
             await update_user(event.from_user.id, chat_id, username=event.from_user.username)
 
-    if event.from_user.id != OWNER_ID:
-        sub_enabled = await get_setting("sub_enabled", "0")
-        if sub_enabled == "1":
-            u = await get_user(event.from_user.id, chat_id)
-            if u and u.get("sub_passed") == 0:
-                cb_data = event.data or ""
-                if not cb_data.startswith(("sub:", "start", "report_")):
-                    await event.answer("❌ Сначала подпишитесь на каналы! Напишите /start", show_alert=True)
-                    return
+    # ИСПРАВЛЕНИЕ: Блокируем кнопки по подписке ТОЛЬКО в группах
+    if chat_type in ("group", "supergroup"):
+        if event.from_user.id != OWNER_ID:
+            sub_enabled = await get_setting("sub_enabled", "0")
+            if sub_enabled == "1":
+                u = await get_user(event.from_user.id, chat_id)
+                if u and u.get("sub_passed") == 0:
+                    cb_data = event.data or ""
+                    if not cb_data.startswith(("sub:", "start", "report_")):
+                        await event.answer("❌ Сначала подпишитесь на каналы! Напишите /start в группе.", show_alert=True)
+                        return
 
     allowed_prefixes = (
         "menu:gender_", "menu:regions", "reg:", "char:", "menu:tops", "top:",
