@@ -24,7 +24,7 @@ async def send_sub_message(message_or_event, user_id: int, chat_id: int):
     for ch in channels:
         b.button(text=f"📢 {ch['title']}", url=ch['url'])
 
-    # ПРИВЯЗЫВАЕМ КНОПКУ К КОНКРЕТНОМУ ПОЛЬЗОВАТЕЛЮ
+    # Привязываем кнопку к конкретному пользователю
     b.button(text="✅ Проверить подписку", callback_data=SubCB(action="check", target_id=user_id).pack())
     b.adjust(1)
 
@@ -38,10 +38,8 @@ async def send_sub_message(message_or_event, user_id: int, chat_id: int):
 
     try:
         if isinstance(message_or_event, types.Message):
-            if message_or_event.new_chat_members:
-                await bot.send_message(chat_id, text, reply_markup=b.as_markup(), parse_mode="HTML")
-            else:
-                await message_or_event.answer(text, reply_markup=b.as_markup(), parse_mode="HTML")
+            # Если это системное сообщение о входе или обычное сообщение - шлем прямо в чат
+            await bot.send_message(chat_id, text, reply_markup=b.as_markup(), parse_mode="HTML")
         elif isinstance(message_or_event, types.ChatMemberUpdated):
             await bot.send_message(chat_id, text, reply_markup=b.as_markup(), parse_mode="HTML")
         elif isinstance(message_or_event, types.CallbackQuery):
@@ -56,7 +54,7 @@ async def send_sub_message(message_or_event, user_id: int, chat_id: int):
 
 @dp.callback_query(SubCB.filter(F.action == "check"))
 async def cb_check_sub(query: types.CallbackQuery, callback_data: SubCB, state: FSMContext):
-    # ЗАЩИТА: Если нажал не тот, кому адресована кнопка
+    # Защита от чужих нажатий
     if query.from_user.id != callback_data.target_id:
         await query.answer("❌ Это не ваша кнопка! Напишите /start, чтобы получить свою.", show_alert=True)
         return

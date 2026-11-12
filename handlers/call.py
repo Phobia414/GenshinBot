@@ -65,12 +65,12 @@ async def cmd_call(message: types.Message):
     mentions = []
 
     for i, r in enumerate(shown):
-        # ИСПРАВЛЕНИЕ: Если есть юзернейм, используем его. Если нет - ссылку на профиль с именем.
+        # ИСПРАВЛЕНИЕ: Убираем HTML-тег <a>, чтобы Telegram сам сделал нативное упоминание с бейджем @
         if r["username"]:
-            mention = f'<a href="tg://user?id={r["user_id"]}">@{r["username"]}</a>'
+            mentions.append(f"@{r['username']}")
         else:
-            mention = f'<a href="tg://user?id={r["user_id"]}">{esc(r["character_name"])}</a>'
-        mentions.append(mention)
+            # Если нет юзернейма, оставляем скрытую ссылку на профиль с именем персонажа
+            mentions.append(f'<a href="tg://user?id={r["user_id"]}">{esc(r["character_name"])}</a>')
 
     mentions_line = ", ".join(mentions)
     if total > CALL_MAX_MENTIONS:
@@ -78,7 +78,6 @@ async def cmd_call(message: types.Message):
 
     text = f"📢 ПОЗЫВНОЙ\n{DIV}\n\n{esc(call_text)}\n\n{DIV}\n\n{mentions_line}"
     try:
-        # Явно указываем disable_notification=False (хотя по умолчанию и так False)
         await message.answer(text, parse_mode="HTML", reply_markup=back_kb(message.from_user.id),
                              disable_notification=False)
     except Exception as e:

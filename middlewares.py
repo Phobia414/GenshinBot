@@ -1,7 +1,7 @@
 import asyncio
 from aiogram import types
 from bot_instance import dp
-from config import OWNER_ID, CMD_COOLDOWN, CB_COOLDOWN # <--- ИМПОРТ OWNER_ID
+from config import OWNER_ID, CMD_COOLDOWN, CB_COOLDOWN
 from db import get_user, update_user, add_known_group, get_setting
 from helpers import _ensure_user, _now_ts
 from state import _username_cache, _cb_cooldown, _cmd_cooldown
@@ -34,7 +34,7 @@ async def check_subscription_middleware(handler, event: types.Message, data: dic
     if not event.from_user or event.from_user.is_bot:
         return await handler(event, data)
 
-    # ИСПРАВЛЕНИЕ: Владелец всегда может писать
+    # Владелец всегда может писать
     if event.from_user.id == OWNER_ID:
         return await handler(event, data)
 
@@ -46,24 +46,17 @@ async def check_subscription_middleware(handler, event: types.Message, data: dic
     if not user:
         return await handler(event, data)
 
+    # Если подписан или пишет /start - пропускаем
     if user.get("sub_passed") == 1 or (event.text and event.text.startswith("/start")):
         return await handler(event, data)
 
+    # ИСПРАВЛЕНИЕ: Удаляем сообщение и шлем меню с кнопками
     try:
         await event.delete()
-        warning = await event.answer(
-            f"{event.from_user.first_name}, пожалуйста, напишите /start и подпишитесь на каналы, чтобы общаться!")
-
-        async def delete_warning():
-            await asyncio.sleep(10)
-            try:
-                await warning.delete()
-            except:
-                pass
-
-        asyncio.create_task(delete_warning())
-    except Exception:
-        pass
+        from handlers.subscription import send_sub_message
+        await send_sub_message(event, event.from_user.id, event.chat.id)
+    except Exception as e:
+        print(f"Ошибка в middleware подписки: {e}")
     return
 
 
@@ -98,14 +91,13 @@ async def auto_register_cb(handler, event: types.CallbackQuery, data: dict):
         if event.from_user.username and u and u.get("username") != event.from_user.username:
             await update_user(event.from_user.id, chat_id, username=event.from_user.username)
 
-    # ИСПРАВЛЕНИЕ: Блокируем нажатия кнопок, если не подписан (кроме кнопки подписки и /start)
     if event.from_user.id != OWNER_ID:
         sub_enabled = await get_setting("sub_enabled", "0")
         if sub_enabled == "1":
             u = await get_user(event.from_user.id, chat_id)
             if u and u.get("sub_passed") == 0:
                 cb_data = event.data or ""
-                if not cb_data.startswith(("sub:", "start")):
+                if not cb_data.startswith(("sub:", "start", "report_")):
                     await event.answer("❌ Сначала подпишитесь на каналы! Напишите /start", show_alert=True)
                     return
 
