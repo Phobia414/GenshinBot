@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 import aiosqlite
 from aiogram import types
@@ -5,9 +6,7 @@ from aiogram.filters import Command
 
 from bot_instance import dp
 from config import DB_PATH, OWNER_ID
-from constants import (
-    DIV, CALL_COOLDOWN, CALL_MAX_MENTIONS, CALL_EMOJIS,
-)
+from constants import DIV, CALL_COOLDOWN, CALL_MAX_MENTIONS
 from helpers import esc, _ensure_user
 from db import update_user
 from keyboards import back_kb
@@ -55,33 +54,32 @@ async def cmd_call(message: types.Message):
             rows = await cur.fetchall()
 
     if not rows:
-        text = (f"📢 ПОЗЫВНОЙ\n{DIV}\n\n{esc(call_text)}\n\n{DIV}\n\n"
-                f"Упоминать некого — все отключили уведомления.")
-        await message.answer(text, parse_mode="HTML", reply_markup=back_kb(message.from_user.id))
+        await message.answer(f"📢 ПОЗЫВНОЙ\n{DIV}\n\n{esc(call_text)}\n\n{DIV}\n\nУпоминать некого.")
         return
 
-    total = len(rows)
+    # Ограничиваем общее число людей
     shown = rows[:CALL_MAX_MENTIONS]
-    mentions = []
 
-    for i, r in enumerate(shown):
-        # ИСПРАВЛЕНИЕ: Убираем HTML-тег <a>, чтобы Telegram сам сделал нативное упоминание с бейджем @
+    # Разбиваем на группы по 5 человек
+    mentions = []
+    for r in shown:
         if r["username"]:
             mentions.append(f"@{r['username']}")
         else:
-            # Если нет юзернейма, оставляем скрытую ссылку на профиль с именем персонажа
             mentions.append(f'<a href="tg://user?id={r["user_id"]}">{esc(r["character_name"])}</a>')
 
-    mentions_line = ", ".join(mentions)
-    if total > CALL_MAX_MENTIONS:
-        mentions_line += f"\n…и ещё {total - CALL_MAX_MENTIONS} чел."
+    # Нарезаем список на куски по 5 штук
+    chunks = [mentions[i:i + 5] for i in range(0, len(mentions), 5)]
 
-    text = f"📢 ПОЗЫВНОЙ\n{DIV}\n\n{esc(call_text)}\n\n{DIV}\n\n{mentions_line}"
-    try:
-        await message.answer(text, parse_mode="HTML", reply_markup=back_kb(message.from_user.id),
-                             disable_notification=False)
-    except Exception as e:
-        await message.reply(f"⚠️ Не смог отправить позывной: {e}")
+    # Отправляем заголовок
+    header_text = f"📢 <b>ПОЗЫВНОЙ</b>\n{DIV}\n\n{esc(call_text)}\n\n{DIV}\n"
+    await message.answer(header_text, parse_mode="HTML", reply_markup=back_kb(message.from_user.id))
+
+    # Отправляем теги пачками
+    for chunk in chunks:
+        chunk_text = ", ".join(chunk)
+        await message.answer(chunk_text, parse_mode="HTML")
+        await asyncio.sleep(1)  # Пауза 1 секунда, чтобы Telegram не посчитал это спамом
 
 
 @dp.message(Command("calloff"))
