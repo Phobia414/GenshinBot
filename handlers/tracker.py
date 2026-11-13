@@ -393,9 +393,12 @@ async def show_user_card(message, user, tg_user, chat_id):
     from db import get_rep_level
     rep_level = get_rep_level(user["reputation"])
 
+    # ИСПРАВЛЕНИЕ: Добавлена инфа за неделю и месяц
     text = (
         f"🎭 {name} · ⚧ {gtext}\n\n"
-        f"💬 Сообщений: {user['messages_count']}\n"
+        f"💬 Всего сообщений: {user['messages_count']}\n"
+        f"📅 За неделю: {user.get('msgs_week', 0)}\n"
+        f"🗓 За месяц: {user.get('msgs_month', 0)}\n\n"
         f"🎖️ Репутация: {rep_level} / 10\n"
         f"💰 Баланс: {user['balance']}\n\n"
         f"{partner_line}{child_line}\n"
