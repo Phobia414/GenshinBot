@@ -34,6 +34,43 @@ class IsChatAdmin(BaseFilter):
         return await is_chat_admin(message.chat.id, message.from_user.id)
 
 
+@dp.message(Command("resetstats"))
+async def cmd_reset_stats(message: types.Message):
+    if message.from_user.id != OWNER_ID:
+        return await message.answer("❌ Эта команда доступна только владельцу бота.")
+
+    parts = message.text.split()
+    if len(parts) < 2:
+        return await message.answer(
+            f"⚠️ <b>ИСПОЛЬЗОВАНИЕ:</b>\n{DIV}\n\n"
+            f"<code>/resetstats all</code> — сброс счетчика за всё время\n"
+            f"<code>/resetstats week</code> — сброс счетчика за неделю\n"
+            f"<code>/resetstats month</code> — сброс счетчика за месяц",
+            parse_mode="HTML"
+        )
+
+    mode = parts[1].lower()
+
+    if mode == "all":
+        await execute("UPDATE users SET messages_count = 0")
+        msg = "Общий счётчик сообщений (<i>за всё время</i>)"
+    elif mode == "week":
+        await execute("UPDATE users SET msgs_week = 0")
+        msg = "Счётчик сообщений (<i>за неделю</i>)"
+    elif mode == "month":
+        await execute("UPDATE users SET msgs_month = 0")
+        msg = "Счётчик сообщений (<i>за месяц</i>)"
+    else:
+        return await message.answer("❌ Неверный аргумент. Используй: all, week или month.")
+
+    await message.answer(
+        f"✅ <b>СБРОС СТАТИСТИКИ</b>\n{DIV}\n\n"
+        f"{msg} был успешно обнулён у всех пользователей.\n"
+        f"<i>Остальная статистика (репутация, баланс и т.д.) осталась нетронутой.</i>",
+        parse_mode="HTML"
+    )
+
+
 @dp.message(Command("addmoney"))
 async def cmd_addmoney(message: types.Message):
     if message.from_user.id != OWNER_ID:
@@ -54,7 +91,6 @@ async def cmd_addmoney(message: types.Message):
     await message.answer(f"✅ +{amount} монет. Баланс: {user['balance'] + amount}",
                          reply_markup=back_kb(message.from_user.id))
 
-
 @dp.message(Command("setmoney"))
 async def cmd_setmoney(message: types.Message):
     if message.from_user.id != OWNER_ID:
@@ -73,7 +109,6 @@ async def cmd_setmoney(message: types.Message):
         return
     await update_user(tid, chat_id, balance=amount)
     await message.answer(f"✅ Баланс = {amount}", reply_markup=back_kb(message.from_user.id))
-
 
 @dp.message(Command("addrep"))
 async def cmd_addrep(message: types.Message):
@@ -95,7 +130,6 @@ async def cmd_addrep(message: types.Message):
     await message.answer(f"✅ +{amount} репутации. Всего: {(user['reputation'] or 0) + amount}",
                          reply_markup=back_kb(message.from_user.id))
 
-
 @dp.message(Command("addresin"))
 async def cmd_addresin(message: types.Message):
     if message.from_user.id != OWNER_ID:
@@ -115,7 +149,6 @@ async def cmd_addresin(message: types.Message):
     nr = min(RESIN_MAX, (user["resin"] or 0) + amount)
     await update_user(tid, chat_id, resin=nr)
     await message.answer(f"✅ Смола: {nr}/{RESIN_MAX}", reply_markup=back_kb(message.from_user.id))
-
 
 @dp.message(Command("addgems"))
 async def cmd_addgems(message: types.Message):
@@ -144,7 +177,6 @@ async def cmd_addgems(message: types.Message):
     await message.answer(f"✅ Выдано **{amount}** примогемов игроку <code>{target_id}</code>!", parse_mode="HTML",
                          reply_markup=back_kb(message.from_user.id))
 
-
 @dp.message(Command("delguild"))
 async def cmd_delguild(message: types.Message):
     if message.from_user.id != OWNER_ID: return
@@ -167,7 +199,6 @@ async def cmd_delguild(message: types.Message):
         await db.execute("DELETE FROM guild_member_stats WHERE guild_id = ?", (g['guild_id'],))
         await db.commit()
     await message.answer(f"✅ Гильдия «{esc(name)}» удалена.", reply_markup=back_kb(message.from_user.id))
-
 
 @dp.message(Command("warn"), IsChatAdmin())
 async def cmd_warn(message: types.Message):
@@ -205,7 +236,6 @@ async def cmd_warn(message: types.Message):
         await message.answer(f"⚠️ {mention}: {warns}/{WARN_LIMIT}", parse_mode="HTML",
                              reply_markup=back_kb(message.from_user.id))
 
-
 @dp.message(Command("unwarn"), IsChatAdmin())
 async def cmd_unwarn(message: types.Message):
     if not message.reply_to_message:
@@ -215,7 +245,6 @@ async def cmd_unwarn(message: types.Message):
     target = message.reply_to_message.from_user
     warns = await remove_warn(target.id, chat_id, 1)
     await message.answer(f"✅ Снято. Осталось: {warns}", reply_markup=back_kb(message.from_user.id))
-
 
 @dp.message(Command("mute"), IsChatAdmin())
 async def cmd_mute(message: types.Message):
@@ -249,7 +278,6 @@ async def cmd_mute(message: types.Message):
     await message.answer(f" {mention} замучен на {minutes} мин.", parse_mode="HTML",
                          reply_markup=back_kb(message.from_user.id))
 
-
 @dp.message(Command("unmute"), IsChatAdmin())
 async def cmd_unmute(message: types.Message):
     if not message.reply_to_message:
@@ -273,7 +301,6 @@ async def cmd_unmute(message: types.Message):
         return
     await message.answer(f"✅ Размучен.", parse_mode="HTML", reply_markup=back_kb(message.from_user.id))
 
-
 @dp.message(Command("stats"), IsChatAdmin())
 async def cmd_stats(message: types.Message):
     chat_id = message.chat.id
@@ -290,7 +317,6 @@ async def cmd_stats(message: types.Message):
     for i, u in enumerate(tr, 1):
         lines.append(f"{i}. {esc(u['character_name'] or '?')} — ур. {get_rep_level(u['reputation'] or 0)}")
     await message.answer("\n".join(lines), parse_mode="HTML", reply_markup=back_kb(message.from_user.id))
-
 
 @dp.message(Command("protect"))
 async def cmd_protect(message: types.Message):
@@ -314,7 +340,6 @@ async def cmd_protect(message: types.Message):
         f"✅ {esc(target.first_name)} теперь под защитой. Никто кроме тебя не сможет предложить ему отношения.",
         reply_markup=back_kb(message.from_user.id))
 
-
 @dp.message(Command("unprotect"))
 async def cmd_unprotect(message: types.Message):
     if message.from_user.id != OWNER_ID:
@@ -328,7 +353,6 @@ async def cmd_unprotect(message: types.Message):
     await remove_protected_user(target.id, chat_id)
     await message.answer(f"✅ {esc(target.first_name)} больше не под защитой.",
                          reply_markup=back_kb(message.from_user.id))
-
 
 @dp.message(Command("cleanup"))
 async def cmd_cleanup(message: types.Message):
@@ -349,7 +373,6 @@ async def cmd_cleanup(message: types.Message):
             f"(Вкл/Выкл, мин.сообщений, раз в N дней)\n\n"
             f"Посмотреть купивших защиту: /cleanup_list")
     await message.answer(text, parse_mode="HTML", reply_markup=back_kb(message.from_user.id))
-
 
 @dp.message(Command("cleanup_set"))
 async def cmd_cleanup_set(message: types.Message):
@@ -380,7 +403,6 @@ async def cmd_cleanup_set(message: types.Message):
     await message.answer("✅ Настройки авто-чистки обновлены. Таймер запущен заново.",
                          reply_markup=back_kb(message.from_user.id))
 
-
 @dp.message(Command("cleanup_list"))
 async def cmd_cleanup_list(message: types.Message):
     if not await is_chat_admin(message.chat.id, message.from_user.id) and message.from_user.id != OWNER_ID:
@@ -401,7 +423,6 @@ async def cmd_cleanup_list(message: types.Message):
         if u["clean_exempt"]: tags.append("🧹 Чистка")
         lines.append(f"• {name} — {', '.join(tags)}")
     await message.answer("\n".join(lines), reply_markup=back_kb(message.from_user.id))
-
 
 @dp.message(Command("applylink"))
 async def cmd_applylink(message: types.Message):
@@ -425,7 +446,6 @@ async def cmd_applylink(message: types.Message):
     )
     await message.answer(text, parse_mode="HTML")
 
-
 @dp.message(Command("trust"))
 async def cmd_trust(message: types.Message):
     if message.from_user.id != OWNER_ID: return
@@ -448,7 +468,6 @@ async def cmd_trust(message: types.Message):
 
     await add_trusted_admin(target_id)
     await message.answer(f"✅ Пользователь {esc(display)} теперь доверенный админ (будет получать анкеты).")
-
 
 @dp.message(Command("untrust"))
 async def cmd_untrust(message: types.Message):

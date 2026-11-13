@@ -54,13 +54,11 @@ async def cmd_call(message: types.Message):
             rows = await cur.fetchall()
 
     if not rows:
-        await message.answer(f"📢 ПОЗЫВНОЙ\n{DIV}\n\n{esc(call_text)}\n\n{DIV}\n\nУпоминать некого.")
+        await message.reply(f"📢 ПОЗЫВНОЙ\n{DIV}\n\n{esc(call_text)}\n\n{DIV}\n\nУпоминать некого.")
         return
 
-    # Ограничиваем общее число людей
     shown = rows[:CALL_MAX_MENTIONS]
 
-    # Разбиваем на группы по 5 человек
     mentions = []
     for r in shown:
         if r["username"]:
@@ -68,18 +66,18 @@ async def cmd_call(message: types.Message):
         else:
             mentions.append(f'<a href="tg://user?id={r["user_id"]}">{esc(r["character_name"])}</a>')
 
-    # Нарезаем список на куски по 5 штук
     chunks = [mentions[i:i + 5] for i in range(0, len(mentions), 5)]
 
-    # Отправляем заголовок
     header_text = f"📢 <b>ПОЗЫВНОЙ</b>\n{DIV}\n\n{esc(call_text)}\n\n{DIV}\n"
-    await message.answer(header_text, parse_mode="HTML", reply_markup=back_kb(message.from_user.id))
 
-    # Отправляем теги пачками
+    # Отправляем первое сообщение как реплай на команду админа
+    sent_msg = await message.reply(header_text, parse_mode="HTML", reply_markup=back_kb(message.from_user.id))
+
+    # Текст созыва добавлен в каждое сообщение с тегами
     for chunk in chunks:
-        chunk_text = ", ".join(chunk)
-        await message.answer(chunk_text, parse_mode="HTML")
-        await asyncio.sleep(1)  # Пауза 1 секунда, чтобы Telegram не посчитал это спамом
+        chunk_text = f"📢 <b>{esc(call_text)}</b>\n" + ", ".join(chunk)
+        await sent_msg.reply(chunk_text, parse_mode="HTML")
+        await asyncio.sleep(1)  # Пауза, чтобы избежать флуд-бана
 
 
 @dp.message(Command("calloff"))
