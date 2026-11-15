@@ -80,14 +80,15 @@ async def cmd_kicklist(message: types.Message):
     newbie_list = []
 
     for u in users:
-        name = esc(u['character_name'])
+        name = u['character_name']  # Без HTML-экранирования, чтобы не ломались теги
         msgs = u['msgs_week'] or 0
         username = u.get('username')
 
+        # Если есть юзернейм - пишем его. Если нет - имя и ID.
         if username:
             user_link = f"@{username}"
         else:
-            user_link = f'<a href="tg://user?id={u["user_id"]}">{name}</a>'
+            user_link = f"{name} (ID: {u['user_id']})"
 
         if u['first_seen']:
             fs = datetime.fromtimestamp(u['first_seen'], timezone.utc)
@@ -97,37 +98,38 @@ async def cmd_kicklist(message: types.Message):
             date_str = "неизвестно"
 
         if fs > two_days_ago:
-            newbie_list.append(f"🛡 {user_link} ({name}) — {msgs} сообщ. (С {date_str})")
+            newbie_list.append(f"🛡 {user_link} — {msgs} сообщ. (С {date_str})")
         elif msgs >= NORM_MSGS:
             norm_list.append(f"✅ {user_link} — {msgs} сообщ.")
         else:
-            kick_list.append(f"❌ {user_link} ({name}) — {msgs} сообщ. (С {date_str})")
+            kick_list.append(f"❌ {user_link} — {msgs} сообщ. (С {date_str})")
 
-    text = f"📋 <b>СПИСОК ДЛЯ РУЧНОЙ ЧИСТКИ</b>\n"
-    text += f"<i>Норма: {NORM_MSGS} сообщ. за неделю. Бот никого не кикает.</i>\n\n"
+    # Формируем текст БЕЗ HTML (просто обычный текст)
+    text = f"📋 СПИСОК ДЛЯ РУЧНОЙ ЧИСТКИ\n"
+    text += f"Норма: {NORM_MSGS} сообщ. за неделю. Бот никого не кикает.\n\n"
 
-    text += f"<b>❌ Кандидаты на исключение ({len(kick_list)}):</b>\n"
+    text += f"❌ Кандидаты на исключение ({len(kick_list)}):\n"
     if kick_list:
         text += "\n".join(kick_list[:40])
         if len(kick_list) > 40:
-            text += f"\n<i>... и еще {len(kick_list) - 40} чел.</i>"
+            text += f"\n... и еще {len(kick_list) - 40} чел."
     else:
         text += "Все молодцы, неактивных нет!\n"
 
-    text += f"\n\n<b>🛡 Защищенные новички (< 2 дней):</b>\n"
+    text += f"\n\n🛡 Защищенные новички (< 2 дней):\n"
     if newbie_list:
         text += "\n".join(newbie_list[:10])
     else:
         text += "Нет новичков.\n"
 
-    text += f"\n\n<b>✅ Набрали норму:</b> {len(norm_list)} чел."
+    text += f"\n\n✅ Набрали норму: {len(norm_list)} чел."
 
-    if len(text) > 3900:
-        text = text[:3900] + "\n\n... (сообщение обрезано)"
-        await message.answer(text, parse_mode=None)
-    else:
-        await message.answer(text, parse_mode="HTML")
+    # Обрезаем, если слишком длинно
+    if len(text) > 4000:
+        text = text[:4000] + "\n\n... (сообщение обрезано)"
 
+    # Отправляем БЕЗ parse_mode (как обычный текст)
+    await message.answer(text)
 
 @dp.message(Command("addmoney"))
 async def cmd_addmoney(message: types.Message):
