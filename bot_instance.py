@@ -13,6 +13,7 @@ class AutoDeleteSession(AiohttpSession):
             if result and hasattr(result, 'chat'):
                 chat_type = result.chat.type
 
+                # В ЛС и каналах ничего не удаляем
                 if chat_type not in ('group', 'supergroup'):
                     return result
 
@@ -20,9 +21,19 @@ class AutoDeleteSession(AiohttpSession):
                 text = getattr(method, "text", "") or getattr(method, "caption", "") or ""
                 text_upper = text.upper()
 
-                if "ПОЗЫВНОЙ" in text_upper or "БОСС" in text_upper or "ОБЯЗАТЕЛЬНАЯ ПОДПИСКА" in text_upper:
+                # ИСПРАВЛЕНИЕ: Список фраз, сообщения с которыми НЕЛЬЗЯ удалять
+                exclude_phrases = [
+                    "ПОЗЫВНОЙ",  # Для созывов (/call)
+                    "БОСС",  # Для сообщений боссов
+                    "ОБЯЗАТЕЛЬНАЯ ПОДПИСКА",  # Для меню подписки
+                    "У НАС НОВЕНЬКИЙ",  # Для опубликованной анкеты
+                    "АНКЕТА ОПУБЛИКОВАНА"  # Для подтверждения публикации
+                ]
+
+                if any(phrase in text_upper for phrase in exclude_phrases):
                     is_excluded_msg = True
 
+                # Проверка на кнопки босса (на всякий случай)
                 reply_markup = getattr(method, "reply_markup", None)
                 if reply_markup and hasattr(reply_markup, "inline_keyboard"):
                     for row in reply_markup.inline_keyboard:
@@ -34,6 +45,7 @@ class AutoDeleteSession(AiohttpSession):
                         if is_excluded_msg:
                             break
 
+                # Если сообщение не в исключениях - ставим таймер на удаление (5 минут)
                 if not is_excluded_msg:
                     asyncio.create_task(self.delete_later(bot, result.chat.id, result.message_id, 300))
 
