@@ -54,8 +54,7 @@ async def cmd_call(message: types.Message):
             rows = await cur.fetchall()
 
     if not rows:
-        await message.answer(f"📢 ПОЗЫВНОЙ\n{DIV}\n\n{esc(call_text)}\n\n{DIV}\n\nУпоминать некого.",
-                             reply_markup=back_kb(message.from_user.id))
+        await message.answer(f"📢 ПОЗЫВНОЙ\n{DIV}\n\n{esc(call_text)}\n\n{DIV}\n\nУпоминать некого.")
         return
 
     shown = rows[:CALL_MAX_MENTIONS]
@@ -67,15 +66,17 @@ async def cmd_call(message: types.Message):
         else:
             mentions.append(f'<a href="tg://user?id={r["user_id"]}">{esc(r["character_name"])}</a>')
 
-    # ИСПРАВЛЕНИЕ: Разбиваем список на группы по 4 человека
     chunks = [mentions[i:i + 4] for i in range(0, len(mentions), 4)]
 
-    header_text = f"📢 <b>ПОЗЫВНОЙ</b>\n{DIV}\n\n{esc(call_text)}\n\n{DIV}\n"
+    base_header = f"📢 <b>ПОЗЫВНОЙ</b>\n{DIV}\n\n{esc(call_text)}\n\n{DIV}\n"
 
-    sent_msg = await message.reply(header_text, parse_mode="HTML", reply_markup=back_kb(message.from_user.id))
+    # Отправляем первое сообщение (реплай)
+    sent_msg = await message.reply(base_header + ", ".join(chunks[0]), parse_mode="HTML",
+                                   reply_markup=back_kb(message.from_user.id))
 
-    for chunk in chunks:
-        chunk_text = ", ".join(chunk)
+    # Отправляем остальные пачки, ДОБАВЛЯЯ текст созыва
+    for chunk in chunks[1:]:
+        chunk_text = base_header + ", ".join(chunk)
         await sent_msg.reply(chunk_text, parse_mode="HTML", disable_notification=False)
         await asyncio.sleep(1)
 

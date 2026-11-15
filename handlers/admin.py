@@ -37,6 +37,98 @@ class IsChatAdmin(BaseFilter):
         return await is_chat_admin(message.chat.id, message.from_user.id)
 
 
+@dp.message(Command("resetstats"))
+async def cmd_reset_stats(message: types.Message):
+    if message.from_user.id != OWNER_ID:
+        return await message.answer("❌ Эта команда доступна только владельцу бота.")
+
+    await execute("UPDATE users SET messages_count = 0, msgs_week = 0, msgs_month = 0")
+
+    await message.answer(
+        f"✅ <b>СБРОС СТАТИСТИКИ</b>\n{DIV}\n\n"
+        f"Счётчики сообщений (всего, за неделю и за месяц) обнулены у всех.\n"
+        f"Счетчик сообщений за сегодня (день) остался без изменений.",
+        parse_mode="HTML"
+    )
+
+
+@dp.message(Command("kicklist", "cleanup_list"))
+async def cmd_kicklist(message: types.Message):
+    if message.chat.type not in ("group", "supergroup"):
+        return await message.answer("❌ Только для групп.")
+    if not await is_chat_admin(message.chat.id, message.from_user.id) and message.from_user.id != OWNER_ID:
+        return await message.answer("❌ Только для админов.")
+
+    chat_id = message.chat.id
+    NORM_MSGS = 150
+
+    users = await fetch_all(
+        "SELECT user_id, username, character_name, msgs_week, first_seen FROM users "
+        "WHERE chat_id = ? AND character_name IS NOT NULL AND character_name != '' "
+        "ORDER BY IFNULL(msgs_week, 0) ASC",
+        (chat_id,)
+    )
+
+    if not users:
+        return await message.answer("В группе нет зарегистрированных участников.")
+
+    now = datetime.now(timezone.utc)
+    two_days_ago = now - timedelta(days=2)
+
+    kick_list = []
+    norm_list = []
+    newbie_list = []
+
+    for u in users:
+        name = esc(u['character_name'])
+        msgs = u['msgs_week'] or 0
+        username = u.get('username')
+
+        if username:
+            user_link = f"@{username}"
+        else:
+            user_link = f'<a href="tg://user?id={u["user_id"]}">{name}</a>'
+
+        if u['first_seen']:
+            fs = datetime.fromtimestamp(u['first_seen'], timezone.utc)
+            date_str = f"{fs.day} {MONTHS[fs.month - 1]}"
+        else:
+            fs = now - timedelta(days=30)
+            date_str = "неизвестно"
+
+        if fs > two_days_ago:
+            newbie_list.append(f"🛡 {user_link} ({name}) — {msgs} сообщ. (С {date_str})")
+        elif msgs >= NORM_MSGS:
+            norm_list.append(f"✅ {user_link} — {msgs} сообщ.")
+        else:
+            kick_list.append(f"❌ {user_link} ({name}) — {msgs} сообщ. (С {date_str})")
+
+    text = f"📋 <b>СПИСОК ДЛЯ РУЧНОЙ ЧИСТКИ</b>\n"
+    text += f"<i>Норма: {NORM_MSGS} сообщ. за неделю. Бот никого не кикает.</i>\n\n"
+
+    text += f"<b>❌ Кандидаты на исключение ({len(kick_list)}):</b>\n"
+    if kick_list:
+        text += "\n".join(kick_list[:40])
+        if len(kick_list) > 40:
+            text += f"\n<i>... и еще {len(kick_list) - 40} чел.</i>"
+    else:
+        text += "Все молодцы, неактивных нет!\n"
+
+    text += f"\n\n<b>🛡 Защищенные новички (< 2 дней):</b>\n"
+    if newbie_list:
+        text += "\n".join(newbie_list[:10])
+    else:
+        text += "Нет новичков.\n"
+
+    text += f"\n\n<b>✅ Набрали норму:</b> {len(norm_list)} чел."
+
+    if len(text) > 3900:
+        text = text[:3900] + "\n\n... (сообщение обрезано)"
+        await message.answer(text, parse_mode=None)
+    else:
+        await message.answer(text, parse_mode="HTML")
+
+
 @dp.message(Command("addmoney"))
 async def cmd_addmoney(message: types.Message):
     if message.from_user.id != OWNER_ID:
@@ -404,104 +496,6 @@ async def cmd_cleanup_list(message: types.Message):
         if u["clean_exempt"]: tags.append("🧹 Чистка")
         lines.append(f"• {name} — {', '.join(tags)}")
     await message.answer("\n".join(lines), reply_markup=back_kb(message.from_user.id))
-
-
-# НОВАЯ КОМАНДА ДЛЯ РУЧНОЙ ЧИСТКИ
-@dp.message(Command("kicklist"))
-async def cmd_kicklist(message: types.Message):
-    if message.chat.type not in ("group", "supergroup"):
-        return await message.answer("❌ Только для групп.")
-    if not await is_chat_admin(message.chat.id, message.from_user.id) and message.from_user.id != OWNER_ID:
-        return await message.answer("❌ Только для админов.")
-
-    chat_id = message.chat.id
-    NORM_MSGS = 150  # <--- Ваша норма сообщений за неделю
-
-    users = await fetch_all(
-        "SELECT user_id, username, character_name, msgs_week, first_seen FROM users "
-        "WHERE chat_id = ? AND character_name IS NOT NULL AND character_name != '' "
-        "ORDER BY IFNULL(msgs_week, 0) ASC",
-        (chat_id,)
-    )
-
-    if not users:
-        return await message.answer("В группе нет зарегистрированных участников.")
-
-    now = datetime.now(timezone.utc)
-    two_days_ago = now - timedelta(days=2)
-
-    kick_list = []
-    norm_list = []
-    newbie_list = []
-
-    for u in users:
-        name = esc(u['character_name'])
-        msgs = u['msgs_week'] or 0
-        username = u.get('username')
-
-        user_link = f"@{username}" if username else f'<a href="tg://user?id={u["user_id"]}">{name}</a>'
-
-        if u['first_seen']:
-            fs = datetime.fromtimestamp(u['first_seen'], timezone.utc)
-            date_str = f"{fs.day} {MONTHS[fs.month - 1]}"
-        else:
-            fs = now - timedelta(days=30)
-            date_str = "неизвестно"
-
-        if fs > two_days_ago:
-            newbie_list.append(f"🛡 {user_link} ({name}) — {msgs} сообщ. (С {date_str})")
-        elif msgs >= NORM_MSGS:
-            norm_list.append(f"✅ {user_link} — {msgs} сообщ.")
-        else:
-            kick_list.append(f"❌ {user_link} ({name}) — {msgs} сообщ. (С {date_str})")
-
-    text = f"📋 <b>СПИСОК ДЛЯ РУЧНОЙ ЧИСТКИ</b>\n"
-    text += f"<i>Норма: {NORM_MSGS} сообщ. за неделю. Бот никого не кикает, решение за вами.</i>\n\n"
-
-    text += f"<b>❌ Кандидаты на исключение ({len(kick_list)}):</b>\n"
-    if kick_list:
-        text += "\n".join(kick_list[:40])
-        if len(kick_list) > 40:
-            text += f"\n<i>... и еще {len(kick_list) - 40} чел.</i>"
-    else:
-        text += "Все молодцы, неактивных нет!\n"
-
-    text += f"\n\n<b>🛡 Защищенные новички (зашли < 2 дней):</b>\n"
-    if newbie_list:
-        text += "\n".join(newbie_list[:10])
-        if len(newbie_list) > 10:
-            text += f"\n<i>... и еще {len(newbie_list) - 10} чел.</i>"
-    else:
-        text += "Нет новичков.\n"
-
-    text += f"\n\n<b>✅ Набрали норму ({len(norm_list)}):</b> (не трогать)\n"
-    if norm_list:
-        text += "\n".join(norm_list[:10])
-        if len(norm_list) > 10:
-            text += f"\n<i>... и еще {len(norm_list) - 10} чел.</i>"
-    else:
-        text += "Пока никто не набрал норму."
-
-    if len(text) > 4000:
-        text = text[:4000] + "\n\n... (сообщение обрезано из-за лимитов Telegram)"
-
-    await message.answer(text, parse_mode="HTML")
-
-
-@dp.message(Command("resetstats"))
-async def cmd_reset_stats(message: types.Message):
-    if message.from_user.id != OWNER_ID:
-        return await message.answer("❌ Эта команда доступна только владельцу бота.")
-
-    # Обнуляем общую стату, за неделю и месяц. Счетчик за сегодня (msgs_day) не трогаем.
-    await execute("UPDATE users SET messages_count = 0, msgs_week = 0, msgs_month = 0")
-
-    await message.answer(
-        f"✅ <b>СБРОС СТАТИСТИКИ</b>\n{DIV}\n\n"
-        f"Счётчики сообщений (всего, за неделю и за месяц) обнулены у всех.\n"
-        f"Счетчик сообщений за сегодня (день) остался без изменений.",
-        parse_mode="HTML"
-    )
 
 
 @dp.message(Command("applylink"))
