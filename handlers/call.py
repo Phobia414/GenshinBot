@@ -54,7 +54,8 @@ async def cmd_call(message: types.Message):
             rows = await cur.fetchall()
 
     if not rows:
-        await message.reply(f"📢 ПОЗЫВНОЙ\n{DIV}\n\n{esc(call_text)}\n\n{DIV}\n\nУпоминать некого.")
+        await message.answer(f"📢 ПОЗЫВНОЙ\n{DIV}\n\n{esc(call_text)}\n\n{DIV}\n\nУпоминать некого.",
+                             reply_markup=back_kb(message.from_user.id))
         return
 
     shown = rows[:CALL_MAX_MENTIONS]
@@ -66,18 +67,17 @@ async def cmd_call(message: types.Message):
         else:
             mentions.append(f'<a href="tg://user?id={r["user_id"]}">{esc(r["character_name"])}</a>')
 
-    chunks = [mentions[i:i + 5] for i in range(0, len(mentions), 5)]
+    # ИСПРАВЛЕНИЕ: Разбиваем список на группы по 4 человека
+    chunks = [mentions[i:i + 4] for i in range(0, len(mentions), 4)]
 
     header_text = f"📢 <b>ПОЗЫВНОЙ</b>\n{DIV}\n\n{esc(call_text)}\n\n{DIV}\n"
 
-    # Отправляем первое сообщение как реплай на команду админа
     sent_msg = await message.reply(header_text, parse_mode="HTML", reply_markup=back_kb(message.from_user.id))
 
-    # Текст созыва добавлен в каждое сообщение с тегами
     for chunk in chunks:
-        chunk_text = f"📢 <b>{esc(call_text)}</b>\n" + ", ".join(chunk)
-        await sent_msg.reply(chunk_text, parse_mode="HTML")
-        await asyncio.sleep(1)  # Пауза, чтобы избежать флуд-бана
+        chunk_text = ", ".join(chunk)
+        await sent_msg.reply(chunk_text, parse_mode="HTML", disable_notification=False)
+        await asyncio.sleep(1)
 
 
 @dp.message(Command("calloff"))

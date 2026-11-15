@@ -257,6 +257,15 @@ async def reset_monthly_stats():
         log.error(f"Ошибка сброса месячной статистики: {e}")
 
 
+# НОВАЯ ФУНКЦИЯ ДЛЯ СБРОСА ДНЕВНОЙ СТАТИСТИКИ
+async def reset_daily_stats():
+    try:
+        await execute("UPDATE users SET msgs_day = 0")
+        log.info("📊 Ежедневная статистика сообщений сброшена.")
+    except Exception as e:
+        log.error(f"Ошибка сброса ежедневной статистики: {e}")
+
+
 def setup_sentry():
     if not SENTRY_DSN:
         return
@@ -311,6 +320,7 @@ async def main():
     scheduler.add_job(auto_cleanup_job, IntervalTrigger(hours=1), id="auto_cleanup")
 
     # Сброс статистики
+    scheduler.add_job(reset_daily_stats, CronTrigger(hour=0, minute=0), id="reset_day") # <--- ДОБАВЛЕНО
     scheduler.add_job(reset_weekly_stats, CronTrigger(day_of_week="mon", hour=0, minute=0), id="reset_week")
     scheduler.add_job(reset_monthly_stats, CronTrigger(day=1, hour=0, minute=0), id="reset_month")
 

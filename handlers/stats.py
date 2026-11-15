@@ -4,7 +4,6 @@ from bot_instance import dp
 from db import fetch_all
 from helpers import esc
 
-
 @dp.message(F.text.lower().startswith("!стат"))
 async def cmd_stats(message: types.Message):
     if message.chat.type not in ("group", "supergroup"):
@@ -19,11 +18,13 @@ async def cmd_stats(message: types.Message):
     elif "месяц" in text_lower:
         col_name = "msgs_month"
         title = "МЕСЯЦ"
+    elif "день" in text_lower or "сегодня" in text_lower: # <--- ДОБАВЛЕНО
+        col_name = "msgs_day"
+        title = "СЕГОДНЯ"
     else:
-        return await message.answer("⚠️ Используй: <code>!статистика неделя</code> или <code>!статистика месяц</code>",
+        return await message.answer("⚠️ Используй: <code>!статистика день</code>, <code>!статистика неделя</code> или <code>!статистика месяц</code>",
                                     parse_mode="HTML")
 
-    # ФИКС: Берем только тех, у кого есть персонаж
     users = await fetch_all(
         f"SELECT user_id, character_name, {col_name} as msgs, last_msg_time "
         f"FROM users WHERE chat_id = ? AND character_name IS NOT NULL AND character_name != '' ORDER BY msgs DESC",

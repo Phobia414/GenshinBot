@@ -31,6 +31,9 @@ from handlers.chat_list import update_chat_list
 from handlers.fun import start_duel_logic
 from keyboards import back_kb, regions_kb, gender_kb
 
+MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября",
+          "декабря"]
+
 
 @dp.callback_query(F.data == "quiz_answer")
 async def cb_quiz_answer(query: types.CallbackQuery):
@@ -177,14 +180,28 @@ async def track_text(message: types.Message, user: dict, chat_id: int):
     if text_lower == "кто я":
         await show_user_card(message, user, message.from_user, chat_id)
         return
-    if text_lower == "кто ты" and message.reply_to_message:
-        target = await get_user(message.reply_to_message.from_user.id, chat_id)
-        if target:
-            await show_user_card(message, target, message.reply_to_message.from_user, chat_id)
-            return
+
+    if text_lower.startswith("кто ты"):
+        target_id = None
+        if message.reply_to_message:
+            target_id = message.reply_to_message.from_user.id
         else:
-            await message.answer("❌ Игрок ещё не зарегистрирован.", reply_markup=back_kb(message.from_user.id))
-            return
+            target_ref, _ = extract_target(message)
+            if isinstance(target_ref, str):
+                target_id = await resolve_user_id(target_ref)
+            elif isinstance(target_ref, int):
+                target_id = target_ref
+
+        if target_id:
+            target = await get_user(target_id, chat_id)
+            if target:
+                await show_user_card(message, target, message.from_user, chat_id)
+            else:
+                await message.answer("❌ Игрок не найден в базе.", reply_markup=back_kb(message.from_user.id))
+        else:
+            await message.answer("❌ Ответь на сообщение игрока или укажи @username.",
+                                 reply_markup=back_kb(message.from_user.id))
+        return
 
     if now - user["last_msg_time"] < ANTISPAM_SECONDS:
         return
@@ -193,6 +210,8 @@ async def track_text(message: types.Message, user: dict, chat_id: int):
     await increment_user_field(message.from_user.id, chat_id, "board_msgs", 1)
     await increment_user_field(message.from_user.id, chat_id, "msgs_week", 1)
     await increment_user_field(message.from_user.id, chat_id, "msgs_month", 1)
+    await increment_user_field(message.from_user.id, chat_id, "msgs_day", 1)
+
     await update_user(message.from_user.id, chat_id, last_msg_time=now)
     await _gain_rep(message.from_user.id, chat_id, REP_PER_MESSAGE, message.from_user.first_name)
 
@@ -393,10 +412,17 @@ async def show_user_card(message, user, tg_user, chat_id):
     from db import get_rep_level
     rep_level = get_rep_level(user["reputation"])
 
-    # ИСПРАВЛЕНИЕ: Добавлена инфа за неделю и месяц
+    if user.get("first_seen"):
+        fs = datetime.fromtimestamp(user["first_seen"], timezone.utc)
+        join_date = f"📅 В группе с: {fs.day} {MONTHS[fs.month - 1]}\n"
+    else:
+        join_date = ""
+
     text = (
-        f"🎭 {name} · ⚧ {gtext}\n\n"
+        f"🎭 {name} · ⚧ {gtext}\n"
+        f"{join_date}\n"
         f"💬 Всего сообщений: {user['messages_count']}\n"
+        f"☀️ За сегодня: {user.get('msgs_day', 0)}\n"
         f"📅 За неделю: {user.get('msgs_week', 0)}\n"
         f"🗓 За месяц: {user.get('msgs_month', 0)}\n\n"
         f"🎖️ Репутация: {rep_level} / 10\n"
