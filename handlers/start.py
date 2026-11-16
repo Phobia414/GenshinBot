@@ -1,6 +1,6 @@
 import time
 import hashlib
-import asyncio
+from datetime import datetime, timezone
 from aiogram import types, F
 from aiogram.filters import Command, CommandObject
 from aiogram.types import FSInputFile
@@ -9,42 +9,27 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from bot_instance import bot, dp
 from callbacks import MenuCB, RegionCB, CharCB
-from config import CREATOR_USERNAME
+from config import CREATOR_USERNAME, PRICE_ROLE_CHANGE
 from db import get_user, update_user, is_character_taken, get_taken_characters, get_local_setting, get_application, \
-    update_application_status, fetch_all, get_setting
+    update_application_status, fetch_all, get_setting, get_guild, get_rep_level, get_rep_progress, update_resin, \
+    RESIN_MAX, get_food_buff, get_total_bonuses
 from characters import REGIONS, get_character_image, CHARACTERS
-from constants import DIV, PLACEHOLDER_IMAGES
+from constants import DIV, PLACEHOLDER_IMAGES, WARN_LIMIT, REP_PER_MESSAGE, REP_PER_BOARD_TASK, REP_PER_DUNGEON, \
+    REP_PER_WORLD_BOSS_KILL, REP_PER_GUILD_BOSS_KILL, REP_PER_GUILD_CREATE, REP_PER_DONATE_UNIT, REP_PER_DONATE_MAX
 from helpers import (
     esc, user_display_name, get_placeholder_image, _ensure_user,
-    edit_or_send, get_section_image, update_user_tag  # <--- ДОБАВЛЕН ИМПОРТ
+    edit_or_send, get_section_image, find_region_by_character, get_reputation_bonuses,
+    get_reputation_title, inject_user, format_text
 )
 from keyboards import (
-    gender_kb, regions_kb, characters_kb, main_menu_kb,
+    gender_kb, regions_kb, characters_kb, main_menu_kb, profile_kb, adventurers_kb,
+    reputation_kb, back_kb
 )
 from handlers.apply import ApplyForm, FORM_STEPS, send_step
 from handlers.chat_list import update_chat_list
 from handlers.reports import process_report_start
 from handlers.subscription import send_sub_message
 import state as bot_state
-
-# ЗАМОК ОТ ДУБЛИРОВАНИЯ ПЛАШКИ ПОДПИСКИ
-_sub_lock = {}
-
-
-async def safe_send_sub(message_or_event, user_id, chat_id):
-    if user_id in _sub_lock:
-        return
-    _sub_lock[user_id] = True
-    try:
-        await send_sub_message(message_or_event, user_id, chat_id)
-        await asyncio.sleep(10)
-    finally:
-        if user_id in _sub_lock:
-            del _sub_lock[user_id]
-
-
-def format_text(text: str, name: str, div: str) -> str:
-    return text.replace("{name}", name).replace("{div}", div)
 
 
 def get_name_by_hash(chash: str) -> str:
@@ -59,6 +44,41 @@ def get_name_by_hash(chash: str) -> str:
     return chash
 
 
+# УМНАЯ ВЫДАЧА ТЕГА
+async def apply_tag(chat_id: int, user_id: int, name: str) -> tuple[bool, str]:
+    if not name:
+        return False, ""
+
+    if not str(chat_id).startswith("-100"):
+        return False, "\n\n⚠️ <b>Ошибка:</b> Теги можно ставить только в супергруппах."
+
+    try:
+        bot_member = await bot.get_chat_member(chat_id, bot.id)
+        if not getattr(bot_member, "can_manage_tags", False):
+            return False, "\n\n⚠️ <b>Ошибка:</b> У бота нет права «Управление тегами» в настройках группы."
+
+        target_member = await bot.get_chat_member(chat_id, user_id)
+
+        if target_member.status in ("administrator", "creator"):
+            await bot.set_chat_administrator_custom_title(
+                chat_id=chat_id,
+                user_id=user_id,
+                custom_title=name[:16]
+            )
+        else:
+            await bot.set_chat_member_tag(
+                chat_id=chat_id,
+                user_id=user_id,
+                tag=name[:16]
+            )
+
+        return True, "\n\n🏷️ Тег участника установлен!"
+
+    except Exception as e:
+        print(f"Ошибка выдачи тега: {e}")
+        return False, f"\n\n⚠️ <b>Ошибка выдачи тега:</b> {str(e)}"
+
+
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext, command: CommandObject):
     current_state = await state.get_state()
@@ -68,151 +88,42 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
         await process_report_start(message, chat_id_report, state)
         return
 
-    if current_state:
-        if current_state.startswith("ApplyForm"):
-            data = await state.get_data()
-            old_target_chat_id = data.get("target_chat_id")
-
-            if command.args and command.args.startswith("apply_"):
-                new_target_chat_id = int(command.args.replace("apply_", ""))
-                if old_target_chat_id == new_target_chat_id:
-                    idx = next((i for i, (st, _) in enumerate(FORM_STEPS) if st.state == current_state), 0)
-                    await send_step(message.chat.id, idx, state)
-                    return
-
-            await message.answer("⚠️ Предыдущая анкета отменена.")
-            await state.clear()
-        else:
-            await state.clear()
+    if current_state and current_state.startswith("ApplyForm"):
+        await state.clear()
 
     chat_id = message.chat.id
     user = await _ensure_user(message.from_user.id, chat_id)
 
-    if message.chat.type in ("group", "supergroup"):
+    if message.chat.type == "private":
+        if command.args and command.args.startswith("apply_"):
+            target_chat_id = int(command.args.replace("apply_", ""))
+            app = await get_application(message.from_user.id, target_chat_id)
+            if app and app['status'] in ('pending', 'waiting_char'):
+                return await message.answer("⏳ Ваша анкета уже на рассмотрении или одобрена. Ожидайте.")
+
+            await state.update_data(target_chat_id=target_chat_id)
+            await send_step(message.chat.id, 0, state)
+        else:
+            await message.answer("🌸 Возьмите ссылку для заполнения анкеты у администраторов группы.")
+        return
+
+    if user["character_name"]:
+        await apply_tag(chat_id, message.from_user.id, user["character_name"])
+
+        name = esc(user_display_name(user))
+        text = f"── 〔 🌟 ГЛАВНОЕ МЕНЮ 〕 ──\n\n🍃 Привет, <b>{name}</b>!\n\nКуда отправимся сегодня?"
+        await message.answer(text, reply_markup=main_menu_kb(message.from_user.id), parse_mode="HTML")
+    else:
         sub_enabled = await get_setting("sub_enabled", "0")
         if sub_enabled == "1" and user.get("sub_passed") == 0:
-            sent = await send_sub_message(message, message.from_user.id, chat_id)
-            if sent:
-                return
-
-    if command.args and command.args.startswith("apply_"):
-        target_chat_id = int(command.args.replace("apply_", ""))
-
-        group_user = await get_user(message.from_user.id, target_chat_id)
-        if group_user and group_user["character_name"]:
-            try:
-                expire_date = int(time.time()) + 86400
-                link = await bot.create_chat_invite_link(target_chat_id, member_limit=1, expire_date=expire_date)
-                await message.answer(
-                    f"✅ Вы уже зарегистрированы в этой ролевой как <b>{esc(group_user['character_name'])}</b>!\n\n"
-                    f"🔗 <b>Ваша ссылка для вступления в группу:</b>\n{link.invite_link}\n\n"
-                    f"<i>Если вы хотите сменить персонажа, зайдите в группу и напишите /freerole</i>",
-                    parse_mode="HTML"
-                )
-                return
-            except Exception as e:
-                await message.answer(f"❌ Ошибка создания ссылки: {e}")
-                return
-
-        app = await get_application(message.from_user.id, target_chat_id)
-        if app:
-            status = app['status']
-            if status in ('pending', 'waiting_char'):
-                return await message.answer("⏳ Ваша анкета уже на рассмотрении или одобрена. Ожидайте.")
-            elif status == 'rejected':
-                pass
-
-        await state.update_data(target_chat_id=target_chat_id)
-        await send_step(message.chat.id, 0, state)
-        return
-
-    if message.chat.type == "private":
-        apps = await fetch_all(
-            "SELECT chat_id, status FROM applications WHERE user_id = ? ORDER BY status='accepted' DESC, status='waiting_char' DESC, status='pending' DESC LIMIT 1",
-            (message.from_user.id,))
-
-        if apps:
-            target_chat_id = apps[0]["chat_id"]
-            status = apps[0]["status"]
-
-            if status in ('accepted', 'waiting_char'):
-                if status == 'accepted':
-                    await update_application_status(message.from_user.id, target_chat_id, 'waiting_char')
-
-                try:
-                    expire_date = int(time.time()) + 86400
-                    link = await bot.create_chat_invite_link(target_chat_id, member_limit=1, expire_date=expire_date)
-                    await message.answer(
-                        f"🎉 <b>Ваша анкета одобрена!</b>\n\n"
-                        f"Пожалуйста, перейдите в группу по ссылке ниже. Бот попросит вас выбрать пол и персонажа прямо в чате группы:\n\n"
-                        f"🔗 {link.invite_link}",
-                        parse_mode="HTML"
-                    )
-                except Exception:
-                    await message.answer(
-                        "🎉 <b>Ваша анкета одобрена!</b>\n\nПожалуйста, перейдите в группу для выбора персонажа.",
-                        parse_mode="HTML")
-            elif status == 'pending':
-                await message.answer(
-                    "⏳ <b>Ваша анкета находится на рассмотрении у администраторов.</b>\n\nПожалуйста, ожидайте.",
-                    parse_mode="HTML")
-            elif status == 'joined':
-                await message.answer("✅ <b>Вы уже приняты в игру!</b>\n\nВсе игровые меню доступны в чате группы.",
-                                     parse_mode="HTML")
+            await send_sub_message(message, message.from_user.id, chat_id)
         else:
-            await message.answer(
-                f"── 〔 🌸 ДОБРО ПОЖАЛОВАТЬ 〕 ──\n\n"
-                f"Я — Орион, твой верный спутник.\n\n"
-                f"Чтобы попасть в ролевую, вам нужно заполнить анкету.\n\n"
-                f"🔗 Возьмите ссылку для заполнения анкеты у администраторов группы."
-            )
-        return
-
-    if not user["character_name"]:
-        app = await get_application(message.from_user.id, chat_id)
-
-        if app and app['status'] == 'accepted':
-            await update_application_status(message.from_user.id, chat_id, 'waiting_char')
-            text = f"── 〔 ✨ ПРИВЕТСТВИЕ 〕 ──\n\nДобро пожаловать в Тейват!\n\nДля начала выбери свой пол:"
-            msg = await message.answer(text, reply_markup=gender_kb(message.from_user.id), parse_mode="HTML")
-            bot_state._last_bot_msg[chat_id] = msg.message_id
-            return
-
-        elif app and app['status'] == 'waiting_char':
             if not user["gender"]:
-                text = f"── 〔 ✨ ПРИВЕТСТВИЕ 〕 ──\n\nДобро пожаловать в Тейват!\n\nДля начала выбери свой пол:"
-                msg = await message.answer(text, reply_markup=gender_kb(message.from_user.id), parse_mode="HTML")
+                text = f"── 〔 ✨ ПРИВЕТСТВИЕ 〕 ──\n\nВыбери свой пол:"
+                await message.answer(text, reply_markup=gender_kb(message.from_user.id), parse_mode="HTML")
             else:
                 text = f"── 〔 🌸 ВЫБОР ПЕРСОНАЖА 〕 ──\n\nВыбери регион, откуда родом твой герой 🎭"
-                msg = await message.answer(text, reply_markup=regions_kb(message.from_user.id), parse_mode="HTML")
-            bot_state._last_bot_msg[chat_id] = msg.message_id
-            return
-        else:
-            try:
-                await message.delete()
-            except:
-                pass
-            return
-
-    name = esc(user_display_name(user))
-    default_menu = (
-        f"── 〔 🌟 ГЛАВНОЕ МЕНЮ 〕 ──\n\n"
-        f"🍃 Привет, <b>{{name}}</b>!\n\n"
-        f"Куда отправимся сегодня?\n\n"
-        f"🧭 Меня создал {CREATOR_USERNAME}"
-    )
-    raw_menu = await get_local_setting("text_menu", chat_id, default_menu)
-    text = format_text(raw_menu, name, DIV)
-
-    fallback = get_character_image(user["character_name"]) if user["character_name"] else None
-    image = await get_section_image("menu", fallback, chat_id)
-
-    if image:
-        msg = await message.answer_photo(image, caption=text, reply_markup=main_menu_kb(message.from_user.id),
-                                         parse_mode="HTML")
-    else:
-        msg = await message.answer(text, reply_markup=main_menu_kb(message.from_user.id), parse_mode="HTML")
-    bot_state._last_bot_msg[chat_id] = msg.message_id
+                await message.answer(text, reply_markup=regions_kb(message.from_user.id), parse_mode="HTML")
 
 
 @dp.callback_query(MenuCB.filter(F.action.in_(["gender_male", "gender_female"])))
@@ -290,19 +201,13 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
     await update_user(query.from_user.id, chat_id, character_name=name, char_change_paid=0)
     await update_chat_list(chat_id)
 
-    # Обновляем локальный словарь user, чтобы функция тега увидела новое имя
-    user["character_name"] = name
-
     chat = query.message.chat
-    ts = ""
 
-    try:
-        # ИСПОЛЬЗУЕМ НОВУЮ ФУНКЦИЮ
-        await update_user_tag(bot, chat.id, query.from_user.id, user)
-        ts = "\n\n🏷️ Тег участника установлен!"
-    except Exception as e:
-        print(f"Ошибка выдачи тега: {e}")
-        ts = f"\n\n⚠️ Не удалось установить тег (возможно, устарела версия aiogram)."
+    success, ts = await apply_tag(chat.id, query.from_user.id, name)
+
+    if not success and ts:
+        await bot.send_message(chat.id, ts, parse_mode="HTML")
+        ts = ""
 
     app = await get_application(query.from_user.id, chat_id)
     if app and app['status'] == 'waiting_char':
@@ -349,6 +254,155 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
     bot_state._last_bot_msg[chat.id] = msg.message_id
 
 
+# ==================== ФУНКЦИИ ИЗ MENU.PY ====================
+
+@dp.callback_query(MenuCB.filter(F.action == "menu"))
+@inject_user
+async def cb_menu(query, callback_data, user, chat_id):
+    if query.from_user.id != callback_data.owner_id: return
+    if user.get("char_change_paid") == 1:
+        return await edit_or_send(query, f"── 〔 🖼 ВЫБОР ПЕРСОНАЖА 〕 ──\n\nТы оплатил смену!\nВыбери регион:",
+                                  regions_kb(query.from_user.id), image_url="")
+
+    name = esc(user_display_name(user))
+    first_seen = user.get("first_seen") or int(datetime.now(timezone.utc).timestamp())
+    days = (int(datetime.now(timezone.utc).timestamp()) - first_seen) // 86400 + 1
+
+    region_display = "Тейват"
+    if user.get("character_name"):
+        from helpers import get_character_region
+        r_key = get_character_region(user["character_name"])
+        if r_key and r_key in REGIONS and r_key != "other":
+            region_display = REGIONS[r_key].split(" ", 1)[1] if " " in REGIONS[r_key] else REGIONS[r_key]
+
+    rep = user.get("reputation", 0) or 0
+    reg_info = find_region_by_character(user.get("character_name"))
+    reg_name_for_title = reg_info[1] if reg_info else "Тейват"
+    if " " in reg_name_for_title: reg_name_for_title = reg_name_for_title.split(" ", 1)[1]
+    rep_title = get_reputation_title(rep, reg_name_for_title)
+
+    text = (
+        f" ─ [ 🖼 ГЛАВНОЕ МЕНЮ ] ─\n\n"
+        f"🍃 <b>{name}</b> · {region_display}\n\n"
+        f"📊 Статус: {rep_title}\n\n"
+        f"⏳ В Тейвате: <b>{days}</b> дн."
+    )
+    final_text = format_text(await get_local_setting("text_menu", chat_id, text), user, DIV)
+
+    fallback = get_character_image(user["character_name"]) if user["character_name"] else None
+    image = await get_section_image("menu", fallback, chat_id)
+    await edit_or_send(query, final_text, main_menu_kb(query.from_user.id), image_url=image)
+
+
+@dp.callback_query(MenuCB.filter(F.action == "profile"))
+@inject_user
+async def cb_profile(query, callback_data, user, chat_id):
+    if query.from_user.id != callback_data.owner_id: return
+    if user.get("char_change_paid") == 1:
+        return await edit_or_send(query, f"── 〔 🖼 ВЫБОР ПЕРСОНАЖА 〕 ──\n\nТы оплатил смену!\nВыбери регион:",
+                                  regions_kb(query.from_user.id), image_url="")
+
+    name = esc(user_display_name(user))
+    g = await get_guild(user["guild_id"]) if user["guild_id"] else None
+    guild_line = f"🏰 {esc(g['name'])}" if g else "Без гильдии"
+
+    if user["partner_id"]:
+        partner_line = f"❤️ {esc(user['partner_name'])}"
+    else:
+        if user["gender"] == "male":
+            partner_line = "❤️ Свободен"
+        elif user["gender"] == "female":
+            partner_line = "❤️ Свободна"
+        else:
+            partner_line = "❤️ Свободен(а)"
+
+    resin = await update_resin(query.from_user.id, chat_id)
+    rep = user["reputation"] or 0
+    reg_info = find_region_by_character(user.get("character_name"))
+    reg_name_for_title = reg_info[1] if reg_info else "Тейват"
+    if " " in reg_name_for_title: reg_name_for_title = reg_name_for_title.split(" ", 1)[1]
+    rep_title = get_reputation_title(rep, reg_name_for_title)
+
+    text = (
+        f"─ [ 🖼 ПРОФИЛЬ ] ─\n\n"
+        f"🍃 {name}\n\n"
+        f"💰 Баланс: <b>{user['balance']}</b>\n"
+        f"💎 Примогемы: <b>{user.get('primogems', 0)}</b>\n\n"
+        f"💧 Смола: <b>{resin} / {RESIN_MAX}</b>\n\n"
+        f"🎖️ Репутация: <b>{rep_title}</b>\n\n"
+        f"{partner_line}\n\n"
+        f"{guild_line}"
+    )
+
+    fallback = get_character_image(user["character_name"]) if user["character_name"] else None
+    image = await get_section_image("profile", fallback, chat_id)
+    await edit_or_send(query, text, profile_kb(query.from_user.id), image_url=image)
+
+
+@dp.callback_query(MenuCB.filter(F.action == "freerole"))
+@inject_user
+async def cb_freerole(query, callback_data, user, chat_id):
+    if query.from_user.id != callback_data.owner_id or not user["character_name"]: return
+    old = user["character_name"]
+    await update_user(query.from_user.id, chat_id, character_name="")
+    await query.answer(f"⚠️ Роль «{old}» освобождена. Вернуть можно за {PRICE_ROLE_CHANGE} монет.", show_alert=True)
+    if chat_id: await update_chat_list(chat_id)
+    await cb_profile(query, MenuCB(action="profile", owner_id=query.from_user.id), user=user, chat_id=chat_id)
+
+
+@dp.callback_query(MenuCB.filter(F.action == "adventurers"))
+@inject_user
+async def cb_adventurers(query, callback_data, user, chat_id):
+    if query.from_user.id != callback_data.owner_id: return
+    text = (
+        f"─ [ 🏛 ГИЛЬДИЯ ИСКАТЕЛЕЙ ] ─\n\n"
+        f"🍃 Добро пожаловать,\n"
+        f"<b>{esc(user_display_name(user))}</b>!\n\n"
+        f"Выбери направление:"
+    )
+    image = await get_section_image("adventurers", chat_id=chat_id)
+    await edit_or_send(query, text, adventurers_kb(query.from_user.id), image_url=image)
+
+
+@dp.callback_query(MenuCB.filter(F.action == "reputation"))
+@inject_user
+async def cb_reputation(query, callback_data, user, chat_id):
+    if query.from_user.id != callback_data.owner_id: return
+    rep = user["reputation"] or 0
+    level, cur, need = get_rep_progress(rep)
+
+    reg_info = find_region_by_character(user.get("character_name"))
+    reg_name_for_title = reg_info[1] if reg_info else "Тейват"
+    if " " in reg_name_for_title: reg_name_for_title = reg_name_for_title.split(" ", 1)[1]
+
+    title = get_reputation_title(rep, reg_name_for_title)
+    pt = "Максимум!" if level >= 10 else f"{'█' * (cur * 10 // 500)}{'░' * (10 - (cur * 10 // 500))} {cur}/500"
+
+    text = (
+        f"─ [ 🎖️ РЕПУТАЦИЯ ] ─\n\n"
+        f"{title}\n\n"
+        f"📊 Уровень: <b>{level} / 10</b>\n\n"
+        f"🌟 Очки: <b>{rep}</b>\n\n"
+        f"📈 Прогресс: {pt}"
+    )
+    image = await get_section_image("reputation", chat_id=chat_id)
+    await edit_or_send(query, text, reputation_kb(query.from_user.id), image_url=image)
+
+
+@dp.message(Command("freerole"))
+async def cmd_freerole(message):
+    chat_id = message.chat.id
+    user = await _ensure_user(message.from_user.id, chat_id)
+    if not user["character_name"]: return await message.answer("У тебя нет персонажа.")
+    old = user["character_name"]
+    await update_user(message.from_user.id, chat_id, character_name="")
+    await message.answer(f"✅ Роль «{esc(old)}» освобождена.\n\n⚠️ Вернуть можно за {PRICE_ROLE_CHANGE} монет.",
+                         parse_mode="HTML", reply_markup=back_kb(message.from_user.id))
+    await update_chat_list(chat_id)
+
+
+# ==================== СОБЫТИЯ ВХОДА ====================
+
 @dp.chat_member()
 async def on_chat_member_update(event: types.ChatMemberUpdated):
     try:
@@ -368,34 +422,32 @@ async def on_chat_member_update(event: types.ChatMemberUpdated):
 
         if was_in and is_gone:
             user = await get_user(affected_user.id, event.chat.id)
-            if user:
+            if user and user["character_name"]:
                 old_name = user["character_name"]
                 await update_user(affected_user.id, event.chat.id, character_name="", char_change_paid=0,
-                                  search_rp_partner="")
-                user["character_name"] = ""
-
+                                  search_rp_partner="", sub_passed=0)
                 await update_application_status(affected_user.id, event.chat.id, "rejected")
-
-                # Обновляем тег (если остался админом, тег станет просто должностью)
-                await update_user_tag(bot, event.chat.id, affected_user.id, user)
-
-                if old_name:
-                    try:
-                        await bot.send_message(
-                            event.chat.id,
-                            f"🎭 Роль «{esc(old_name)}» освобождена —\nеё владелец покинул группу.",
-                            parse_mode="HTML"
-                        )
-                    except Exception:
-                        pass
+                try:
+                    await bot.set_chat_member_tag(chat_id=event.chat.id, user_id=affected_user.id, tag="")
+                except Exception:
+                    pass
+                try:
+                    await bot.send_message(event.chat.id,
+                                           f"🎭 Роль «{esc(old_name)}» освобождена —\nеё владелец покинул группу.",
+                                           parse_mode="HTML")
+                except Exception:
+                    pass
                 await update_chat_list(event.chat.id)
 
         elif is_new:
+            user = await get_user(affected_user.id, event.chat.id)
+            if user and user["character_name"]:
+                await apply_tag(event.chat.id, affected_user.id, user["character_name"])
+
             sub_enabled = await get_setting("sub_enabled", "0")
             if sub_enabled == "1":
-                user = await get_user(affected_user.id, event.chat.id)
                 if not user or user.get("sub_passed") == 0:
-                    await safe_send_sub(event, affected_user.id, event.chat.id)
+                    await send_sub_message(event, affected_user.id, event.chat.id)
                     return
 
             app = await get_application(affected_user.id, event.chat.id)
@@ -408,13 +460,11 @@ async def on_chat_member_update(event: types.ChatMemberUpdated):
                 )
                 await update_application_status(affected_user.id, event.chat.id, 'waiting_char')
             else:
-                user = await get_user(affected_user.id, event.chat.id)
                 if not user or not user["character_name"]:
                     mention = f'<a href="tg://user?id={affected_user.id}">{esc(affected_user.first_name)}</a>'
                     await bot.send_message(
                         event.chat.id,
-                        f"👋 {mention}, добро пожаловать в Тейват!\n\n"
-                        f"Чтобы начать играть, выбери свой пол:",
+                        f"👋 {mention}, добро пожаловать в Тейват!\n\nВыбери свой пол:",
                         reply_markup=gender_kb(affected_user.id), parse_mode="HTML"
                     )
     except Exception as e:
@@ -431,9 +481,8 @@ async def on_new_chat_members(message: types.Message):
         for user in message.new_chat_members:
             if user.is_bot:
                 continue
-
             db_user = await get_user(user.id, message.chat.id)
             if not db_user or db_user.get("sub_passed") == 0:
-                await safe_send_sub(message, user.id, message.chat.id)
+                await send_sub_message(message, user.id, message.chat.id)
     except Exception as e:
         print(f"NewChatMembers error: {e}")
