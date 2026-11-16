@@ -12,7 +12,7 @@ REGIONS = {
     "snezhnaya": "❄️ Снежная",
     "fatui": "🎭 Фатуи",
     "hexenzirkel": "🧙‍♀️ Ведьмин круг",
-    "shades": "👤 Тени Фанеса",
+    "shades": "👤 Тени Фанета",
     "other": "✨ Другие",
 }
 
@@ -171,6 +171,7 @@ CHARACTERS = {
     "Элой": {"region": "other", "image": "https://avatars.mds.yandex.net/i?id=8564e7b7366a0072463effa4c571d486_l-4146308-images-thumbs&n=13"},
     "Фанет": {"region": "other", "image": "https://genshin.jmp.blue/characters/paimon/portrait"},
     "Икор": {"region": "other", "image": "https://genshin.jmp.blue/characters/paimon/portrait"},
+    "Толиндис": {"region": "other", "image": "https://wotpack.ru/wp-content/uploads/2025/11/tolindis-padaet-v-portal-e1761994293562.jpg"},
     "Рери": {"region": "other", "image": "https://upload-os-bbs.hoyolab.com/upload/2026/08/09/487204965/aa2760e5dc741219229c3b3101774d3d_7848395882897636984.png"},
 # ===== Ведьмин круг (Hexenzirkel) =====
     "Алиса": {"region": "hexenzirkel", "image": "https://avatars.mds.yandex.net/i?id=4022d47cdc63fa0ca84dc069d0f77494_l-4491259-images-thumbs&n=13"},
