@@ -27,7 +27,7 @@ MONTHS = ["января", "февраля", "марта", "апреля", "ма�
           "декабря"]
 
 
-# ==================== МОДЕРАЦИЯ ====================
+# ==================== МОДЕРАЦИЯ (WARN / MUTE / BAN) ====================
 
 async def check_mod_rights(message: types.Message, perm: str):
     if message.from_user.id == OWNER_ID: return True
@@ -241,27 +241,13 @@ async def cmd_unset_rank(message: types.Message):
     await update_user(target_id, message.chat.id, admin_rank="")
     await remove_tg_rights(bot, message.chat.id, target_id)
 
-    # Обновляем тег до обычного имени
     target_user = await get_user(target_id, message.chat.id)
     await update_user_tag(bot, message.chat.id, target_id, target_user)
 
     await message.reply("✅ С игрока сняты все админ-права.")
 
 
-@dp.message(Command("resetstats"))
-async def cmd_reset_stats(message: types.Message):
-    if message.from_user.id != OWNER_ID:
-        return await message.answer("❌ Эта команда доступна только владельцу бота.")
-
-    await execute("UPDATE users SET messages_count = 0, msgs_week = 0, msgs_month = 0")
-
-    await message.answer(
-        f"✅ <b>СБРОС СТАТИСТИКИ</b>\n{DIV}\n\n"
-        f"Счётчики сообщений (всего, за неделю и за месяц) обнулены у всех.\n"
-        f"Счетчик сообщений за сегодня (день) остался без изменений.",
-        parse_mode="HTML"
-    )
-
+# ==================== ЧИСТКА И СТАТИСТИКА ====================
 
 @dp.message(Command("kicklist", "cleanup_list"))
 async def cmd_kicklist(message: types.Message):
@@ -291,11 +277,10 @@ async def cmd_kicklist(message: types.Message):
     newbie_list = []
 
     for u in users:
-        name = u['character_name']  # Без HTML-экранирования, чтобы не ломались теги
+        name = u['character_name']
         msgs = u['msgs_week'] or 0
         username = u.get('username')
 
-        # Если есть юзернейм - пишем его. Если нет - имя и ID.
         if username:
             user_link = f"@{username}"
         else:
@@ -315,7 +300,6 @@ async def cmd_kicklist(message: types.Message):
         else:
             kick_list.append(f"❌ {user_link} — {msgs} сообщ. (С {date_str})")
 
-    # Формируем текст БЕЗ HTML (просто обычный текст)
     text = f"📋 СПИСОК ДЛЯ РУЧНОЙ ЧИСТКИ\n"
     text += f"Норма: {NORM_MSGS} сообщ. за неделю. Бот никого не кикает.\n\n"
 
@@ -335,12 +319,28 @@ async def cmd_kicklist(message: types.Message):
 
     text += f"\n\n✅ Набрали норму: {len(norm_list)} чел."
 
-    # Обрезаем, если слишком длинно
     if len(text) > 4000:
         text = text[:4000] + "\n\n... (сообщение обрезано)"
 
-    # Отправляем БЕЗ parse_mode (как обычный текст)
     await message.answer(text)
+
+
+@dp.message(Command("resetstats"))
+async def cmd_reset_stats(message: types.Message):
+    if message.from_user.id != OWNER_ID:
+        return await message.answer("❌ Эта команда доступна только владельцу бота.")
+
+    await execute("UPDATE users SET messages_count = 0, msgs_week = 0, msgs_month = 0")
+
+    await message.answer(
+        f"✅ <b>СБРОС СТАТИСТИКИ</b>\n{DIV}\n\n"
+        f"Счётчики сообщений (всего, за неделю и за месяц) обнулены у всех.\n"
+        f"Счетчик сообщений за сегодня (день) остался без изменений.",
+        parse_mode="HTML"
+    )
+
+
+# ==================== ЭКОНОМИКА И ВЛАДЕЛЕЦ ====================
 
 @dp.message(Command("addmoney"))
 async def cmd_addmoney(message: types.Message):
@@ -477,166 +477,7 @@ async def cmd_delguild(message: types.Message):
     await message.answer(f"✅ Гильдия «{esc(name)}» удалена.", reply_markup=back_kb(message.from_user.id))
 
 
-@dp.message(Command("warn"), IsChatAdmin())
-async def cmd_warn(message: types.Message):
-    if not message.reply_to_message:
-        await message.answer("❌ Ответь на сообщение нарушителя.")
-        return
-    chat_id = message.chat.id
-    target = message.reply_to_message.from_user
-    if target.id == message.from_user.id:
-        await message.answer("❌ Себе нельзя.")
-        return
-    if target.is_bot:
-        await message.answer("❌ Боту нельзя.")
-        return
-    user = await get_user(target.id, chat_id)
-    if not user:
-        await create_user(target.id, chat_id)
-        user = await get_user(target.id, chat_id)
-    warns = await add_warn(target.id, chat_id, 1)
-    mention = f'【0†{esc(target.first_name)}†tg:】'
-    if warns >= WARN_LIMIT:
-        mu = int((datetime.now(timezone.utc) + timedelta(hours=WARN_MUTE_HOURS)).timestamp())
-        await update_user(target.id, chat_id, muted_until=mu, warns=0)
-        try:
-            await bot.restrict_chat_member(
-                chat_id=chat_id, user_id=target.id,
-                permissions=ChatPermissions(can_send_messages=False), until_date=mu
-            )
-        except Exception as e:
-            await message.answer(f"⚠️ Мут не удался: {e}", reply_markup=back_kb(message.from_user.id))
-            return
-        await message.answer(f" {mention} получил 3 варна и замучен на 24 часа!", parse_mode="HTML",
-                             reply_markup=back_kb(message.from_user.id))
-    else:
-        await message.answer(f"⚠️ {mention}: {warns}/{WARN_LIMIT}", parse_mode="HTML",
-                             reply_markup=back_kb(message.from_user.id))
-
-
-@dp.message(Command("unwarn"), IsChatAdmin())
-async def cmd_unwarn(message: types.Message):
-    if not message.reply_to_message:
-        await message.answer("❌ Ответь на сообщение.")
-        return
-    chat_id = message.chat.id
-    target = message.reply_to_message.from_user
-    warns = await remove_warn(target.id, chat_id, 1)
-    await message.answer(f"✅ Снято. Осталось: {warns}", reply_markup=back_kb(message.from_user.id))
-
-
-@dp.message(Command("mute"), IsChatAdmin())
-async def cmd_mute(message: types.Message):
-    if not message.reply_to_message:
-        await message.answer("❌ Ответь на сообщение и напиши /mute <мин>")
-        return
-    chat_id = message.chat.id
-    parts = message.text.split(maxsplit=1)
-    if len(parts) < 2 or not parts[1].isdigit():
-        await message.answer("Используй: /mute <мин>")
-        return
-    minutes = int(parts[1])
-    if minutes <= 0 or minutes > 10080:
-        await message.answer("❌ 1-10080")
-        return
-    target = message.reply_to_message.from_user
-    if target.id == message.from_user.id:
-        await message.answer("❌ Себе")
-        return
-    mu = int((datetime.now(timezone.utc) + timedelta(minutes=minutes)).timestamp())
-    await update_user(target.id, chat_id, muted_until=mu)
-    try:
-        await bot.restrict_chat_member(
-            chat_id=chat_id, user_id=target.id,
-            permissions=ChatPermissions(can_send_messages=False), until_date=mu
-        )
-    except Exception as e:
-        await message.answer(f"⚠️ {e}", reply_markup=back_kb(message.from_user.id))
-        return
-    mention = f'【0†{esc(target.first_name)}†tg:】'
-    await message.answer(f" {mention} замучен на {minutes} мин.", parse_mode="HTML",
-                         reply_markup=back_kb(message.from_user.id))
-
-
-@dp.message(Command("unmute"), IsChatAdmin())
-async def cmd_unmute(message: types.Message):
-    if not message.reply_to_message:
-        await message.answer("❌ Ответь на сообщение.")
-        return
-    chat_id = message.chat.id
-    target = message.reply_to_message.from_user
-    await update_user(target.id, chat_id, muted_until=0)
-    try:
-        await bot.restrict_chat_member(
-            chat_id=chat_id, user_id=target.id,
-            permissions=ChatPermissions(
-                can_send_messages=True, can_send_audios=True, can_send_documents=True,
-                can_send_photos=True, can_send_videos=True, can_send_video_notes=True,
-                can_send_voice_notes=True, can_send_polls=True, can_send_other_messages=True,
-                can_add_web_page_previews=True, can_change_info=False, can_invite_users=True, can_pin_messages=False
-            )
-        )
-    except Exception as e:
-        await message.answer(f"⚠️ {e}", reply_markup=back_kb(message.from_user.id))
-        return
-    await message.answer(f"✅ Размучен.", parse_mode="HTML", reply_markup=back_kb(message.from_user.id))
-
-
-@dp.message(Command("stats"), IsChatAdmin())
-async def cmd_stats(message: types.Message):
-    chat_id = message.chat.id
-    tb = await get_top_balance(chat_id, 5)
-    tm = await get_top_messages(chat_id, 5)
-    tr = await get_top_reputation(chat_id, 5)
-    lines = [f"📊 СТАТИСТИКА\n{DIV}\n", "🏆 ТОП-5 БАЛАНС"]
-    for i, u in enumerate(tb, 1):
-        lines.append(f"{i}. {esc(u['character_name'] or '?')} — {u['balance']}")
-    lines.append("\n💬 ТОП-5 СООБЩЕНИЯ")
-    for i, u in enumerate(tm, 1):
-        lines.append(f"{i}. {esc(u['character_name'] or '?')} — {u['messages_count']}")
-    lines.append("\n⭐ ТОП-5 РЕПУТАЦИЯ")
-    for i, u in enumerate(tr, 1):
-        lines.append(f"{i}. {esc(u['character_name'] or '?')} — ур. {get_rep_level(u['reputation'] or 0)}")
-    await message.answer("\n".join(lines), parse_mode="HTML", reply_markup=back_kb(message.from_user.id))
-
-
-@dp.message(Command("protect"))
-async def cmd_protect(message: types.Message):
-    if message.from_user.id != OWNER_ID:
-        await message.answer("❌ Только владелец.")
-        return
-    if not message.reply_to_message:
-        await message.answer("❌ Ответь реплаем на сообщение того, кого хочешь защитить.")
-        return
-    chat_id = message.chat.id
-    target = message.reply_to_message.from_user
-    if target.id == OWNER_ID:
-        await message.answer("❌ Себя защищать не надо.")
-        return
-    if target.is_bot:
-        await message.answer("❌ Бота нельзя.")
-        return
-    await _ensure_user(target.id, chat_id)
-    await add_protected_user(target.id, chat_id, message.from_user.id)
-    await message.answer(
-        f"✅ {esc(target.first_name)} теперь под защитой. Никто кроме тебя не сможет предложить ему отношения.",
-        reply_markup=back_kb(message.from_user.id))
-
-
-@dp.message(Command("unprotect"))
-async def cmd_unprotect(message: types.Message):
-    if message.from_user.id != OWNER_ID:
-        await message.answer("❌ Только владелец.")
-        return
-    if not message.reply_to_message:
-        await message.answer("❌ Ответь на сообщение.")
-        return
-    chat_id = message.chat.id
-    target = message.reply_to_message.from_user
-    await remove_protected_user(target.id, chat_id)
-    await message.answer(f"✅ {esc(target.first_name)} больше не под защитой.",
-                         reply_markup=back_kb(message.from_user.id))
-
+# ==================== АВТО-ЧИСТКА И ДОВЕРЕННЫЕ ====================
 
 @dp.message(Command("cleanup"))
 async def cmd_cleanup(message: types.Message):
@@ -655,7 +496,7 @@ async def cmd_cleanup(message: types.Message):
             f"Последняя: {last}\n\n"
             f"Настройка: <code>/cleanup_set on 100 7</code>\n"
             f"(Вкл/Выкл, мин.сообщений, раз в N дней)\n\n"
-            f"Посмотреть купивших защиту: /cleanup_list")
+            f"Посмотреть купивших защиту: /cleanup_protected")
     await message.answer(text, parse_mode="HTML", reply_markup=back_kb(message.from_user.id))
 
 
@@ -689,8 +530,8 @@ async def cmd_cleanup_set(message: types.Message):
                          reply_markup=back_kb(message.from_user.id))
 
 
-@dp.message(Command("cleanup_list"))
-async def cmd_cleanup_list(message: types.Message):
+@dp.message(Command("cleanup_protected"))
+async def cmd_cleanup_protected(message: types.Message):
     if not await is_chat_admin(message.chat.id, message.from_user.id) and message.from_user.id != OWNER_ID:
         return
     chat_id = message.chat.id
