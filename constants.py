@@ -75,7 +75,7 @@ CALL_EMOJIS = [
 QUIZ_QUESTIONS = {
     "easy": [
         {"q": "Какой элемент у Нахиды?", "answers": ["дендро"]},
-        {"q": "Где живёт Кокоми?", "answers": ["инадзума", "энканомия"]},
+        {"q": "Где живёт Кокоми?", "answers": ["инадзума", "энаканомия"]},
         {"q": "Кто владеет таверной «Дракон»?", "answers": ["дилюк"]},
         {"q": "Кем является персонаж - Сяо?", "answers": ["адепт", "адептом"]},
         {"q": "Кто такой Тарталья?", "answers": ["предвестник фатуи", "фатуи", "фатуй"]},
@@ -99,7 +99,7 @@ QUIZ_QUESTIONS = {
     ],
     "hard": [
         {"q": "Кто создал марионетку Странника (Скарамуччу)?", "answers": ["райдэн эи", "райден эи", "райден", "райдэн", "эи", "баал"]},
-        {"q": "Как звучит титул Пьеро в Фатуи?", "answers": ["предводитель", "шут", "клоун", "предводитель фатуи"]},
+        {"q": "Как звучит титул Пьеро в Фатуи?", "answers": ["первый предвестник", "первый", "предвестник"]},
         {"q": "Как зовут Гео Дракона-Владыку в Ли Юэ?", "answers": ["аждаха", "аж"]},
         {"q": "Какая страна вдохновила регион Сумеру?", "answers": ["индия", "ближний восток"]},
         {"q": "Кто приютил и вылечил зомби Цици?", "answers": ["бай чжу", "байчжу", "бай"]},
@@ -111,7 +111,6 @@ QUIZ_QUESTIONS = {
     ]
 }
 
-# Веса для выпадения сложности (60% легкие, 30% средние, 10% сложные)
 QUIZ_WEIGHTS = [60, 30, 10]
 
 ARTIFACT_SLOTS = {
@@ -185,7 +184,7 @@ INTERACTIONS = {
     "придушить": {"emoji": "😤", "verb_m": "придушил", "verb_f": "придушила"},
     "кинуть тапком": {"emoji": "🥿", "verb_m": "кинул", "verb_f": "кинула"},
     "обозвать": {"emoji": "🤬", "verb_m": "обозвал", "verb_f": "обозвала"},
-    "щелбан": {"emoji": "💢", "verb_m": "отвесил щелбан", "verb_f": "отвесила щелбан"},
+    "щелбан": {"emoji": "💢", "verb_m": "отвесил", "verb_f": "отвесила"},
     "дать леща": {"emoji": "🐟", "verb_m": "дал(а) леща", "verb_f": "дал(а) леща"},
     "задушить в объятиях": {"emoji": "🫂", "verb_m": "задушил", "verb_f": "задушила"},
     "закидать тапками": {"emoji": "🥿", "verb_m": "закидал", "verb_f": "закидала"},
@@ -257,4 +256,41 @@ PLAYER_COMMANDS = {
         ("/delguild", "Удалить гильдию"),
         ("/checkimages", "Проверить ссылки картинок"),
     ]},
+}
+
+# ================= НОВАЯ СИСТЕМА РАНГОВ =================
+DEFAULT_ADMIN_RANKS = {
+    "owner": {
+        "name": "👑 Владелец", "weight": 100, "cmd": "",
+        "permissions": ["all"]
+    },
+    "coowner": {
+        "name": "🛡 Совлд", "weight": 90, "cmd": "!совлд",
+        "permissions": ["call", "applylink", "warn", "mute", "ban", "assign_lower"]
+    },
+    "headadmin": {
+        "name": "⚔ Г.Админ", "weight": 80, "cmd": "!гладмин",
+        "permissions": ["call", "applylink", "warn", "mute", "ban", "assign_lower"],
+        "tg_rights": {"can_delete_messages": True, "can_restrict_members": True, "can_manage_tags": True}
+    },
+    "admin": {
+        "name": "⚙ Админ", "weight": 70, "cmd": "!админ",
+        "permissions": ["call", "applylink", "warn", "mute", "ban"],
+        "tg_rights": {"can_delete_messages": True, "can_restrict_members": True}
+    },
+    "moderator": {
+        "name": "🔨 Модер", "weight": 60, "cmd": "!модер",
+        "permissions": ["call", "applylink", "warn", "mute"],
+        "tg_rights": {"can_delete_messages": True, "can_restrict_members": True}
+    },
+    "jrmod": {
+        "name": "🔧 М.Модер", "weight": 50, "cmd": "!млмодер",
+        "permissions": ["call", "applylink"],
+        "tg_rights": {"can_delete_messages": True}
+    },
+    "trainee": {
+        "name": "📝 Стажер", "weight": 10, "cmd": "!стажер",
+        "permissions": ["call"],
+        "tg_rights": {}
+    }
 }

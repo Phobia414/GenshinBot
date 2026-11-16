@@ -1,14 +1,16 @@
 import html
 import random
 import aiohttp
+import json # <--- ДОБАВЛЕНО
 from datetime import datetime, timezone
 from functools import wraps
 from aiogram import types
 from aiogram.types import FSInputFile, InputMediaPhoto, BufferedInputFile
 from aiogram.exceptions import TelegramBadRequest
+from aiogram import Bot # <--- ДОБАВЛЕНО
 from bot_instance import bot
 from config import DB_PATH
-from constants import DIV, PLACEHOLDER_IMAGES
+from constants import DIV, PLACEHOLDER_IMAGES, DEFAULT_ADMIN_RANKS # <--- ДОБАВЛЕНО
 from db import (
     get_user, create_user, get_rep_level, get_local_setting,
     update_user, increment_user_field, get_guild, get_taken_characters,
@@ -320,3 +322,139 @@ async def edit_or_send(query, text, kb, image_url=None):
             except Exception as e:
                 print(f"❌ Ошибка отправки фото: {e}")
                 await bot.send_message(chat_id, text, reply_markup=kb, parse_mode="HTML")
+
+
+import json
+from aiogram import Bot
+
+
+# ================= НОВЫЕ ФУНКЦИИ ДЛЯ РАНГОВ =================
+async def get_ranks_config():
+    from db import get_setting
+    default_json = json.dumps(DEFAULT_ADMIN_RANKS)
+    conf = await get_setting("admin_ranks_config", default_json)
+    try:
+        return json.loads(conf)
+    except:
+        return DEFAULT_ADMIN_RANKS
+
+
+async def save_ranks_config(config):
+    from db import set_setting
+    await set_setting("admin_ranks_config", json.dumps(config))
+
+
+async def get_user_rank_data(user):
+    if not user: return None
+    rank_key = user.get("admin_rank")
+    if not rank_key: return None
+    ranks = await get_ranks_config()
+    return ranks.get(rank_key)
+
+
+def has_permission(rank_data, permission):
+    if not rank_data: return False
+    perms = rank_data.get("permissions", [])
+    if "all" in perms or permission in perms:
+        return True
+    return False
+
+
+def parse_admin_target(message):
+    parts = message.text.split(maxsplit=2)
+    if message.reply_to_message:
+        reason = message.text.split(maxsplit=1)[1] if len(parts) > 1 else "Не указана"
+        return message.reply_to_message.from_user.id, reason
+
+    if len(parts) > 1 and parts[1].startswith("@"):
+        username = parts[1].replace("@", "")
+        reason = parts[2] if len(parts) > 2 else "Не указана"
+        return username, reason
+
+    return None, None
+
+
+async def update_user_tag(bot, chat_id: int, user_id: int, user: dict = None):
+    if not user:
+        from db import get_user
+        user = await get_user(user_id, chat_id)
+    if not user: return
+
+    char_name = user.get("character_name", "") or ""
+    rank_key = user.get("admin_rank", "")
+
+    NAME_ABBREVIATIONS = {
+        "Аяка Камисато": "Аяка",
+        "Аято Камисато": "Аято",
+        "Дайнслейф": "Дайн",
+        "Рэйндоттир": "Рэйн"
+    }
+
+    rank_name = ""
+    if rank_key:
+        ranks = await get_ranks_config()
+        if rank_key in ranks:
+            raw_rank = ranks[rank_key]["name"]
+            rank_name = "".join([c for c in raw_rank if c.isalnum() or c in (".", " ", "-")]).strip()
+
+    tag = ""
+    if rank_name:
+        if char_name in NAME_ABBREVIATIONS:
+            short_name = NAME_ABBREVIATIONS[char_name]
+        else:
+            max_char_len = 16 - len(rank_name) - 1
+            if max_char_len >= 3:
+                short_name = char_name[:max_char_len].strip()
+            else:
+                short_name = "Админ"
+        tag = f"{short_name} {rank_name}"
+    else:
+        tag = char_name[:16]
+
+    try:
+        await bot.promote_chat_member(
+            chat_id=chat_id, user_id=user_id,
+            can_change_info=False, can_delete_messages=False, can_invite_users=False,
+            can_restrict_members=False, can_pin_messages=False, can_promote_members=False,
+            can_manage_chat=False, can_manage_video_chats=False, can_manage_topics=False
+        )
+        if tag:
+            await bot.set_chat_administrator_custom_title(chat_id=chat_id, user_id=user_id, custom_title=tag)
+        else:
+            await bot.set_chat_administrator_custom_title(chat_id=chat_id, user_id=user_id, custom_title="")
+    except Exception as e:
+        print(f"⚠️ Ошибка установки тега: {e}")
+
+
+async def apply_tg_rights(bot: Bot, chat_id: int, user_id: int, rank_data: dict):
+    if not rank_data: return False
+    rights = rank_data.get("tg_rights", {})
+    try:
+        await bot.promote_chat_member(
+            chat_id=chat_id, user_id=user_id,
+            can_change_info=False,
+            can_delete_messages=rights.get("can_delete_messages", False),
+            can_invite_users=False,
+            can_restrict_members=rights.get("can_restrict_members", False),
+            can_pin_messages=False, can_promote_members=False,
+            can_manage_chat=False, can_manage_video_chats=False, can_manage_topics=False
+        )
+        await update_user_tag(bot, chat_id, user_id)
+        return True
+    except Exception as e:
+        print(f"Ошибка выдачи прав ТГ: {e}")
+        return False
+
+
+async def remove_tg_rights(bot: Bot, chat_id: int, user_id: int):
+    try:
+        await bot.promote_chat_member(
+            chat_id=chat_id, user_id=user_id,
+            can_change_info=False, can_delete_messages=False, can_invite_users=False,
+            can_restrict_members=False, can_pin_messages=False, can_promote_members=False,
+            can_manage_chat=False, can_manage_video_chats=False, can_manage_topics=False
+        )
+        await bot.set_chat_administrator_custom_title(chat_id=chat_id, user_id=user_id, custom_title="")
+        return True
+    except Exception:
+        return False

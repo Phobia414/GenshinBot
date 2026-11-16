@@ -2,7 +2,7 @@ from datetime import datetime, timezone, timedelta
 import asyncio
 import aiosqlite
 
-from aiogram import types
+from aiogram import types, F
 from aiogram.filters import Command
 from aiogram.types import ChatPermissions
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -12,29 +12,240 @@ from config import OWNER_ID, DB_PATH
 from constants import DIV, WARN_LIMIT, WARN_MUTE_HOURS
 from db import (
     get_user, create_user, update_user, add_warn, remove_warn,
-    add_reputation, get_top_balance, get_top_messages, get_top_reputation,
-    get_rep_level, RESIN_MAX, add_protected_user, remove_protected_user,
-    get_protected_owner, update_primogems, get_guild_by_name,
-    get_cleanup_settings, update_cleanup_settings, fetch_all, execute, fetch_one,
-    add_trusted_admin, remove_trusted_admin
+    add_reputation, get_rep_level, RESIN_MAX, add_protected_user, remove_protected_user,
+    update_primogems, get_guild_by_name, get_cleanup_settings, update_cleanup_settings,
+    fetch_all, execute, fetch_one, add_trusted_admin, remove_trusted_admin
 )
-from helpers import esc, is_chat_admin, _ensure_user, extract_target, resolve_user_id
+from helpers import (
+    esc, is_chat_admin, _ensure_user, extract_target, resolve_user_id,
+    get_ranks_config, has_permission, get_user_rank_data, parse_admin_target,
+    apply_tg_rights, remove_tg_rights, _now_ts, update_user_tag
+)
 from keyboards import back_kb
-
-from aiogram.filters import BaseFilter
-from aiogram.enums import ChatType
 
 MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября",
           "декабря"]
 
 
-class IsChatAdmin(BaseFilter):
-    async def __call__(self, message: types.Message) -> bool:
-        if message.from_user.id == OWNER_ID:
-            return True
-        if message.chat.type == ChatType.PRIVATE:
-            return False
-        return await is_chat_admin(message.chat.id, message.from_user.id)
+# ==================== МОДЕРАЦИЯ ====================
+
+async def check_mod_rights(message: types.Message, perm: str):
+    if message.from_user.id == OWNER_ID: return True
+    user = await get_user(message.from_user.id, message.chat.id)
+    rank = await get_user_rank_data(user)
+    if not has_permission(rank, perm):
+        await message.reply(f"❌ У вас нет прав на эту команду ({perm}).")
+        return False
+    return True
+
+
+async def log_action(chat_id, admin_name, action, target_id, reason):
+    log_text = f"🛡 <b>ЛОГ МОДЕРАЦИИ</b>\n{DIV}\n👮‍♂️ Админ: {esc(admin_name)}\n⚔️ Действие: {action}\n🎯 Цель: <code>{target_id}</code>\n📝 Причина: {esc(reason)}"
+    try:
+        await bot.send_message(OWNER_ID, log_text, parse_mode="HTML")
+    except:
+        pass
+
+
+@dp.message(Command("warn"))
+async def cmd_warn(message: types.Message):
+    if not await check_mod_rights(message, "warn"): return
+
+    target_ref, reason = parse_admin_target(message)
+    if not target_ref:
+        return await message.reply("Используй: <code>/warn @user Причина</code> или ответом на сообщение.",
+                                   parse_mode="HTML")
+
+    target_id = target_ref if isinstance(target_ref, int) else await resolve_user_id(target_ref)
+    if not target_id: return await message.reply("❌ Игрок не найден.")
+    if target_id == message.from_user.id: return await message.reply("❌ Себе нельзя.")
+
+    user = await _ensure_user(target_id, message.chat.id)
+    warns = await add_warn(target_id, message.chat.id, 1)
+    mention = f'<a href="tg://user?id={target_id}">Игрок</a>'
+
+    await log_action(message.chat.id, message.from_user.first_name, "Warn", target_id, reason)
+
+    if warns >= WARN_LIMIT:
+        mu = int((datetime.now(timezone.utc) + timedelta(hours=WARN_MUTE_HOURS)).timestamp())
+        await update_user(target_id, message.chat.id, muted_until=mu, warns=0)
+        try:
+            await bot.restrict_chat_member(message.chat.id, target_id,
+                                           permissions=ChatPermissions(can_send_messages=False), until_date=mu)
+        except:
+            pass
+        await message.reply(
+            f"⚠️ {mention} получил {WARN_LIMIT}-й варн и замучен на {WARN_MUTE_HOURS}ч.\nПричина: {reason}",
+            parse_mode="HTML")
+    else:
+        await message.reply(f"⚠️ {mention} получил варн ({warns}/{WARN_LIMIT}).\nПричина: {reason}", parse_mode="HTML")
+
+
+@dp.message(Command("unwarn"))
+async def cmd_unwarn(message: types.Message):
+    if not await check_mod_rights(message, "warn"): return
+    target_ref, _ = parse_admin_target(message)
+    if not target_ref: return await message.reply("Ответьте на сообщение или укажите @user.")
+    target_id = target_ref if isinstance(target_ref, int) else await resolve_user_id(target_ref)
+    if not target_id: return await message.reply("❌ Не найден.")
+
+    warns = await remove_warn(target_id, message.chat.id, 1)
+    await message.reply(f"✅ Снят 1 варн. Осталось: {warns}")
+
+
+@dp.message(Command("mute"))
+async def cmd_mute(message: types.Message):
+    if not await check_mod_rights(message, "mute"): return
+    parts = message.text.split()
+    if len(parts) < 2 or not parts[1].isdigit():
+        return await message.reply("Используй: <code>/mute 15 Причина</code> (ответом или @user)", parse_mode="HTML")
+
+    minutes = int(parts[1])
+    rest_text = " ".join(parts[2:])
+
+    target_ref = None
+    reason = rest_text if rest_text else "Не указана"
+
+    if message.reply_to_message:
+        target_ref = message.reply_to_message.from_user.id
+        reason = " ".join(parts[1:])
+        if not reason: reason = "Не указана"
+        minutes = 60
+        if parts[1].isdigit():
+            minutes = int(parts[1])
+            reason = " ".join(parts[2:])
+    elif len(parts) > 2 and parts[1].isdigit() and parts[2].startswith("@"):
+        target_ref = parts[2]
+        reason = " ".join(parts[3:])
+    else:
+        return await message.reply("Укажи время, юзера и причину.")
+
+    target_id = target_ref if isinstance(target_ref, int) else await resolve_user_id(target_ref)
+    if not target_id: return await message.reply("❌ Игрок не найден.")
+
+    mu = int((datetime.now(timezone.utc) + timedelta(minutes=minutes)).timestamp())
+    await update_user(target_id, message.chat.id, muted_until=mu)
+    try:
+        await bot.restrict_chat_member(message.chat.id, target_id, permissions=ChatPermissions(can_send_messages=False),
+                                       until_date=mu)
+        await message.reply(f"🔇 Игрок замучен на {minutes} мин.\nПричина: {reason}")
+        await log_action(message.chat.id, message.from_user.first_name, f"Mute {minutes}m", target_id, reason)
+    except Exception as e:
+        await message.reply(f"⚠️ Ошибка: {e}")
+
+
+@dp.message(Command("unmute"))
+async def cmd_unmute(message: types.Message):
+    if not await check_mod_rights(message, "mute"): return
+    target_ref, _ = parse_admin_target(message)
+    if not target_ref: return await message.reply("Ответьте на сообщение или укажите @user.")
+    target_id = target_ref if isinstance(target_ref, int) else await resolve_user_id(target_ref)
+
+    await update_user(target_id, message.chat.id, muted_until=0)
+    try:
+        await bot.restrict_chat_member(message.chat.id, target_id, permissions=ChatPermissions(can_send_messages=True))
+        await message.reply("🔊 Игрок размучен.")
+    except Exception as e:
+        await message.reply(f"⚠️ {e}")
+
+
+@dp.message(Command("ban"))
+async def cmd_ban(message: types.Message):
+    if not await check_mod_rights(message, "ban"): return
+    target_ref, reason = parse_admin_target(message)
+    if not target_ref: return await message.reply("Ответьте на сообщение или укажите @user.")
+    target_id = target_ref if isinstance(target_ref, int) else await resolve_user_id(target_ref)
+
+    try:
+        await bot.ban_chat_member(message.chat.id, target_id)
+        await message.reply(f"⛔ Игрок забанен.\nПричина: {reason}")
+        await log_action(message.chat.id, message.from_user.first_name, "BAN", target_id, reason)
+    except Exception as e:
+        await message.reply(f"⚠️ {e}")
+
+
+@dp.message(Command("unban"))
+async def cmd_unban(message: types.Message):
+    if not await check_mod_rights(message, "ban"): return
+    target_ref, _ = parse_admin_target(message)
+    if not target_ref: return await message.reply("Укажите @user или ID.")
+    target_id = target_ref if isinstance(target_ref, int) else await resolve_user_id(target_ref)
+
+    try:
+        await bot.unban_chat_member(message.chat.id, target_id)
+        await message.reply("✅ Игрок разбанен.")
+    except Exception as e:
+        await message.reply(f"⚠️ {e}")
+
+
+# ==================== НАЗНАЧЕНИЕ РАНГОВ ====================
+
+@dp.message(F.text.startswith("!"))
+async def cmd_set_rank(message: types.Message):
+    if message.chat.type not in ("group", "supergroup"): return
+    user = await get_user(message.from_user.id, message.chat.id)
+
+    my_rank = await get_user_rank_data(user)
+    if message.from_user.id == OWNER_ID:
+        my_rank = {"weight": 100, "permissions": ["all"]}
+
+    if not my_rank: return
+
+    parts = message.text.split(maxsplit=1)
+    cmd = parts[0].lower()
+
+    ranks_config = await get_ranks_config()
+    target_rank_key = None
+    for r_key, r_data in ranks_config.items():
+        if r_data.get("cmd", "").lower() == cmd:
+            target_rank_key = r_key
+            break
+
+    if not target_rank_key: return
+
+    target_rank_data = ranks_config[target_rank_key]
+
+    if "all" not in my_rank["permissions"]:
+        if "assign_lower" not in my_rank["permissions"]:
+            return await message.reply("❌ У вас нет прав на назначение должностей.")
+        if target_rank_data["weight"] >= my_rank["weight"]:
+            return await message.reply("❌ Вы не можете выдать ранг равный или выше вашего.")
+
+    target_ref, _ = parse_admin_target(message)
+    if not target_ref:
+        return await message.reply("Ответьте на сообщение игрока или укажите @username.")
+
+    target_id = target_ref if isinstance(target_ref, int) else await resolve_user_id(target_ref)
+    if not target_id: return await message.reply("❌ Игрок не найден.")
+
+    await _ensure_user(target_id, message.chat.id)
+    await update_user(target_id, message.chat.id, admin_rank=target_rank_key)
+
+    target_user = await get_user(target_id, message.chat.id)
+    await apply_tg_rights(bot, message.chat.id, target_id, target_rank_data)
+
+    await message.reply(f"✅ Игроку назначен ранг: <b>{target_rank_data['name']}</b>", parse_mode="HTML")
+
+
+@dp.message(Command("unsetsrank"))
+async def cmd_unset_rank(message: types.Message):
+    user = await get_user(message.from_user.id, message.chat.id)
+    my_rank = await get_user_rank_data(user)
+    if message.from_user.id != OWNER_ID and not has_permission(my_rank, "assign_lower"):
+        return await message.reply("❌ Нет прав.")
+
+    target_ref, _ = parse_admin_target(message)
+    if not target_ref: return await message.reply("Ответьте или укажите @user.")
+    target_id = target_ref if isinstance(target_ref, int) else await resolve_user_id(target_ref)
+
+    await update_user(target_id, message.chat.id, admin_rank="")
+    await remove_tg_rights(bot, message.chat.id, target_id)
+
+    # Обновляем тег до обычного имени
+    target_user = await get_user(target_id, message.chat.id)
+    await update_user_tag(bot, message.chat.id, target_id, target_user)
+
+    await message.reply("✅ С игрока сняты все админ-права.")
 
 
 @dp.message(Command("resetstats"))

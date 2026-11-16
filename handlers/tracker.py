@@ -409,17 +409,14 @@ async def show_user_card(message, user, tg_user, chat_id):
             guild_line = "🏰 Без гильдии"
     else:
         guild_line = "🏰 Без гильдии"
-    from db import get_rep_level
-    rep_level = get_rep_level(user["reputation"])
-
-    if user.get("first_seen"):
-        fs = datetime.fromtimestamp(user["first_seen"], timezone.utc)
-        join_date = f"📅 В группе с: {fs.day} {MONTHS[fs.month - 1]}\n"
-    else:
-        join_date = ""
+    # Получаем инфу о ранге
+    from helpers import get_user_rank_data
+    rank_info = await get_user_rank_data(user)
+    rank_text = f"\n🛡 <b>Должность: {rank_info['name']}</b>\n" if rank_info else ""
 
     text = (
         f"🎭 {name} · ⚧ {gtext}\n"
+        f"{rank_text}"
         f"{join_date}\n"
         f"💬 Всего сообщений: {user['messages_count']}\n"
         f"☀️ За сегодня: {user.get('msgs_day', 0)}\n"
@@ -530,30 +527,26 @@ async def on_chat_member_update(event: types.ChatMemberUpdated):
 
         if was_in and is_gone:
             user = await get_user(affected_user.id, event.chat.id)
-            if user and user["character_name"]:
+            if user:
                 old_name = user["character_name"]
                 await update_user(affected_user.id, event.chat.id, character_name="", char_change_paid=0,
                                   search_rp_partner="")
+                user["character_name"] = ""
 
                 await update_application_status(affected_user.id, event.chat.id, "rejected")
 
-                try:
-                    await bot.set_chat_member_tag(
-                        chat_id=event.chat.id,
-                        user_id=affected_user.id,
-                        tag=""
-                    )
-                except Exception:
-                    pass
+                from helpers import update_user_tag
+                await update_user_tag(bot, event.chat.id, affected_user.id, user)
 
-                try:
-                    await bot.send_message(
-                        event.chat.id,
-                        f"🎭 Роль «{esc(old_name)}» освобождена —\nеё владелец покинул группу.",
-                        parse_mode="HTML"
-                    )
-                except Exception:
-                    pass
+                if old_name:
+                    try:
+                        await bot.send_message(
+                            event.chat.id,
+                            f"🎭 Роль «{esc(old_name)}» освобождена —\nеё владелец покинул группу.",
+                            parse_mode="HTML"
+                        )
+                    except Exception:
+                        pass
                 await update_chat_list(event.chat.id)
 
         elif is_new:

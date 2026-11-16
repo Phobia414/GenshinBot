@@ -134,6 +134,7 @@ async def init_db():
             "gacha_guaranteed_5 INTEGER DEFAULT 0",
             "gacha_lost_50_50 INTEGER DEFAULT 0",
             "sub_passed INTEGER DEFAULT 0"
+            "admin_rank TEXT DEFAULT ''"
         ]
         for col in missing_columns:
             try:
