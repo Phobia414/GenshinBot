@@ -126,7 +126,7 @@ async def init_db():
         await db.execute("CREATE TABLE IF NOT EXISTS gacha_custom_images (item_name TEXT PRIMARY KEY, image_url TEXT)")
         await db.execute("CREATE TABLE IF NOT EXISTS known_groups (chat_id INTEGER PRIMARY KEY)")
 
-        # НОВАЯ ТАБЛИЦА ДЛЯ АНКЕТ АДМИНОВ
+        # НОВАЯ ТАБЛИЦА ДЛЯ АНКЕТ АДМИНОВ (с target_chat_id)
         await db.execute("""
             CREATE TABLE IF NOT EXISTS admin_applications (
                 user_id INTEGER PRIMARY KEY,
@@ -136,7 +136,8 @@ async def init_db():
                 status TEXT DEFAULT 'pending',
                 reviewer_id INTEGER DEFAULT 0,
                 flaws_text TEXT DEFAULT '',
-                created_at INTEGER DEFAULT 0
+                created_at INTEGER DEFAULT 0,
+                target_chat_id INTEGER DEFAULT 0
             )
         """)
 
@@ -162,6 +163,12 @@ async def init_db():
                 await db.execute(f"ALTER TABLE users ADD COLUMN {col}")
             except Exception:
                 pass
+
+        # Миграция для анкет
+        try:
+            await db.execute("ALTER TABLE admin_applications ADD COLUMN target_chat_id INTEGER DEFAULT 0")
+        except Exception:
+            pass
 
         try:
             await db.execute("ALTER TABLE guilds ADD COLUMN bonus_slots INTEGER DEFAULT 0")
@@ -724,13 +731,13 @@ async def save_admin_application(user_id, username, answers: dict):
     now = int(datetime.now(timezone.utc).timestamp())
     await execute("""
         INSERT OR REPLACE INTO admin_applications 
-        (user_id, username, q1, q2, q3, q4, q5, q6, q7, q8, q9, q10, q11, q12, status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+        (user_id, username, q1, q2, q3, q4, q5, q6, q7, q8, q9, q10, q11, q12, status, created_at, target_chat_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
     """, (
         user_id, username, answers.get('q1'), answers.get('q2'), answers.get('q3'),
         answers.get('q4'), answers.get('q5'), answers.get('q6'), answers.get('q7'),
         answers.get('q8'), answers.get('q9'), answers.get('q10'), answers.get('q11'),
-        answers.get('q12'), now
+        answers.get('q12'), now, answers.get('target_chat_id', 0)
     ))
 
 

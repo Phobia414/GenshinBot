@@ -3,6 +3,7 @@ from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from datetime import datetime, timedelta
 
 from bot_instance import bot, dp
 from config import OWNER_ID
@@ -17,7 +18,6 @@ class ReviewForm(StatesGroup):
     waiting_flaws_status = State()
 
 
-# КОМАНДА ДЛЯ ПРОСМОТРА СПИСКА АНКЕТ
 @dp.message(Command("applications"))
 async def cmd_applications_list(message: types.Message, state: FSMContext):
     if message.chat.type != "private":
@@ -68,27 +68,9 @@ async def cb_view_app(query: types.CallbackQuery, callback_data: AdminAppCB, sta
     if app['status'] != 'pending':
         return await query.answer(f"Эта анкета уже рассмотрена (Статус: {app['status']}).", show_alert=True)
 
-    text_1 = (
-        f"👤 <b>АНКЕТА ОТ:</b> {app['username']} (<code>{user_id}</code>)\n{DIV}\n"
-        f"<b>1. Опыт:</b>\n{app['q1']}\n\n"
-        f"<b>2. Время:</b>\n{app['q2']}\n\n"
-        f"<b>3. Правила:</b>\n{app['q3']}\n\n"
-        f"<b>4. Бот:</b>\n{app['q4']}\n\n"
-        f"<b>5. Мотивация:</b>\n{app['q5']}"
-    )
-
-    text_2 = (
-        f"<b>6. Ситуация (спор):</b>\n{app['q6']}\n\n"
-        f"<b>7. Ситуация (недочеты):</b>\n{app['q7']}\n\n"
-        f"<b>8. Подстройка:</b>\n{app['q8']}\n\n"
-        f"<b>9. Оскорбления друзей:</b>\n{app['q9']}"
-    )
-
-    text_3 = (
-        f"<b>10. Сложный конфликт:</b>\n{app['q10']}\n\n"
-        f"<b>11. Срыв:</b>\n{app['q11']}\n\n"
-        f"<b>12. Ошибка:</b>\n{app['q12']}"
-    )
+    text_1 = f"👤 <b>АНКЕТА ОТ:</b> {app['username']} (<code>{user_id}</code>)\n{DIV}\n<b>1. Опыт:</b>\n{app['q1']}\n\n<b>2. Время:</b>\n{app['q2']}\n\n<b>3. Правила:</b>\n{app['q3']}\n\n<b>4. Бот:</b>\n{app['q4']}\n\n<b>5. Мотивация:</b>\n{app['q5']}"
+    text_2 = f"<b>6. Ситуация (спор):</b>\n{app['q6']}\n\n<b>7. Ситуация (недочеты):</b>\n{app['q7']}\n\n<b>8. Подстройка:</b>\n{app['q8']}\n\n<b>9. Оскорбления друзей:</b>\n{app['q9']}"
+    text_3 = f"<b>10. Сложный конфликт:</b>\n{app['q10']}\n\n<b>11. Срыв:</b>\n{app['q11']}\n\n<b>12. Ошибка:</b>\n{app['q12']}"
 
     b = InlineKeyboardBuilder()
     b.button(text="✅ Принять", callback_data=AdminAppCB(action="accept", user_id=user_id).pack())
@@ -103,28 +85,50 @@ async def cb_view_app(query: types.CallbackQuery, callback_data: AdminAppCB, sta
         await query.message.answer(text_2, parse_mode="HTML")
         await query.message.answer(text_3, reply_markup=b.as_markup(), parse_mode="HTML")
     except Exception as e:
-        await query.message.answer(f"Ошибка вывода (возможно текст слишком длинный): {e}")
+        await query.message.answer(f"Ошибка вывода: {e}")
     await query.answer()
+
+
+# ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ССЫЛКИ
+async def send_accept_message(user_id: int, target_chat_id: int):
+    msg = "🎉 <b>Поздравляем!</b>\nВаша анкета в администрацию была <b>ПРИНЯТА</b>!\n\n"
+    if target_chat_id:
+        try:
+            member = await bot.get_chat_member(target_chat_id, user_id)
+            if member.status in ('member', 'administrator', 'creator'):
+                msg += "Вы уже находитесь в чате, ожидайте связи с куратором."
+            else:
+                link = await bot.create_chat_invite_link(target_chat_id, member_limit=1, expire_date=int(
+                    (datetime.now() + timedelta(days=1)).timestamp()))
+                msg += f"🔗 <b>Ссылка для вступления:</b>\n{link.invite_link}\n\n<i>(Ссылка действует 24 часа)</i>"
+        except Exception as e:
+            print(f"Ошибка при создании ссылки: {e}")
+            msg += "С вами свяжется куратор для дальнейших инструкций."
+    else:
+        msg += "С вами свяжется куратор для дальнейших инструкций."
+
+    try:
+        await bot.send_message(user_id, msg, parse_mode="HTML")
+    except:
+        pass
 
 
 @dp.callback_query(AdminAppCB.filter(F.action == "accept"))
 async def cb_accept_app(query: types.CallbackQuery, callback_data: AdminAppCB):
     user_id = callback_data.user_id
-    await update_admin_application_status(user_id, "accepted", reviewer_id=query.from_user.id)
+    app = await get_admin_application(user_id)
+    target_chat_id = app.get('target_chat_id', 0) if app else 0
 
-    try:
-        await bot.send_message(user_id,
-                               "🎉 <b>Поздравляем!</b>\nВаша анкета в администрацию была <b>ПРИНЯТА</b>!\nС вами свяжется куратор для дальнейших инструкций.",
-                               parse_mode="HTML")
-    except:
-        pass
+    await update_admin_application_status(user_id, "accepted", reviewer_id=query.from_user.id)
+    await send_accept_message(user_id, target_chat_id)
 
     await bot.send_message(OWNER_ID,
                            f"👑 <b>ЛОГ АНКЕТ</b>\nАдмин {query.from_user.first_name} (@{query.from_user.username}) ПРИНЯЛ анкету пользователя <code>{user_id}</code>.",
                            parse_mode="HTML")
 
     b = InlineKeyboardBuilder().button(text="‹ К списку анкет", callback_data=AdminAppCB(action="list").pack())
-    await query.message.edit_text(f"✅ Вы ПРИНЯЛИ анкету <code>{user_id}</code>.", reply_markup=b.as_markup())
+    await query.message.edit_text(f"✅ Вы ПРИНЯЛИ анкету <code>{user_id}</code>.\nСсылка отправлена пользователю.",
+                                  reply_markup=b.as_markup())
     await query.answer("Принято!")
 
 
@@ -192,6 +196,9 @@ async def process_flaws_final(query: types.CallbackQuery, state: FSMContext):
     flaws_text = data.get("flaws_buffer", "")
     final_status = "accepted" if query.data == "flaws_final_accept" else "rejected"
 
+    app = await get_admin_application(user_id)
+    target_chat_id = app.get('target_chat_id', 0) if app else 0
+
     await update_admin_application_status(user_id, final_status, reviewer_id=query.from_user.id, flaws_text=flaws_text)
 
     status_str = "✅ ПРИНЯТА" if final_status == "accepted" else "❌ ОТКЛОНЕНА"
@@ -200,7 +207,7 @@ async def process_flaws_final(query: types.CallbackQuery, state: FSMContext):
     try:
         await bot.send_message(user_id, user_msg, parse_mode="HTML")
         if final_status == "accepted":
-            await bot.send_message(user_id, "🎉 Поздравляем! Ожидайте связи с куратором.")
+            await send_accept_message(user_id, target_chat_id)
     except:
         pass
 

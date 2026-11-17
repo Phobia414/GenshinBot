@@ -28,7 +28,6 @@ class AdminApplyForm(StatesGroup):
     confirm = State()
 
 
-# ОБНОВЛЕННЫЕ ВОПРОСЫ С РАСШИФРОВКОЙ ЦИФР
 QUESTIONS = {
     "q1": "1. Ваш опыт во флудах/ролевых, других проектах (Игры, группы, работа) как администратора. Напишите подробный ответ. (Сколько были на посту администрации, какие должности занимали и как относитесь к должностной лестнице, можете добавить свое, если есть, что рассказать.)",
     "q2": "2. Ваше свободное время в реальной жизни, напишите примерное количество времени или расскажите о вашей занятости. (Время на учебу/работу, хобби, отдых, так нам будет легче узнать о вашем свободном времени для флуда.)",
@@ -56,19 +55,10 @@ QUESTIONS = {
     "q12": "12. Вспомните ситуацию, когда вы допустили ошибку в выполнении обязанностей и это вызвало недовольство со стороны коллег-администраторов или участников, как вы себя повели? Признали ошибку или пытались оспорить? Делали что то, чтобы исправить ситуацию?"
 }
 
-Q3_ANSWERS = {
-    "1": "1) Один раз прочитал",
-    "2": "2) Итак знаю, даже не читал",
-    "3": "3) Читал пару раз, помню большую часть",
-    "4": "4) Не помню вообще",
-    "5": "5) Идеально знаю правила, учил их"
-}
-
-Q4_ANSWERS = {
-    "1": "1) Да, читал внимательно",
-    "2": "2) Частично",
-    "3": "3) Нет, не читал"
-}
+Q3_ANSWERS = {"1": "1) Один раз прочитал", "2": "2) Итак знаю, даже не читал",
+              "3": "3) Читал пару раз, помню большую часть", "4": "4) Не помню вообще",
+              "5": "5) Идеально знаю правила, учил их"}
+Q4_ANSWERS = {"1": "1) Да, читал внимательно", "2": "2) Частично", "3": "3) Нет, не читал"}
 
 
 @dp.message(Command("adminlink"))
@@ -92,7 +82,7 @@ async def cmd_adminlink(message: types.Message):
     await message.answer(text, parse_mode="HTML")
 
 
-async def start_admin_apply(message: types.Message, state: FSMContext):
+async def start_admin_apply(message: types.Message, state: FSMContext, chat_id: int = 0):
     if message.chat.type != "private":
         return await message.answer("❌ Анкету нужно заполнять в личных сообщениях с ботом.")
 
@@ -104,6 +94,7 @@ async def start_admin_apply(message: types.Message, state: FSMContext):
             return await message.answer("✅ Вы уже являетесь частью администрации.")
 
     await state.clear()
+    await state.update_data(target_chat_id=chat_id)  # ЗАПОМИНАЕМ ID ЧАТА
     await state.set_state(AdminApplyForm.q1)
 
     text = (
@@ -117,7 +108,7 @@ async def start_admin_apply(message: types.Message, state: FSMContext):
 
 @dp.message(Command("admin_apply"))
 async def cmd_admin_apply(message: types.Message, state: FSMContext):
-    await start_admin_apply(message, state)
+    await start_admin_apply(message, state, 0)
 
 
 @dp.message(Command("cancel"))
@@ -146,7 +137,7 @@ async def process_q2(message: types.Message, state: FSMContext):
     b.button(text="3", callback_data="a_ans_q3_3")
     b.button(text="4", callback_data="a_ans_q3_4")
     b.button(text="5", callback_data="a_ans_q3_5")
-    b.adjust(5)  # Кнопки в один ряд
+    b.adjust(5)
     await message.answer(QUESTIONS["q3"], reply_markup=b.as_markup())
 
 
@@ -156,14 +147,15 @@ async def process_q3_btn(query: types.CallbackQuery, state: FSMContext):
     ans_text = Q3_ANSWERS.get(ans_key, "Неизвестно")
 
     await state.update_data(q3=ans_text)
-    await query.message.edit_text(f"{QUESTIONS['q3']}\n\n✅ <b>Ваш ответ:</b> {ans_text}")
+    # ДОБАВЛЕН parse_mode="HTML"
+    await query.message.edit_text(f"{QUESTIONS['q3']}\n\n✅ <b>Ваш ответ:</b> {ans_text}", parse_mode="HTML")
 
     await state.set_state(AdminApplyForm.q4)
     b = InlineKeyboardBuilder()
     b.button(text="1", callback_data="a_ans_q4_1")
     b.button(text="2", callback_data="a_ans_q4_2")
     b.button(text="3", callback_data="a_ans_q4_3")
-    b.adjust(3)  # Кнопки в один ряд
+    b.adjust(3)
     await query.message.answer(QUESTIONS["q4"], reply_markup=b.as_markup())
     await query.answer()
 
@@ -174,7 +166,8 @@ async def process_q4_btn(query: types.CallbackQuery, state: FSMContext):
     ans_text = Q4_ANSWERS.get(ans_key, "Неизвестно")
 
     await state.update_data(q4=ans_text)
-    await query.message.edit_text(f"{QUESTIONS['q4']}\n\n✅ <b>Ваш ответ:</b> {ans_text}")
+    # ДОБАВЛЕН parse_mode="HTML"
+    await query.message.edit_text(f"{QUESTIONS['q4']}\n\n✅ <b>Ваш ответ:</b> {ans_text}", parse_mode="HTML")
 
     await state.set_state(AdminApplyForm.q5)
     await query.message.answer(QUESTIONS["q5"])
@@ -263,28 +256,9 @@ async def process_submit(query: types.CallbackQuery, state: FSMContext):
     admins = await get_trusted_admins()
     if OWNER_ID not in admins: admins.append(OWNER_ID)
 
-    text_1 = (
-        f"📥 <b>НОВАЯ АНКЕТА В АДМИНИСТРАЦИЮ</b>\n"
-        f"👤 От: {username} (<code>{query.from_user.id}</code>)\n{DIV}\n"
-        f"<b>1. Опыт:</b>\n{data['q1']}\n\n"
-        f"<b>2. Время:</b>\n{data['q2']}\n\n"
-        f"<b>3. Правила:</b>\n{data['q3']}\n\n"
-        f"<b>4. Бот:</b>\n{data['q4']}\n\n"
-        f"<b>5. Мотивация:</b>\n{data['q5']}"
-    )
-
-    text_2 = (
-        f"<b>6. Ситуация (спор):</b>\n{data['q6']}\n\n"
-        f"<b>7. Ситуация (недочеты):</b>\n{data['q7']}\n\n"
-        f"<b>8. Подстройка:</b>\n{data['q8']}\n\n"
-        f"<b>9. Оскорбления друзей:</b>\n{data['q9']}"
-    )
-
-    text_3 = (
-        f"<b>10. Сложный конфликт:</b>\n{data['q10']}\n\n"
-        f"<b>11. Срыв:</b>\n{data['q11']}\n\n"
-        f"<b>12. Ошибка:</b>\n{data['q12']}"
-    )
+    text_1 = f"📥 <b>НОВАЯ АНКЕТА В АДМИНИСТРАЦИЮ</b>\n👤 От: {username} (<code>{query.from_user.id}</code>)\n{DIV}\n<b>1. Опыт:</b>\n{data['q1']}\n\n<b>2. Время:</b>\n{data['q2']}\n\n<b>3. Правила:</b>\n{data['q3']}\n\n<b>4. Бот:</b>\n{data['q4']}\n\n<b>5. Мотивация:</b>\n{data['q5']}"
+    text_2 = f"<b>6. Ситуация (спор):</b>\n{data['q6']}\n\n<b>7. Ситуация (недочеты):</b>\n{data['q7']}\n\n<b>8. Подстройка:</b>\n{data['q8']}\n\n<b>9. Оскорбления друзей:</b>\n{data['q9']}"
+    text_3 = f"<b>10. Сложный конфликт:</b>\n{data['q10']}\n\n<b>11. Срыв:</b>\n{data['q11']}\n\n<b>12. Ошибка:</b>\n{data['q12']}"
 
     b = InlineKeyboardBuilder()
     b.button(text="✅ Принять", callback_data=AdminAppCB(action="accept", user_id=query.from_user.id).pack())
@@ -303,7 +277,8 @@ async def process_submit(query: types.CallbackQuery, state: FSMContext):
 
     await state.clear()
     await query.message.edit_text(
-        "✅ <b>Ваша анкета отправлена на рассмотрение!</b>\nОжидайте ответа, мы свяжемся с вами в ЛС.")
+        "✅ <b>Ваша анкета отправлена на рассмотрение!</b>\nОжидайте ответа, мы свяжемся с вами в ЛС.",
+        parse_mode="HTML")
     await query.answer()
 
 
@@ -311,11 +286,10 @@ async def process_submit(query: types.CallbackQuery, state: FSMContext):
 async def process_restart(query: types.CallbackQuery, state: FSMContext):
     await state.clear()
     await query.message.delete()
-    await start_admin_apply(query.message, state)
+    await start_admin_apply(query.message, state, 0)
     await query.answer()
 
 
-# Защита от отправки текста в состояниях с кнопками
 @dp.message(AdminApplyForm.q3)
 @dp.message(AdminApplyForm.q4)
 async def process_btn_states_text(message: types.Message):

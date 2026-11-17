@@ -1,5 +1,6 @@
 import time
 import hashlib
+import asyncio
 from datetime import datetime, timezone
 from aiogram import types, F
 from aiogram.filters import Command, CommandObject
@@ -19,7 +20,7 @@ from constants import DIV, PLACEHOLDER_IMAGES, WARN_LIMIT, REP_PER_MESSAGE, REP_
 from helpers import (
     esc, user_display_name, get_placeholder_image, _ensure_user,
     edit_or_send, get_section_image, find_region_by_character, get_reputation_bonuses,
-    get_reputation_title, inject_user, format_text
+    get_reputation_title, inject_user, format_text, update_user_tag
 )
 from keyboards import (
     gender_kb, regions_kb, characters_kb, main_menu_kb, profile_kb, adventurers_kb,
@@ -44,42 +45,6 @@ def get_name_by_hash(chash: str) -> str:
     return chash
 
 
-# УМНАЯ ВЫДАЧА ТЕГА
-async def apply_tag(chat_id: int, user_id: int, name: str) -> tuple[bool, str]:
-    if not name:
-        return False, ""
-
-    if not str(chat_id).startswith("-100"):
-        return False, "\n\n⚠️ <b>Ошибка:</b> Теги можно ставить только в супергруппах."
-
-    try:
-        bot_member = await bot.get_chat_member(chat_id, bot.id)
-        if not getattr(bot_member, "can_manage_tags", False):
-            return False, "\n\n⚠️ <b>Ошибка:</b> У бота нет права «Управление тегами» в настройках группы."
-
-        target_member = await bot.get_chat_member(chat_id, user_id)
-
-        if target_member.status in ("administrator", "creator"):
-            await bot.set_chat_administrator_custom_title(
-                chat_id=chat_id,
-                user_id=user_id,
-                custom_title=name[:16]
-            )
-        else:
-            await bot.set_chat_member_tag(
-                chat_id=chat_id,
-                user_id=user_id,
-                tag=name[:16]
-            )
-
-        return True, "\n\n🏷️ Тег участника установлен!"
-
-    except Exception as e:
-        print(f"Ошибка выдачи тега: {e}")
-        return False, f"\n\n⚠️ <b>Ошибка выдачи тега:</b> {str(e)}"
-
-
-@dp.message(Command("start"))
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext, command: CommandObject):
     current_state = await state.get_state()
@@ -92,7 +57,11 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
     # Обработка ссылки на анкету в администрацию
     if command.args and command.args.startswith("admin_apply_"):
         from handlers.admin_apply import start_admin_apply
-        await start_admin_apply(message, state)
+        try:
+            chat_id = int(command.args.split("_")[2])
+            await start_admin_apply(message, state, chat_id)
+        except:
+            await start_admin_apply(message, state, 0)
         return
 
     if current_state and current_state.startswith("ApplyForm"):
@@ -115,7 +84,7 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
         return
 
     if user["character_name"]:
-        await apply_tag(chat_id, message.from_user.id, user["character_name"])
+        await update_user_tag(bot, chat_id, message.from_user.id, user)
 
         name = esc(user_display_name(user))
         text = f"── 〔 🌟 ГЛАВНОЕ МЕНЮ 〕 ──\n\n🍃 Привет, <b>{name}</b>!\n\nКуда отправимся сегодня?"
@@ -131,6 +100,7 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
             else:
                 text = f"── 〔 🌸 ВЫБОР ПЕРСОНАЖА 〕 ──\n\nВыбери регион, откуда родом твой герой 🎭"
                 await message.answer(text, reply_markup=regions_kb(message.from_user.id), parse_mode="HTML")
+
 
 @dp.callback_query(MenuCB.filter(F.action.in_(["gender_male", "gender_female"])))
 async def cb_gender(query: types.CallbackQuery, callback_data: MenuCB, state: FSMContext):
@@ -209,11 +179,7 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
 
     chat = query.message.chat
 
-    success, ts = await apply_tag(chat.id, query.from_user.id, name)
-
-    if not success and ts:
-        await bot.send_message(chat.id, ts, parse_mode="HTML")
-        ts = ""
+    await update_user_tag(bot, chat.id, query.from_user.id, {"character_name": name, "admin_rank": ""})
 
     app = await get_application(query.from_user.id, chat_id)
     if app and app['status'] == 'waiting_char':
@@ -233,11 +199,11 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
         except:
             pass
 
-        await bot.send_message(chat_id, f"✅ Анкета опубликована! Добро пожаловать в игру, {esc(name)}!{ts}",
+        await bot.send_message(chat_id, f"✅ Анкета опубликована! Добро пожаловать в игру, {esc(name)}!",
                                reply_markup=main_menu_kb(query.from_user.id), parse_mode="HTML")
         return
 
-    text = f"── 〔 🎉 ДОБРО ПОЖАЛОВАТЬ! 〕 ──\n\nТеперь ты — <b>{esc(name)}</b>!{ts}\n\nОрион рад за тебя! 💛"
+    text = f"── 〔 🎉 ДОБРО ПОЖАЛОВАТЬ! 〕 ──\n\nТеперь ты — <b>{esc(name)}</b>!\n\nОрион рад за тебя! 💛"
 
     try:
         await query.message.delete()
@@ -302,8 +268,6 @@ async def cb_menu(query, callback_data, user, chat_id):
 
 @dp.callback_query(MenuCB.filter(F.action == "profile"))
 @inject_user
-@dp.callback_query(MenuCB.filter(F.action == "profile"))
-@inject_user
 async def cb_profile(query, callback_data, user, chat_id):
     if query.from_user.id != callback_data.owner_id: return
     if user.get("char_change_paid") == 1:
@@ -360,6 +324,10 @@ async def cb_profile(query, callback_data, user, chat_id):
     fallback = get_character_image(user["character_name"]) if user["character_name"] else None
     image = await get_section_image("profile", fallback, chat_id)
     await edit_or_send(query, text, profile_kb(query.from_user.id), image_url=image)
+
+
+@dp.callback_query(MenuCB.filter(F.action == "freerole"))
+@inject_user
 async def cb_freerole(query, callback_data, user, chat_id):
     if query.from_user.id != callback_data.owner_id or not user["character_name"]: return
     old = user["character_name"]
@@ -461,7 +429,9 @@ async def on_chat_member_update(event: types.ChatMemberUpdated):
         elif is_new:
             user = await get_user(affected_user.id, event.chat.id)
             if user and user["character_name"]:
-                await apply_tag(event.chat.id, affected_user.id, user["character_name"])
+                # Ждем 1 секунду, чтобы Телеграм обновил статус вступившего
+                await asyncio.sleep(1)
+                await update_user_tag(bot, event.chat.id, affected_user.id, user)
 
             sub_enabled = await get_setting("sub_enabled", "0")
             if sub_enabled == "1":
