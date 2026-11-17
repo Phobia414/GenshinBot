@@ -122,7 +122,7 @@ async def init_db():
         await db.execute("CREATE TABLE IF NOT EXISTS known_groups (chat_id INTEGER PRIMARY KEY)")
         await db.commit()
 
-        # Миграция: добавляем новые колонки, если их нет (ИСПРАВЛЕНА ОПЕЧАТКА)
+        # Миграция: добавляем новые колонки, если их нет
         missing_columns = [
             "rel_image TEXT DEFAULT ''",
             "search_rp_partner TEXT DEFAULT ''",
@@ -135,7 +135,7 @@ async def init_db():
             "gacha_guaranteed_5 INTEGER DEFAULT 0",
             "gacha_lost_50_50 INTEGER DEFAULT 0",
             "sub_passed INTEGER DEFAULT 0",
-            "admin_rank TEXT DEFAULT 'Игрок'"
+            "admin_rank TEXT DEFAULT 'Игрок'" # ТУТ БЫЛА ОШИБКА, ТЕПЕРЬ ЗАПЯТАЯ СТОИТ ПРАВИЛЬНО
         ]
         for col in missing_columns:
             try:

@@ -26,12 +26,10 @@ class AdminEdit(StatesGroup):
     waiting_for_gacha_photo = State()
     setting_key = State()
 
-    # Новые состояния для каналов
     waiting_for_channel_title = State()
     waiting_for_channel_url = State()
     waiting_for_channel_id = State()
 
-    # Новые состояния для настройки рангов
     waiting_for_rank_name = State()
     waiting_for_rank_cmd = State()
 

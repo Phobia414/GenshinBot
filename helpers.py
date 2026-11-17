@@ -458,3 +458,79 @@ async def remove_tg_rights(bot: Bot, chat_id: int, user_id: int):
         return True
     except Exception:
         return False
+
+
+# ==========================================
+# ИСПРАВЛЕННЫЕ ФУНКЦИИ ДЛЯ ВЫДАЧИ РАНГОВ
+# (Вставлено в конец файла для перезаписи старых версий)
+# ==========================================
+
+async def apply_tg_rights(bot, chat_id, user_id, rank_data):
+    """Выдает права в Telegram на основе конфигурации ранга"""
+    tg_rights = rank_data.get("tg_rights", {})
+
+    if not tg_rights:
+        await remove_tg_rights(bot, chat_id, user_id)
+        return
+
+    try:
+        await bot.promote_chat_member(
+            chat_id=chat_id,
+            user_id=user_id,
+            can_manage_chat=True,
+            can_delete_messages=tg_rights.get("can_delete_messages", False),
+            can_restrict_members=tg_rights.get("can_restrict_members", False),
+            can_manage_tags=tg_rights.get("can_manage_tags", False),
+            can_invite_users=True,
+            can_pin_messages=True
+        )
+    except Exception as e:
+        print(f"[Ошибка выдачи прав] Не удалось выдать права {user_id}: {e}")
+
+
+async def remove_tg_rights(bot, chat_id, user_id):
+    """Полностью снимает админку с пользователя"""
+    try:
+        await bot.promote_chat_member(
+            chat_id=chat_id,
+            user_id=user_id,
+            can_manage_chat=False,
+            can_delete_messages=False,
+            can_restrict_members=False,
+            can_invite_users=False,
+            can_pin_messages=False,
+            can_change_info=False,
+            can_promote_members=False,
+            can_manage_video_chats=False,
+            can_manage_topics=False,
+            is_anonymous=False,
+            can_manage_tags=False
+        )
+    except Exception:
+        pass
+
+
+async def update_user_tag(bot, chat_id, user_id, user):
+    """Ставит тег или должность. Срабатывает после выдачи ранга."""
+    if not user or not user.get("character_name"):
+        return
+
+    tag = user["character_name"][:16]
+
+    try:
+        member = await bot.get_chat_member(chat_id, user_id)
+
+        if member.status in ("administrator", "creator"):
+            await bot.set_chat_administrator_custom_title(
+                chat_id=chat_id,
+                user_id=user_id,
+                custom_title=tag
+            )
+        else:
+            await bot.set_chat_member_tag(
+                chat_id=chat_id,
+                user_id=user_id,
+                tag=tag
+            )
+    except Exception:
+        pass

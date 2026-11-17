@@ -222,7 +222,10 @@ async def cmd_set_rank(message: types.Message):
     await update_user(target_id, message.chat.id, admin_rank=target_rank_key)
 
     target_user = await get_user(target_id, message.chat.id)
+
+    # Выдаем права и обновляем тег/должность
     await apply_tg_rights(bot, message.chat.id, target_id, target_rank_data)
+    await update_user_tag(bot, message.chat.id, target_id, target_user)
 
     await message.reply(f"✅ Игроку назначен ранг: <b>{target_rank_data['name']}</b>", parse_mode="HTML")
 
