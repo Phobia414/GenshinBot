@@ -28,11 +28,24 @@ class AdminApplyForm(StatesGroup):
     confirm = State()
 
 
+# ОБНОВЛЕННЫЕ ВОПРОСЫ С РАСШИФРОВКОЙ ЦИФР
 QUESTIONS = {
     "q1": "1. Ваш опыт во флудах/ролевых, других проектах (Игры, группы, работа) как администратора. Напишите подробный ответ. (Сколько были на посту администрации, какие должности занимали и как относитесь к должностной лестнице, можете добавить свое, если есть, что рассказать.)",
     "q2": "2. Ваше свободное время в реальной жизни, напишите примерное количество времени или расскажите о вашей занятости. (Время на учебу/работу, хобби, отдых, так нам будет легче узнать о вашем свободном времени для флуда.)",
-    "q3": "3. Как хорошо вы знаете наши правила? Выберите вариант ниже:",
-    "q4": "4. Читали ли вы информацию про нашего бота о его механиках, функциях и общем описании?",
+    "q3": (
+        "3. Как хорошо вы знаете наши правила? Выберите вариант ниже:\n\n"
+        "1) Один раз прочитал\n"
+        "2) Итак знаю, даже не читал\n"
+        "3) Читал пару раз, помню большую часть\n"
+        "4) Не помню вообще\n"
+        "5) Идеально знаю правила, учил их"
+    ),
+    "q4": (
+        "4. Читали ли вы информацию про нашего бота о его механиках, функциях и общем описании?\n\n"
+        "1) Да, читал внимательно\n"
+        "2) Частично\n"
+        "3) Нет, не читал"
+    ),
     "q5": "5. Почему решили стать частью администрации нашего проекта?",
     "q6": "6. В административном чате происходит спор двух членов администрации, один из них намного меньше рангом другого. (Например Мл. Модер спорит с Гл. Админом) Вы являетесь обычным модератором и видите как Гл. Админ, начинает унижать или переходить на личности Мл. Модера в чате администрации. Владельца или Совладельца нет в сети на данный момент, ваши действия? (Гл. Админ является членом высшей администрации, отвечает за должности ниже себя и курирует их)",
     "q7": "7. Участник в чате начинает указывать на не точности в системе проекта, бота, администрации. Вы как ответственный администратор, начинаете выяснять, что именно не нравится участнику и почему. Он указывает на моменты которые вы можете оспорить. Вы начнете спор отстояв проект, бота, администрацию или отступите и просто примете к сведению упрёк который вы могли оспорить? (Ответить кратко, что предпримете и почему?)",
@@ -41,6 +54,20 @@ QUESTIONS = {
     "q10": "10. Расскажите о самом сложном конфликте который вы рассматривали как администратор. Удалось ли вам его устранить? Если да, то как?",
     "q11": "11. Бывало ли, что вы сорвались на участника/администратора? Что послужило триггером?",
     "q12": "12. Вспомните ситуацию, когда вы допустили ошибку в выполнении обязанностей и это вызвало недовольство со стороны коллег-администраторов или участников, как вы себя повели? Признали ошибку или пытались оспорить? Делали что то, чтобы исправить ситуацию?"
+}
+
+Q3_ANSWERS = {
+    "1": "1) Один раз прочитал",
+    "2": "2) Итак знаю, даже не читал",
+    "3": "3) Читал пару раз, помню большую часть",
+    "4": "4) Не помню вообще",
+    "5": "5) Идеально знаю правила, учил их"
+}
+
+Q4_ANSWERS = {
+    "1": "1) Да, читал внимательно",
+    "2": "2) Частично",
+    "3": "3) Нет, не читал"
 }
 
 
@@ -114,37 +141,40 @@ async def process_q2(message: types.Message, state: FSMContext):
     await state.set_state(AdminApplyForm.q3)
 
     b = InlineKeyboardBuilder()
-    b.button(text="1) Один раз прочитал", callback_data="a_ans_q3_1) Один раз прочитал")
-    b.button(text="2) Итак знаю, даже не читал", callback_data="a_ans_q3_2) Итак знаю, даже не читал")
-    b.button(text="3) Читал пару раз, помню большую часть",
-             callback_data="a_ans_q3_3) Читал пару раз, помню большую часть")
-    b.button(text="4) Не помню вообще", callback_data="a_ans_q3_4) Не помню вообще")
-    b.button(text="5) Идеально знаю правила, учил их", callback_data="a_ans_q3_5) Идеально знаю правила, учил их")
-    b.adjust(1)
+    b.button(text="1", callback_data="a_ans_q3_1")
+    b.button(text="2", callback_data="a_ans_q3_2")
+    b.button(text="3", callback_data="a_ans_q3_3")
+    b.button(text="4", callback_data="a_ans_q3_4")
+    b.button(text="5", callback_data="a_ans_q3_5")
+    b.adjust(5)  # Кнопки в один ряд
     await message.answer(QUESTIONS["q3"], reply_markup=b.as_markup())
 
 
 @dp.callback_query(AdminApplyForm.q3, F.data.startswith("a_ans_q3_"))
 async def process_q3_btn(query: types.CallbackQuery, state: FSMContext):
-    ans = query.data.replace("a_ans_q3_", "")
-    await state.update_data(q3=ans)
-    await query.message.edit_text(f"{QUESTIONS['q3']}\n\n✅ <b>Ваш ответ:</b> {ans}")
+    ans_key = query.data.replace("a_ans_q3_", "")
+    ans_text = Q3_ANSWERS.get(ans_key, "Неизвестно")
+
+    await state.update_data(q3=ans_text)
+    await query.message.edit_text(f"{QUESTIONS['q3']}\n\n✅ <b>Ваш ответ:</b> {ans_text}")
 
     await state.set_state(AdminApplyForm.q4)
     b = InlineKeyboardBuilder()
-    b.button(text="Да, читал внимательно", callback_data="a_ans_q4_Да, читал внимательно")
-    b.button(text="Частично", callback_data="a_ans_q4_Частично")
-    b.button(text="Нет, не читал", callback_data="a_ans_q4_Нет, не читал")
-    b.adjust(1)
+    b.button(text="1", callback_data="a_ans_q4_1")
+    b.button(text="2", callback_data="a_ans_q4_2")
+    b.button(text="3", callback_data="a_ans_q4_3")
+    b.adjust(3)  # Кнопки в один ряд
     await query.message.answer(QUESTIONS["q4"], reply_markup=b.as_markup())
     await query.answer()
 
 
 @dp.callback_query(AdminApplyForm.q4, F.data.startswith("a_ans_q4_"))
 async def process_q4_btn(query: types.CallbackQuery, state: FSMContext):
-    ans = query.data.replace("a_ans_q4_", "")
-    await state.update_data(q4=ans)
-    await query.message.edit_text(f"{QUESTIONS['q4']}\n\n✅ <b>Ваш ответ:</b> {ans}")
+    ans_key = query.data.replace("a_ans_q4_", "")
+    ans_text = Q4_ANSWERS.get(ans_key, "Неизвестно")
+
+    await state.update_data(q4=ans_text)
+    await query.message.edit_text(f"{QUESTIONS['q4']}\n\n✅ <b>Ваш ответ:</b> {ans_text}")
 
     await state.set_state(AdminApplyForm.q5)
     await query.message.answer(QUESTIONS["q5"])
@@ -230,7 +260,6 @@ async def process_submit(query: types.CallbackQuery, state: FSMContext):
 
     await save_admin_application(query.from_user.id, username, data)
 
-    # Рассылка "потоком" сразу всем админам
     admins = await get_trusted_admins()
     if OWNER_ID not in admins: admins.append(OWNER_ID)
 
@@ -286,6 +315,7 @@ async def process_restart(query: types.CallbackQuery, state: FSMContext):
     await query.answer()
 
 
+# Защита от отправки текста в состояниях с кнопками
 @dp.message(AdminApplyForm.q3)
 @dp.message(AdminApplyForm.q4)
 async def process_btn_states_text(message: types.Message):
