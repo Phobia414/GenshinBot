@@ -42,6 +42,7 @@ async def init_db():
                 guild_char_exp INTEGER DEFAULT 0, guild_rest_exp INTEGER DEFAULT 0, guild_clean_exp INTEGER DEFAULT 0,
                 first_seen INTEGER DEFAULT 0, rel_image TEXT DEFAULT '', search_rp_partner TEXT DEFAULT '',
                 msgs_week INTEGER DEFAULT 0, msgs_month INTEGER DEFAULT 0, gacha_banner TEXT DEFAULT 'event_char',
+                msgs_day INTEGER DEFAULT 0, admin_rank TEXT DEFAULT 'Игрок', sub_passed INTEGER DEFAULT 0,
                 PRIMARY KEY (user_id, chat_id)
             )
         """)
@@ -121,7 +122,7 @@ async def init_db():
         await db.execute("CREATE TABLE IF NOT EXISTS known_groups (chat_id INTEGER PRIMARY KEY)")
         await db.commit()
 
-        # Миграция: добавляем новые колонки, если их нет
+        # Миграция: добавляем новые колонки, если их нет (ИСПРАВЛЕНА ОПЕЧАТКА)
         missing_columns = [
             "rel_image TEXT DEFAULT ''",
             "search_rp_partner TEXT DEFAULT ''",
@@ -133,8 +134,8 @@ async def init_db():
             "gacha_pity_5 INTEGER DEFAULT 0",
             "gacha_guaranteed_5 INTEGER DEFAULT 0",
             "gacha_lost_50_50 INTEGER DEFAULT 0",
-            "sub_passed INTEGER DEFAULT 0"
-            "admin_rank TEXT DEFAULT ''"
+            "sub_passed INTEGER DEFAULT 0",
+            "admin_rank TEXT DEFAULT 'Игрок'"
         ]
         for col in missing_columns:
             try:

@@ -106,7 +106,7 @@ async def render_admin_menu(message, state):
     b.button(text="⊱ 🎨 Картинки Гачи ⊰", callback_data="admin_edit_gacha_imgs")
     b.button(text=f"⊱ 🔒 Обязательная подписка: {sub_status} ⊰", callback_data="admin_toggle_sub")
     b.button(text="⊱ 📢 Настроить каналы ⊰", callback_data="admin_edit_channels")
-    b.button(text="⊱ 👑 Настроить ранги ⊰", callback_data="admin_edit_ranks")  # <--- НОВАЯ КНОПКА
+    b.button(text="⊱ 👑 Настроить ранги ⊰", callback_data="admin_edit_ranks")
     b.adjust(1)
 
     text = f"⚙️ АДМИН-ПАНЕЛЬ\n\n🌐 Контекст: <b>{context_text}</b>\n\nВыбери категорию:"
@@ -131,7 +131,7 @@ async def cmd_admin(message, state):
     b.button(text="⊱ 🎨 Картинки Гачи ⊰", callback_data="admin_edit_gacha_imgs")
     b.button(text=f"⊱ 🔒 Обязательная подписка: {sub_status} ⊰", callback_data="admin_toggle_sub")
     b.button(text="⊱ 📢 Настроить каналы ⊰", callback_data="admin_edit_channels")
-    b.button(text="⊱ 👑 Настроить ранги ⊰", callback_data="admin_edit_ranks")  # <--- НОВАЯ КНОПКА
+    b.button(text="⊱ 👑 Настроить ранги ⊰", callback_data="admin_edit_ranks")
     b.adjust(1)
 
     text = f"⚙️ АДМИН-ПАНЕЛЬ\n\n🌐 Контекст: <b>ВСЕ ЧАТЫ (Глобально)</b>\n\nВыбери категорию:"
@@ -475,6 +475,7 @@ async def process_new_photo(message, state):
 
 
 # ==================== ПЕРСОНАЖИ И ГАЧА ====================
+
 @dp.callback_query(F.data == "admin_edit_gifs")
 async def cb_edit_gifs(query):
     if query.from_user.id != OWNER_ID: return
@@ -733,101 +734,3 @@ async def process_char_photo(message, state):
     b.button(text="‹ В админ-панель", callback_data="admin_back")
     b.adjust(1)
     await message.answer(msg, reply_markup=b.as_markup())
-
-
-# ==================== НАСТРОЙКА РАНГОВ ====================
-
-@dp.callback_query(F.data == "admin_edit_ranks")
-async def cb_edit_ranks(query: types.CallbackQuery):
-    if query.from_user.id != OWNER_ID: return
-    from helpers import get_ranks_config
-    ranks = await get_ranks_config()
-
-    b = InlineKeyboardBuilder()
-    for key, data in ranks.items():
-        if key == "owner": continue
-        b.button(text=f"⊱ {data['name']} ⊰", callback_data=f"admin_rank_edit_{key}")
-    b.button(text="⊱ ‹ Назад ⊰", callback_data="admin_back")
-    b.adjust(1)
-
-    text = f"⚙️ <b>НАСТРОЙКА РАНГОВ</b>\n{DIV}\n\nВыбери ранг для изменения названия или команды:"
-    await query.message.edit_text(text, reply_markup=b.as_markup(), parse_mode="HTML")
-
-
-@dp.callback_query(F.data.startswith("admin_rank_edit_"))
-async def cb_rank_edit_menu(query: types.CallbackQuery, state: FSMContext):
-    if query.from_user.id != OWNER_ID: return
-    rank_key = query.data.replace("admin_rank_edit_", "")
-
-    from helpers import get_ranks_config
-    ranks = await get_ranks_config()
-    r = ranks.get(rank_key)
-
-    b = InlineKeyboardBuilder()
-    b.button(text="✏️ Изменить название", callback_data=f"admin_rank_changename_{rank_key}")
-    b.button(text="⌨️ Изменить команду", callback_data=f"admin_rank_changecmd_{rank_key}")
-    b.button(text="‹ Назад", callback_data="admin_edit_ranks")
-    b.adjust(1)
-
-    text = (
-        f"🛡 <b>Ранг: {r['name']}</b>\n"
-        f"Вес (сила): {r['weight']}\n"
-        f"Текущая команда: <code>{r.get('cmd', 'нет')}</code>\n"
-    )
-    await query.message.edit_text(text, reply_markup=b.as_markup(), parse_mode="HTML")
-
-
-@dp.callback_query(F.data.startswith("admin_rank_changename_"))
-async def cb_rank_changename(query: types.CallbackQuery, state: FSMContext):
-    if query.from_user.id != OWNER_ID: return
-    rank_key = query.data.replace("admin_rank_changename_", "")
-    await state.update_data(edit_rank=rank_key)
-    await state.set_state(AdminEdit.waiting_for_rank_name)
-
-    b = InlineKeyboardBuilder().button(text="❌ Отмена", callback_data=f"admin_rank_edit_{rank_key}")
-    await query.message.edit_text("✏️ Отправь новое красивое название для этого ранга (например: `👑 Император`):",
-                                  reply_markup=b.as_markup())
-
-
-@dp.message(AdminEdit.waiting_for_rank_name, F.text)
-async def process_rank_name(message: types.Message, state: FSMContext):
-    if message.from_user.id != OWNER_ID: return
-    data = await state.get_data()
-    rank_key = data.get("edit_rank")
-
-    from helpers import get_ranks_config, save_ranks_config
-    ranks = await get_ranks_config()
-    ranks[rank_key]["name"] = message.text.strip()
-    await save_ranks_config(ranks)
-
-    await state.set_state(None)
-    b = InlineKeyboardBuilder().button(text="‹ К настройкам ранга", callback_data=f"admin_rank_edit_{rank_key}")
-    await message.answer("✅ Название ранга обновлено!", reply_markup=b.as_markup())
-
-
-@dp.callback_query(F.data.startswith("admin_rank_changecmd_"))
-async def cb_rank_changecmd(query: types.CallbackQuery, state: FSMContext):
-    if query.from_user.id != OWNER_ID: return
-    rank_key = query.data.replace("admin_rank_changecmd_", "")
-    await state.update_data(edit_rank=rank_key)
-    await state.set_state(AdminEdit.waiting_for_rank_cmd)
-
-    b = InlineKeyboardBuilder().button(text="❌ Отмена", callback_data=f"admin_rank_edit_{rank_key}")
-    await query.message.edit_text("⌨️ Отправь новую команду для выдачи ранга (начиная с `!`, например `!хелпер`):",
-                                  reply_markup=b.as_markup())
-
-
-@dp.message(AdminEdit.waiting_for_rank_cmd, F.text)
-async def process_rank_cmd(message: types.Message, state: FSMContext):
-    if message.from_user.id != OWNER_ID: return
-    data = await state.get_data()
-    rank_key = data.get("edit_rank")
-
-    from helpers import get_ranks_config, save_ranks_config
-    ranks = await get_ranks_config()
-    ranks[rank_key]["cmd"] = message.text.strip()
-    await save_ranks_config(ranks)
-
-    await state.set_state(None)
-    b = InlineKeyboardBuilder().button(text="‹ К настройкам ранга", callback_data=f"admin_rank_edit_{rank_key}")
-    await message.answer("✅ Команда обновлена!", reply_markup=b.as_markup())
