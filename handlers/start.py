@@ -326,6 +326,7 @@ async def cb_profile(query, callback_data, user, chat_id):
     text = (
         f"─ [ 🖼 ПРОФИЛЬ ] ─\n\n"
         f"🍃 {name}\n\n"
+        f"{admin_rank_text}\n\n"
         f"💰 Баланс: <b>{user['balance']}</b>\n"
         f"💎 Примогемы: <b>{user.get('primogems', 0)}</b>\n\n"
         f"💧 Смола: <b>{resin} / {RESIN_MAX}</b>\n\n"

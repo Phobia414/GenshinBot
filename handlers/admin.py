@@ -51,14 +51,19 @@ async def log_action(chat_id, admin_name, action, target_id, reason):
 async def cmd_warn(message: types.Message):
     if not await check_mod_rights(message, "warn"): return
 
+    if message.reply_to_message and message.reply_to_message.from_user.id == bot.id:
+        return await message.reply(
+            "⚠️ Вы ответили на сообщение бота. Ответьте на сообщение игрока или укажите @username.")
+
     target_ref, reason = parse_admin_target(message)
     if not target_ref:
-        return await message.reply("Используй: <code>/warn @user Причина</code> или ответом на сообщение.",
+        return await message.reply("Используй: <code>/warn @user Причина</code> или ответом на сообщение игрока.",
                                    parse_mode="HTML")
 
     target_id = target_ref if isinstance(target_ref, int) else await resolve_user_id(target_ref)
     if not target_id: return await message.reply("❌ Игрок не найден.")
     if target_id == message.from_user.id: return await message.reply("❌ Себе нельзя.")
+    if target_id == bot.id: return await message.reply("❌ Боту нельзя выдать варн.")
 
     user = await _ensure_user(target_id, message.chat.id)
     warns = await add_warn(target_id, message.chat.id, 1)
@@ -84,6 +89,11 @@ async def cmd_warn(message: types.Message):
 @dp.message(Command("unwarn"))
 async def cmd_unwarn(message: types.Message):
     if not await check_mod_rights(message, "warn"): return
+
+    if message.reply_to_message and message.reply_to_message.from_user.id == bot.id:
+        return await message.reply(
+            "⚠️ Вы ответили на сообщение бота. Ответьте на сообщение игрока или укажите @username.")
+
     target_ref, _ = parse_admin_target(message)
     if not target_ref: return await message.reply("Ответьте на сообщение или укажите @user.")
     target_id = target_ref if isinstance(target_ref, int) else await resolve_user_id(target_ref)
@@ -96,6 +106,11 @@ async def cmd_unwarn(message: types.Message):
 @dp.message(Command("mute"))
 async def cmd_mute(message: types.Message):
     if not await check_mod_rights(message, "mute"): return
+
+    if message.reply_to_message and message.reply_to_message.from_user.id == bot.id:
+        return await message.reply(
+            "⚠️ Вы ответили на сообщение бота. Ответьте на сообщение игрока или укажите @username.")
+
     parts = message.text.split()
     if len(parts) < 2 or not parts[1].isdigit():
         return await message.reply("Используй: <code>/mute 15 Причина</code> (ответом или @user)", parse_mode="HTML")
@@ -122,6 +137,7 @@ async def cmd_mute(message: types.Message):
 
     target_id = target_ref if isinstance(target_ref, int) else await resolve_user_id(target_ref)
     if not target_id: return await message.reply("❌ Игрок не найден.")
+    if target_id == bot.id: return await message.reply("❌ Бота мутить нельзя.")
 
     mu = int((datetime.now(timezone.utc) + timedelta(minutes=minutes)).timestamp())
     await update_user(target_id, message.chat.id, muted_until=mu)
@@ -137,9 +153,16 @@ async def cmd_mute(message: types.Message):
 @dp.message(Command("unmute"))
 async def cmd_unmute(message: types.Message):
     if not await check_mod_rights(message, "mute"): return
+
+    if message.reply_to_message and message.reply_to_message.from_user.id == bot.id:
+        return await message.reply(
+            "⚠️ Вы ответили на сообщение бота. Ответьте на сообщение игрока или укажите @username.")
+
     target_ref, _ = parse_admin_target(message)
     if not target_ref: return await message.reply("Ответьте на сообщение или укажите @user.")
     target_id = target_ref if isinstance(target_ref, int) else await resolve_user_id(target_ref)
+
+    if target_id == bot.id: return await message.reply("❌ Я не могу размутить сам себя (я и так не замучен).")
 
     await update_user(target_id, message.chat.id, muted_until=0)
     try:
@@ -152,9 +175,16 @@ async def cmd_unmute(message: types.Message):
 @dp.message(Command("ban"))
 async def cmd_ban(message: types.Message):
     if not await check_mod_rights(message, "ban"): return
+
+    if message.reply_to_message and message.reply_to_message.from_user.id == bot.id:
+        return await message.reply(
+            "⚠️ Вы ответили на сообщение бота. Ответьте на сообщение игрока или укажите @username.")
+
     target_ref, reason = parse_admin_target(message)
     if not target_ref: return await message.reply("Ответьте на сообщение или укажите @user.")
     target_id = target_ref if isinstance(target_ref, int) else await resolve_user_id(target_ref)
+
+    if target_id == bot.id: return await message.reply("❌ Меня забанить нельзя!")
 
     try:
         await bot.ban_chat_member(message.chat.id, target_id)
@@ -167,6 +197,11 @@ async def cmd_ban(message: types.Message):
 @dp.message(Command("unban"))
 async def cmd_unban(message: types.Message):
     if not await check_mod_rights(message, "ban"): return
+
+    if message.reply_to_message and message.reply_to_message.from_user.id == bot.id:
+        return await message.reply(
+            "⚠️ Вы ответили на сообщение бота. Ответьте на сообщение игрока или укажите @username.")
+
     target_ref, _ = parse_admin_target(message)
     if not target_ref: return await message.reply("Укажите @user или ID.")
     target_id = target_ref if isinstance(target_ref, int) else await resolve_user_id(target_ref)
@@ -219,15 +254,25 @@ async def cmd_set_rank(message: types.Message):
     if not target_id: return await message.reply("❌ Игрок не найден.")
 
     await _ensure_user(target_id, message.chat.id)
-    await update_user(target_id, message.chat.id, admin_rank=target_rank_key)
 
+    # 1. Записываем в БД
+    await update_user(target_id, message.chat.id, admin_rank=target_rank_key)
     target_user = await get_user(target_id, message.chat.id)
 
-    # Выдаем права и обновляем тег/должность
-    await apply_tg_rights(bot, message.chat.id, target_id, target_rank_data)
-    await update_user_tag(bot, message.chat.id, target_id, target_user)
+    # 2. Выдаем права
+    err_rights = await apply_tg_rights(bot, message.chat.id, target_id, target_rank_data)
 
-    await message.reply(f"✅ Игроку назначен ранг: <b>{target_rank_data['name']}</b>", parse_mode="HTML")
+    # 3. Ждем, чтобы Телеграм обновил статус с "Участник" на "Админ"
+    await asyncio.sleep(2)
+
+    # 4. Ставим тег
+    err_tag = await update_user_tag(bot, message.chat.id, target_id, target_user)
+
+    # Выводим отчет
+    if err_rights or err_tag:
+        await message.reply(f"✅ Ранг сохранен!\n\n{err_rights}\n{err_tag}", parse_mode="HTML")
+    else:
+        await message.reply(f"✅ Игроку назначен ранг: <b>{target_rank_data['name']}</b>", parse_mode="HTML")
 
 
 @dp.message(Command("unsetsrank"))

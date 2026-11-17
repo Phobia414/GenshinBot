@@ -47,7 +47,7 @@ class AutoDeleteSession(AiohttpSession):
 
                 # Если сообщение не в исключениях - ставим таймер на удаление (5 минут)
                 if not is_excluded_msg:
-                    asyncio.create_task(self.delete_later(bot, result.chat.id, result.message_id, 300))
+                    asyncio.create_task(self.delete_later(bot, result.chat.id, result.message_id, 3600))
 
         return result
 

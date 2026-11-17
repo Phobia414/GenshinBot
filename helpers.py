@@ -534,3 +534,88 @@ async def update_user_tag(bot, chat_id, user_id, user):
             )
     except Exception:
         pass
+
+
+# ==========================================
+# ИСПРАВЛЕННЫЕ И ДОБАВЛЕННЫЕ ФУНКЦИИ (Вставить в конец helpers.py)
+# ==========================================
+import json
+from constants import DEFAULT_ADMIN_RANKS
+from db import get_setting, set_setting
+
+
+async def get_ranks_config():
+    config = await get_setting("admin_ranks")
+    if config:
+        try:
+            return json.loads(config)
+        except:
+            pass
+    return DEFAULT_ADMIN_RANKS
+
+
+async def save_ranks_config(ranks):
+    await set_setting("admin_ranks", json.dumps(ranks))
+
+
+async def apply_tg_rights(bot, chat_id, user_id, rank_data):
+    tg_rights = rank_data.get("tg_rights", {})
+    if not tg_rights:
+        await remove_tg_rights(bot, chat_id, user_id)
+        return ""
+
+    try:
+        await bot.promote_chat_member(
+            chat_id=chat_id, user_id=user_id,
+            can_manage_chat=True,
+            can_delete_messages=tg_rights.get("can_delete_messages", False),
+            can_restrict_members=tg_rights.get("can_restrict_members", False),
+            can_manage_tags=tg_rights.get("can_manage_tags", False),
+            can_invite_users=True
+        )
+        return ""
+    except Exception as e:
+        return f"❌ Ошибка выдачи прав: {e}"
+
+
+async def remove_tg_rights(bot, chat_id, user_id):
+    try:
+        await bot.promote_chat_member(
+            chat_id=chat_id, user_id=user_id,
+            can_manage_chat=False, can_delete_messages=False, can_restrict_members=False,
+            can_invite_users=False, can_pin_messages=False, can_change_info=False,
+            can_promote_members=False, can_manage_video_chats=False, can_manage_topics=False,
+            is_anonymous=False, can_manage_tags=False
+        )
+    except Exception:
+        pass
+
+
+async def update_user_tag(bot, chat_id, user_id, user):
+    if not user: return ""
+    char_name = user.get("character_name", "")
+    rank_key = user.get("admin_rank", "")
+
+    tag_parts = []
+    if char_name: tag_parts.append(char_name)
+    if rank_key:
+        ranks = await get_ranks_config()
+        rank_name = ranks.get(rank_key, {}).get("name", "")
+        if rank_name:
+            clean_rank = rank_name.replace("👑 ", "").replace("🛡 ", "").replace("⚔ ", "").replace("⚙ ", "").replace("🔨 ",
+                                                                                                                   "").replace(
+                "🔧 ", "").replace("📝 ", "").strip()
+            tag_parts.append(clean_rank)
+
+    if not tag_parts: return ""
+    tag = " | ".join(tag_parts)[:16]
+
+    try:
+        member = await bot.get_chat_member(chat_id, user_id)
+        if member.status in ("administrator", "creator"):
+            await bot.set_chat_administrator_custom_title(chat_id=chat_id, user_id=user_id, custom_title=tag)
+        else:
+            await bot.set_chat_member_tag(chat_id=chat_id, user_id=user_id, tag=tag)
+        return ""
+    except Exception as e:
+        return f"⚠️ Ошибка тега: {e}"

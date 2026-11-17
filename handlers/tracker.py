@@ -21,7 +21,8 @@ from db import (
 )
 from helpers import (
     esc, _mention, extract_target, resolve_user_id,
-    _gain_rep, get_progress, get_reputation_bonuses, inject_user
+    _gain_rep, get_progress, get_reputation_bonuses, inject_user,
+    get_ranks_config
 )
 from state import _inter_cooldown
 import state
@@ -410,17 +411,25 @@ async def show_user_card(message, user, tg_user, chat_id):
     else:
         guild_line = "🏰 Без гильдии"
     from db import get_rep_level
+
     rep_level = get_rep_level(user["reputation"])
 
-    # ИСПРАВЛЕНИЕ 1: Инициализируем join_date до IF, чтобы не было NameError
+    # ДОБАВЛЯЕМ ВЫВОД ДОЛЖНОСТИ
+    admin_rank_text = ""
+    if user.get("admin_rank"):
+        ranks = await get_ranks_config()
+        r_data = ranks.get(user["admin_rank"])
+        if r_data:
+            admin_rank_text = f"\n🛡 Должность: <b>{r_data['name']}</b>"
+
     join_date = ""
     if user.get("first_seen"):
         fs = datetime.fromtimestamp(user["first_seen"], timezone.utc)
         join_date = f"📅 В группе с: {fs.day} {MONTHS[fs.month - 1]}\n"
 
-    # ИСПРАВЛЕНИЕ 2: Добавлена инфа за сегодня
     text = (
         f"🎭 {name} · ⚧ {gtext}\n"
+        f"{admin_rank_text}"  # ВЫВОДИМ РАНГ
         f"{join_date}\n"
         f"💬 Всего сообщений: {user['messages_count']}\n"
         f"☀️ За сегодня: {user.get('msgs_day', 0)}\n"
@@ -432,7 +441,6 @@ async def show_user_card(message, user, tg_user, chat_id):
         f"{guild_line}"
     )
 
-    # ИСПРАВЛЕНИЕ 3: Если текст длиннее 1024 (лимит подписи), шлем просто текстом, а не с фото
     if len(text) > 1024:
         await message.answer(text, parse_mode="HTML", reply_markup=back_kb(message.from_user.id))
         return
