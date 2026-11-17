@@ -216,8 +216,10 @@ async def cmd_unban(message: types.Message):
 # ==================== НАЗНАЧЕНИЕ РАНГОВ ====================
 
 @dp.message(F.text.startswith("!"))
+@dp.message(F.text.startswith("!"))
 async def cmd_set_rank(message: types.Message):
     if message.chat.type not in ("group", "supergroup"): return
+
     user = await get_user(message.from_user.id, message.chat.id)
 
     my_rank = await get_user_rank_data(user)
@@ -225,6 +227,11 @@ async def cmd_set_rank(message: types.Message):
         my_rank = {"weight": 100, "permissions": ["all"]}
 
     if not my_rank: return
+
+    # --- ЖЕСТКАЯ ПРОВЕРКА: Только Гл. Админ (80) и выше могут выдавать ранги ---
+    if message.from_user.id != OWNER_ID and my_rank.get("weight", 0) < 80:
+        return await message.reply("❌ Выдавать должности может только Гл. Админ и выше.")
+    # -------------------------------------------------------------------------
 
     parts = message.text.split(maxsplit=1)
     cmd = parts[0].lower()
@@ -240,9 +247,8 @@ async def cmd_set_rank(message: types.Message):
 
     target_rank_data = ranks_config[target_rank_key]
 
-    if "all" not in my_rank["permissions"]:
-        if "assign_lower" not in my_rank["permissions"]:
-            return await message.reply("❌ У вас нет прав на назначение должностей.")
+    # Проверка, что Гл. Админ не может выдать ранг выше или равный своему
+    if message.from_user.id != OWNER_ID:
         if target_rank_data["weight"] >= my_rank["weight"]:
             return await message.reply("❌ Вы не можете выдать ранг равный или выше вашего.")
 
@@ -255,46 +261,24 @@ async def cmd_set_rank(message: types.Message):
 
     await _ensure_user(target_id, message.chat.id)
 
-    # 1. Записываем в БД
+    # 1. Сохраняем в БД
     await update_user(target_id, message.chat.id, admin_rank=target_rank_key)
     target_user = await get_user(target_id, message.chat.id)
 
     # 2. Выдаем права
-    err_rights = await apply_tg_rights(bot, message.chat.id, target_id, target_rank_data)
+    err1 = await apply_tg_rights(bot, message.chat.id, target_id, target_rank_data)
 
-    # 3. Ждем, чтобы Телеграм обновил статус с "Участник" на "Админ"
+    # ЖДЕМ 2 СЕКУНДЫ, ЧТОБЫ ТЕЛЕГРАМ ОБНОВИЛ СТАТУС
     await asyncio.sleep(2)
 
-    # 4. Ставим тег
-    err_tag = await update_user_tag(bot, message.chat.id, target_id, target_user)
+    # 3. Ставим тег
+    err2 = await update_user_tag(bot, message.chat.id, target_id, target_user)
 
-    # Выводим отчет
-    if err_rights or err_tag:
-        await message.reply(f"✅ Ранг сохранен!\n\n{err_rights}\n{err_tag}", parse_mode="HTML")
+    # Выводим результат
+    if err1 or err2:
+        await message.reply(f"✅ Ранг в БД сохранен!\n\n{err1}\n{err2}", parse_mode="HTML")
     else:
         await message.reply(f"✅ Игроку назначен ранг: <b>{target_rank_data['name']}</b>", parse_mode="HTML")
-
-
-@dp.message(Command("unsetsrank"))
-async def cmd_unset_rank(message: types.Message):
-    user = await get_user(message.from_user.id, message.chat.id)
-    my_rank = await get_user_rank_data(user)
-    if message.from_user.id != OWNER_ID and not has_permission(my_rank, "assign_lower"):
-        return await message.reply("❌ Нет прав.")
-
-    target_ref, _ = parse_admin_target(message)
-    if not target_ref: return await message.reply("Ответьте или укажите @user.")
-    target_id = target_ref if isinstance(target_ref, int) else await resolve_user_id(target_ref)
-
-    await update_user(target_id, message.chat.id, admin_rank="")
-    await remove_tg_rights(bot, message.chat.id, target_id)
-
-    target_user = await get_user(target_id, message.chat.id)
-    await update_user_tag(bot, message.chat.id, target_id, target_user)
-
-    await message.reply("✅ С игрока сняты все админ-права.")
-
-
 # ==================== ЧИСТКА И СТАТИСТИКА ====================
 
 @dp.message(Command("kicklist", "cleanup_list"))

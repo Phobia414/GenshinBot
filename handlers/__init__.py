@@ -20,4 +20,6 @@ from . import gacha
 from . import daily
 from . import economy
 from . import apply
-from . import reports  # <--- Добавлено
+from . import reports
+from . import admin_apply    # <--- НОВОЕ
+from . import admin_review   # <--- НОВОЕ

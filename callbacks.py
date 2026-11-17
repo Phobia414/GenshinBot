@@ -107,7 +107,12 @@ class GuildInviteCB(CallbackData, prefix="ginvite"):
 class ReportCB(CallbackData, prefix="rep"):
     action: str
 
-# ИСПРАВЛЕНИЕ: Добавлен target_id для защиты от чужих нажатий
 class SubCB(CallbackData, prefix="sub"):
     action: str
     target_id: int = 0
+
+# НОВОЕ: Для системы анкет в администрацию
+class AdminAppCB(CallbackData, prefix="aapp"):
+    action: str
+    user_id: int = 0
+    status: str = ""

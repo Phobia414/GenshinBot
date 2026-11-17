@@ -80,12 +80,19 @@ async def apply_tag(chat_id: int, user_id: int, name: str) -> tuple[bool, str]:
 
 
 @dp.message(Command("start"))
+@dp.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext, command: CommandObject):
     current_state = await state.get_state()
 
     if command.args and command.args.startswith("report_"):
         chat_id_report = int(command.args.replace("report_", ""))
         await process_report_start(message, chat_id_report, state)
+        return
+
+    # Обработка ссылки на анкету в администрацию
+    if command.args and command.args.startswith("admin_apply_"):
+        from handlers.admin_apply import start_admin_apply
+        await start_admin_apply(message, state)
         return
 
     if current_state and current_state.startswith("ApplyForm"):
@@ -124,7 +131,6 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
             else:
                 text = f"── 〔 🌸 ВЫБОР ПЕРСОНАЖА 〕 ──\n\nВыбери регион, откуда родом твой герой 🎭"
                 await message.answer(text, reply_markup=regions_kb(message.from_user.id), parse_mode="HTML")
-
 
 @dp.callback_query(MenuCB.filter(F.action.in_(["gender_male", "gender_female"])))
 async def cb_gender(query: types.CallbackQuery, callback_data: MenuCB, state: FSMContext):

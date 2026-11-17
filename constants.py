@@ -272,15 +272,20 @@ DEFAULT_ADMIN_RANKS = {
     "coowner": {
         "name": "👑 Совлд", "weight": 90, "cmd": "!совлд",
         "permissions": ["call", "applylink", "warn", "mute", "ban", "assign_lower"],
-        "tg_rights": {"can_delete_messages": True, "can_restrict_members": True, "can_manage_tags": True}
+        "tg_rights": {
+            "can_delete_messages": True, "can_restrict_members": True, "can_manage_tags": True,
+            "can_pin_messages": True, "can_invite_users": True, "can_change_info": True
+        }
     },
     "headadmin": {
         "name": "👑 Г.Админ", "weight": 80, "cmd": "!гладмин",
+        # ГЛАВНЫЙ АДМИН МОЖЕТ ВЫДАВАТЬ РАНГИ
         "permissions": ["call", "applylink", "warn", "mute", "ban", "assign_lower"],
         "tg_rights": {"can_delete_messages": True, "can_restrict_members": True, "can_manage_tags": True}
     },
     "admin": {
         "name": "🛡 Админ", "weight": 70, "cmd": "!админ",
+        # ОБЫЧНЫЙ АДМИН БОЛЬШЕ НЕ МОЖЕТ ВЫДАВАТЬ РАНГИ (убран assign_lower)
         "permissions": ["call", "applylink", "warn", "mute", "ban"],
         "tg_rights": {"can_delete_messages": True, "can_restrict_members": True}
     },
