@@ -219,7 +219,6 @@ async def cmd_unban(message: types.Message):
 @dp.message(F.text.startswith("!"))
 async def cmd_set_rank(message: types.Message):
     if message.chat.type not in ("group", "supergroup"): return
-
     user = await get_user(message.from_user.id, message.chat.id)
 
     my_rank = await get_user_rank_data(user)
@@ -228,10 +227,8 @@ async def cmd_set_rank(message: types.Message):
 
     if not my_rank: return
 
-    # --- ЖЕСТКАЯ ПРОВЕРКА: Только Гл. Админ (80) и выше могут выдавать ранги ---
     if message.from_user.id != OWNER_ID and my_rank.get("weight", 0) < 80:
         return await message.reply("❌ Выдавать должности может только Гл. Админ и выше.")
-    # -------------------------------------------------------------------------
 
     parts = message.text.split(maxsplit=1)
     cmd = parts[0].lower()
@@ -247,7 +244,6 @@ async def cmd_set_rank(message: types.Message):
 
     target_rank_data = ranks_config[target_rank_key]
 
-    # Проверка, что Гл. Админ не может выдать ранг выше или равный своему
     if message.from_user.id != OWNER_ID:
         if target_rank_data["weight"] >= my_rank["weight"]:
             return await message.reply("❌ Вы не можете выдать ранг равный или выше вашего.")
@@ -259,26 +255,27 @@ async def cmd_set_rank(message: types.Message):
     target_id = target_ref if isinstance(target_ref, int) else await resolve_user_id(target_ref)
     if not target_id: return await message.reply("❌ Игрок не найден.")
 
-    await _ensure_user(target_id, message.chat.id)
+    try:
+        await _ensure_user(target_id, message.chat.id)
 
-    # 1. Сохраняем в БД
-    await update_user(target_id, message.chat.id, admin_rank=target_rank_key)
-    target_user = await get_user(target_id, message.chat.id)
+        # 1. Сохраняем в БД
+        await update_user(target_id, message.chat.id, admin_rank=target_rank_key)
+        target_user = await get_user(target_id, message.chat.id)
 
-    # 2. Выдаем права
-    err1 = await apply_tg_rights(bot, message.chat.id, target_id, target_rank_data)
+        # 2. Выдаем права
+        err1 = await apply_tg_rights(bot, message.chat.id, target_id, target_rank_data)
 
-    # ЖДЕМ 2 СЕКУНДЫ, ЧТОБЫ ТЕЛЕГРАМ ОБНОВИЛ СТАТУС
-    await asyncio.sleep(2)
+        # ЖДЕМ 2 СЕКУНДЫ (чтобы Телеграм выдал админку)
+        await asyncio.sleep(2)
 
-    # 3. Ставим тег
-    err2 = await update_user_tag(bot, message.chat.id, target_id, target_user)
+        # 3. Ставим тег/должность
+        await update_user_tag(bot, message.chat.id, target_id, target_user)
 
-    # Выводим результат
-    if err1 or err2:
-        await message.reply(f"✅ Ранг в БД сохранен!\n\n{err1}\n{err2}", parse_mode="HTML")
-    else:
-        await message.reply(f"✅ Игроку назначен ранг: <b>{target_rank_data['name']}</b>", parse_mode="HTML")
+        await message.reply(f"✅ Игроку назначен ранг: <b>{target_rank_data['name']}</b>\n{err1 if err1 else ''}",
+                            parse_mode="HTML")
+
+    except Exception as e:
+        await message.reply(f"⚠️ Ошибка при выдаче ранга: {e}")
 # ==================== ЧИСТКА И СТАТИСТИКА ====================
 
 @dp.message(Command("kicklist", "cleanup_list"))
