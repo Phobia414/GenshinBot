@@ -296,6 +296,8 @@ async def cb_menu(query, callback_data, user, chat_id):
 
 @dp.callback_query(MenuCB.filter(F.action == "profile"))
 @inject_user
+@dp.callback_query(MenuCB.filter(F.action == "profile"))
+@inject_user
 async def cb_profile(query, callback_data, user, chat_id):
     if query.from_user.id != callback_data.owner_id: return
     if user.get("char_change_paid") == 1:
@@ -323,10 +325,24 @@ async def cb_profile(query, callback_data, user, chat_id):
     if " " in reg_name_for_title: reg_name_for_title = reg_name_for_title.split(" ", 1)[1]
     rep_title = get_reputation_title(rep, reg_name_for_title)
 
+    # УМНЫЙ ВЫВОД РАНГА
+    admin_rank_text = ""
+    if user.get("admin_rank"):
+        from helpers import get_ranks_config
+        ranks = await get_ranks_config()
+        r_data = ranks.get(user["admin_rank"])
+        if r_data:
+            emoji = "👑" if r_data.get("weight", 0) >= 80 else "🛡"
+            raw_name = r_data.get("name", "").strip()
+            for e in ["👑", "🛡", "⚔", "⚙", "🔨", "🔧", "📝"]:
+                raw_name = raw_name.replace(e, "")
+            clean_rank = raw_name.strip()
+            admin_rank_text = f"{emoji} Должность: <b>{clean_rank}</b>\n"
+
     text = (
         f"─ [ 🖼 ПРОФИЛЬ ] ─\n\n"
-        f"🍃 {name}\n\n"
-        f"{admin_rank_text}\n\n"
+        f"🍃 {name}\n"
+        f"{admin_rank_text}\n"
         f"💰 Баланс: <b>{user['balance']}</b>\n"
         f"💎 Примогемы: <b>{user.get('primogems', 0)}</b>\n\n"
         f"💧 Смола: <b>{resin} / {RESIN_MAX}</b>\n\n"
@@ -338,10 +354,6 @@ async def cb_profile(query, callback_data, user, chat_id):
     fallback = get_character_image(user["character_name"]) if user["character_name"] else None
     image = await get_section_image("profile", fallback, chat_id)
     await edit_or_send(query, text, profile_kb(query.from_user.id), image_url=image)
-
-
-@dp.callback_query(MenuCB.filter(F.action == "freerole"))
-@inject_user
 async def cb_freerole(query, callback_data, user, chat_id):
     if query.from_user.id != callback_data.owner_id or not user["character_name"]: return
     old = user["character_name"]

@@ -562,20 +562,22 @@ async def apply_tg_rights(bot, chat_id, user_id, rank_data):
     tg_rights = rank_data.get("tg_rights", {})
     if not tg_rights:
         await remove_tg_rights(bot, chat_id, user_id)
-        return ""
+        return "⚠️ В настройках ранга нет прав Телеграма."
 
     try:
         await bot.promote_chat_member(
-            chat_id=chat_id, user_id=user_id,
+            chat_id=chat_id,
+            user_id=user_id,
             can_manage_chat=True,
             can_delete_messages=tg_rights.get("can_delete_messages", False),
             can_restrict_members=tg_rights.get("can_restrict_members", False),
             can_manage_tags=tg_rights.get("can_manage_tags", False),
-            can_invite_users=True
+            can_invite_users=True,
+            can_pin_messages=True
         )
         return ""
     except Exception as e:
-        return f"❌ Ошибка выдачи прав: {e}"
+        return f"❌ Ошибка прав Телеграм: {e}. (Проверь, есть ли у бота галочка 'Добавлять администраторов')"
 
 
 async def remove_tg_rights(bot, chat_id, user_id):

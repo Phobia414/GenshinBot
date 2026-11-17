@@ -262,34 +262,40 @@ PLAYER_COMMANDS = {
 DEFAULT_ADMIN_RANKS = {
     "owner": {
         "name": "👑 Владелец", "weight": 100, "cmd": "",
-        "permissions": ["all"]
+        "permissions": ["all"],
+        "tg_rights": {
+            "can_delete_messages": True, "can_restrict_members": True, "can_manage_tags": True,
+            "can_pin_messages": True, "can_invite_users": True, "can_change_info": True,
+            "can_promote_members": True, "can_manage_chat": True
+        }
     },
     "coowner": {
-        "name": "🛡 Совлд", "weight": 90, "cmd": "!совлд",
-        "permissions": ["call", "applylink", "warn", "mute", "ban", "assign_lower"]
+        "name": "👑 Совлд", "weight": 90, "cmd": "!совлд",
+        "permissions": ["call", "applylink", "warn", "mute", "ban", "assign_lower"],
+        "tg_rights": {"can_delete_messages": True, "can_restrict_members": True, "can_manage_tags": True}
     },
     "headadmin": {
-        "name": "⚔ Г.Админ", "weight": 80, "cmd": "!гладмин",
+        "name": "👑 Г.Админ", "weight": 80, "cmd": "!гладмин",
         "permissions": ["call", "applylink", "warn", "mute", "ban", "assign_lower"],
         "tg_rights": {"can_delete_messages": True, "can_restrict_members": True, "can_manage_tags": True}
     },
     "admin": {
-        "name": "⚙ Админ", "weight": 70, "cmd": "!админ",
+        "name": "🛡 Админ", "weight": 70, "cmd": "!админ",
         "permissions": ["call", "applylink", "warn", "mute", "ban"],
         "tg_rights": {"can_delete_messages": True, "can_restrict_members": True}
     },
     "moderator": {
-        "name": "🔨 Модер", "weight": 60, "cmd": "!модер",
+        "name": "🛡 Модер", "weight": 60, "cmd": "!модер",
         "permissions": ["call", "applylink", "warn", "mute"],
         "tg_rights": {"can_delete_messages": True, "can_restrict_members": True}
     },
     "jrmod": {
-        "name": "🔧 М.Модер", "weight": 50, "cmd": "!млмодер",
+        "name": "🛡 М.Модер", "weight": 50, "cmd": "!млмодер",
         "permissions": ["call", "applylink"],
         "tg_rights": {"can_delete_messages": True}
     },
     "trainee": {
-        "name": "📝 Стажер", "weight": 10, "cmd": "!стажер",
+        "name": "🛡 Стажер", "weight": 10, "cmd": "!стажер",
         "permissions": ["call"],
         "tg_rights": {}
     }

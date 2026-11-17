@@ -410,17 +410,24 @@ async def show_user_card(message, user, tg_user, chat_id):
             guild_line = "🏰 Без гильдии"
     else:
         guild_line = "🏰 Без гильдии"
+
     from db import get_rep_level
+    from helpers import get_ranks_config
 
     rep_level = get_rep_level(user["reputation"])
 
-    # ДОБАВЛЯЕМ ВЫВОД ДОЛЖНОСТИ
+    # УМНЫЙ ВЫВОД РАНГА
     admin_rank_text = ""
     if user.get("admin_rank"):
         ranks = await get_ranks_config()
         r_data = ranks.get(user["admin_rank"])
         if r_data:
-            admin_rank_text = f"\n🛡 Должность: <b>{r_data['name']}</b>"
+            emoji = "👑" if r_data.get("weight", 0) >= 80 else "🛡"
+            raw_name = r_data.get("name", "").strip()
+            for e in ["👑", "🛡", "⚔", "⚙", "🔨", "🔧", "📝"]:
+                raw_name = raw_name.replace(e, "")
+            clean_rank = raw_name.strip()
+            admin_rank_text = f"{emoji} Должность: <b>{clean_rank}</b>\n\n"  # Двойной перенос для красоты
 
     join_date = ""
     if user.get("first_seen"):
@@ -429,7 +436,7 @@ async def show_user_card(message, user, tg_user, chat_id):
 
     text = (
         f"🎭 {name} · ⚧ {gtext}\n"
-        f"{admin_rank_text}"  # ВЫВОДИМ РАНГ
+        f"{admin_rank_text}"
         f"{join_date}\n"
         f"💬 Всего сообщений: {user['messages_count']}\n"
         f"☀️ За сегодня: {user.get('msgs_day', 0)}\n"
