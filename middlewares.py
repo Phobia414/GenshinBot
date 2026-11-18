@@ -15,14 +15,13 @@ def _remember_username(tg_user):
         _username_cache[tg_user.username.lower()] = tg_user.id
 
 
-# --- БЛОКИРОВКА СООБЩЕНИЙ ---
 @dp.message.middleware()
 async def check_blocked_msg(handler, event: types.Message, data: dict):
     if event.from_user.id == OWNER_ID:
         return await handler(event, data)
 
     if await is_user_blocked(event.from_user.id):
-        return  # Игнорируем сообщение
+        return
     return await handler(event, data)
 
 
@@ -87,7 +86,6 @@ async def cmd_antispam(handler, event: types.Message, data: dict):
     return await handler(event, data)
 
 
-# --- БЛОКИРОВКА КНОПОК ---
 @dp.callback_query.middleware()
 async def check_blocked_cb(handler, event: types.CallbackQuery, data: dict):
     if event.from_user.id == OWNER_ID:
@@ -103,15 +101,21 @@ async def check_blocked_cb(handler, event: types.CallbackQuery, data: dict):
 async def check_user_character_middleware(handler, event: types.CallbackQuery, data: dict):
     cb_data = event.data or ""
 
+    # 1. СПИСОК ИСКЛЮЧЕНИЙ
     allowed_prefixes = (
         "menu:gender_", "menu:regions", "reg:", "char:", "menu:tops", "top:",
         "menu:lists", "lists:", "cmd:", "apply_", "appr_", "newchar_",
-        "sub:", "report_", "a_ans_", "aapp:", "admin_"
+        "sub:", "report_", "rep:", "a_ans_", "aapp:", "admin_"
     )
 
     if cb_data.startswith(allowed_prefixes):
         return await handler(event, data)
 
+    # 2. ЕСЛИ ЭТО ЛИЧНЫЕ СООБЩЕНИЯ (ЛС) - ПРОПУСКАЕМ ПРОВЕРКУ
+    if not event.message or event.message.chat.type not in ("group", "supergroup"):
+        return await handler(event, data)
+
+    # 3. Пропускаем кнопки, если человек в процессе анкеты
     state_obj: FSMContext = data.get("state")
     if state_obj:
         current_state = await state_obj.get_state()
@@ -122,7 +126,8 @@ async def check_user_character_middleware(handler, event: types.CallbackQuery, d
         ):
             return await handler(event, data)
 
-    chat_id = event.message.chat.id if event.message else event.from_user.id
+    # 4. Основная проверка (только для групп)
+    chat_id = event.message.chat.id
     user = await get_user(event.from_user.id, chat_id)
 
     if not user or not user.get("character_name"):

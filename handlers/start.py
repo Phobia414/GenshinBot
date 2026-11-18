@@ -49,11 +49,13 @@ def get_name_by_hash(chash: str) -> str:
 async def cmd_start(message: types.Message, state: FSMContext, command: CommandObject):
     current_state = await state.get_state()
 
+    # Если перешли по ссылке на жалобу
     if command.args and command.args.startswith("report_"):
         chat_id_report = int(command.args.replace("report_", ""))
         await process_report_start(message, chat_id_report, state)
         return
 
+    # Если перешли по ссылке на анкету админа
     if command.args and command.args.startswith("admin_apply_"):
         from handlers.admin_apply import start_admin_apply
         try:
@@ -63,8 +65,8 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
             await start_admin_apply(message, state, 0)
         return
 
-    if current_state and current_state.startswith("ApplyForm"):
-        await state.clear()
+    if current_state:
+        await state.clear() # <--- СБРАСЫВАЕМ ВСЕ ЗАВИСШИЕ СОСТОЯНИЯ (Анкеты, Жалобы)
 
     chat_id = message.chat.id
     user = await _ensure_user(message.from_user.id, chat_id)
@@ -79,7 +81,7 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
             await state.update_data(target_chat_id=target_chat_id)
             await send_step(message.chat.id, 0, state)
         else:
-            await message.answer("🌸 Возьмите ссылку для заполнения анкеты у администраторов группы.")
+            await message.answer("🌸 Возьмите ссылку для заполнения анкеты у администраторов группы.\n\n<i>Для игры перейдите в группу и напишите /start там.</i>", parse_mode="HTML")
         return
 
     if user["character_name"]:
@@ -99,7 +101,6 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
             else:
                 text = f"── 〔 🌸 ВЫБОР ПЕРСОНАЖА 〕 ──\n\nВыбери регион, откуда родом твой герой 🎭"
                 await message.answer(text, reply_markup=regions_kb(message.from_user.id), parse_mode="HTML")
-
 
 @dp.callback_query(MenuCB.filter(F.action.in_(["gender_male", "gender_female"])))
 async def cb_gender(query: types.CallbackQuery, callback_data: MenuCB, state: FSMContext):
