@@ -100,7 +100,7 @@ async def start_admin_apply(message: types.Message, state: FSMContext, chat_id: 
 
     text = (
         f"📝 <b>АНКЕТА В АДМИНИСТРАЦИЮ</b>\n{DIV}\n"
-        f"Заполнение займет около 10-15 минут. Отвечайте честно и развернуто.\n\n"
+        f"Анкета состоит из 12 вопросов, заполнение займет около 10-15 минут. Отвечайте честно и развернуто.\n\n"
         f"<b>Для отмены напишите:</b> /cancel\n\n"
         f"{QUESTIONS['q1']}"
     )
@@ -275,7 +275,7 @@ async def process_submit(query: types.CallbackQuery, state: FSMContext):
 
     await state.clear()
     await query.message.edit_text(
-        "✅ <b>Ваша анкета отправлена на рассмотрение!</b>\nОжидайте ответа, мы свяжемся с вами в ЛС.",
+        "✅ <b>Ваша анкета отправлена на рассмотрение!</b>\nОжидайте ответа от администрации.",
         parse_mode="HTML")
     await query.answer()
 
