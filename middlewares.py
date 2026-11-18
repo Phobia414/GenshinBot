@@ -2,7 +2,7 @@ import asyncio
 from aiogram import types
 from bot_instance import dp
 from config import OWNER_ID, CMD_COOLDOWN, CB_COOLDOWN
-from db import get_user, update_user, add_known_group, get_setting
+from db import get_user, update_user, add_known_group, get_setting, is_user_blocked
 from helpers import _ensure_user, _now_ts
 from state import _username_cache, _cb_cooldown, _cmd_cooldown
 import state
@@ -13,6 +13,17 @@ from aiogram.filters import StateFilter
 def _remember_username(tg_user):
     if tg_user and not tg_user.is_bot and tg_user.username:
         _username_cache[tg_user.username.lower()] = tg_user.id
+
+
+# --- БЛОКИРОВКА СООБЩЕНИЙ ---
+@dp.message.middleware()
+async def check_blocked_msg(handler, event: types.Message, data: dict):
+    if event.from_user.id == OWNER_ID:
+        return await handler(event, data)
+
+    if await is_user_blocked(event.from_user.id):
+        return  # Игнорируем сообщение
+    return await handler(event, data)
 
 
 @dp.message.middleware()
@@ -76,11 +87,22 @@ async def cmd_antispam(handler, event: types.Message, data: dict):
     return await handler(event, data)
 
 
+# --- БЛОКИРОВКА КНОПОК ---
+@dp.callback_query.middleware()
+async def check_blocked_cb(handler, event: types.CallbackQuery, data: dict):
+    if event.from_user.id == OWNER_ID:
+        return await handler(event, data)
+
+    if await is_user_blocked(event.from_user.id):
+        await event.answer("⛔ Вы заблокированы в боте.", show_alert=True)
+        return
+    return await handler(event, data)
+
+
 @dp.callback_query.middleware()
 async def check_user_character_middleware(handler, event: types.CallbackQuery, data: dict):
     cb_data = event.data or ""
 
-    # 1. СПИСОК ИСКЛЮЧЕНИЙ: кнопки, которые НЕ ТРЕБУЮТ наличия персонажа
     allowed_prefixes = (
         "menu:gender_", "menu:regions", "reg:", "char:", "menu:tops", "top:",
         "menu:lists", "lists:", "cmd:", "apply_", "appr_", "newchar_",
@@ -90,10 +112,9 @@ async def check_user_character_middleware(handler, event: types.CallbackQuery, d
     if cb_data.startswith(allowed_prefixes):
         return await handler(event, data)
 
-    # 2. Пропускаем кнопки, если человек в процессе анкеты
-    state: FSMContext = data.get("state")
-    if state:
-        current_state = await state.get_state()
+    state_obj: FSMContext = data.get("state")
+    if state_obj:
+        current_state = await state_obj.get_state()
         if current_state and (
                 current_state.startswith("AdminApplyForm") or
                 current_state.startswith("ApplyForm") or
@@ -101,7 +122,6 @@ async def check_user_character_middleware(handler, event: types.CallbackQuery, d
         ):
             return await handler(event, data)
 
-    # 3. Основная проверка: если у человека нет персонажа — блокируем
     chat_id = event.message.chat.id if event.message else event.from_user.id
     user = await get_user(event.from_user.id, chat_id)
 
@@ -111,6 +131,7 @@ async def check_user_character_middleware(handler, event: types.CallbackQuery, d
             return
 
     return await handler(event, data)
+
 
 @dp.callback_query.middleware()
 async def auto_register_cb(handler, event: types.CallbackQuery, data: dict):

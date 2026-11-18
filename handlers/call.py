@@ -7,7 +7,7 @@ from aiogram.filters import Command
 from bot_instance import dp
 from config import DB_PATH, OWNER_ID
 from constants import DIV, CALL_COOLDOWN, CALL_MAX_MENTIONS
-from helpers import esc, _ensure_user
+from helpers import esc, _ensure_user, is_chat_admin  # <--- ДОБАВЛЕН ИМПОРТ is_chat_admin
 from db import update_user
 from keyboards import back_kb
 
@@ -17,9 +17,18 @@ async def cmd_call(message: types.Message):
     if message.chat.type not in ("group", "supergroup"):
         await message.answer("❌ Команда работает только в группе.")
         return
+
     chat_id = message.chat.id
-    now = int(datetime.now(timezone.utc).timestamp())
     is_owner = message.from_user.id == OWNER_ID
+
+    # --- ПРОВЕРКА НА АДМИНИСТРАТОРА ---
+    if not is_owner:
+        if not await is_chat_admin(chat_id, message.from_user.id):
+            await message.answer("❌ Эта команда доступна только администраторам чата.")
+            return
+    # ----------------------------------
+
+    now = int(datetime.now(timezone.utc).timestamp())
 
     if not is_owner:
         from state import _call_cooldown
