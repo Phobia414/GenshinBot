@@ -1,20 +1,20 @@
 import html
 import random
 import aiohttp
-import json # <--- ДОБАВЛЕНО
+import json
 from datetime import datetime, timezone
 from functools import wraps
 from aiogram import types
 from aiogram.types import FSInputFile, InputMediaPhoto, BufferedInputFile
 from aiogram.exceptions import TelegramBadRequest
-from aiogram import Bot # <--- ДОБАВЛЕНО
+from aiogram import Bot
 from bot_instance import bot
 from config import DB_PATH
-from constants import DIV, PLACEHOLDER_IMAGES, DEFAULT_ADMIN_RANKS # <--- ДОБАВЛЕНО
+from constants import DIV, PLACEHOLDER_IMAGES, DEFAULT_ADMIN_RANKS
 from db import (
     get_user, create_user, get_rep_level, get_local_setting,
     update_user, increment_user_field, get_guild, get_taken_characters,
-    add_reputation
+    add_reputation, get_setting, set_setting
 )
 from characters import REGIONS, get_character_region
 from state import _username_cache
@@ -73,7 +73,8 @@ async def _gain_rep(user_id, chat_id, amount, name=""):
     new_level = get_rep_level(new_rep)
     if new_level > old_level and chat_id != 0:
         try:
-            await bot.send_message(chat_id, f"🎖️ <b>{esc(name)}</b> повысил уровень репутации до <b>{new_level}</b>!", parse_mode="HTML")
+            await bot.send_message(chat_id, f"🎖️ <b>{esc(name)}</b> повысил уровень репутации до <b>{new_level}</b>!",
+                                   parse_mode="HTML")
         except Exception:
             pass
 
@@ -84,8 +85,10 @@ async def get_characters_status(chat_id=0):
     occ, free = [], []
     for reg_key, reg_name in REGIONS.items():
         for name in get_characters_by_region(reg_key):
-            if name in taken: occ.append((reg_name, name, 0))
-            else: free.append((reg_name, name))
+            if name in taken:
+                occ.append((reg_name, name, 0))
+            else:
+                free.append((reg_name, name))
     return occ, free
 
 
@@ -235,6 +238,7 @@ def inject_user(func):
             await create_user(event.from_user.id, chat_id)
             user = await get_user(event.from_user.id, chat_id)
         return await func(*args, user=user, chat_id=chat_id, **kwargs)
+
     return wrapper
 
 
@@ -255,8 +259,10 @@ async def download_image(url: str):
 
 async def edit_or_send(query, text, kb, image_url=None):
     if not query.message:
-        try: await bot.send_message(query.from_user.id, text, reply_markup=kb, parse_mode="HTML")
-        except: pass
+        try:
+            await bot.send_message(query.from_user.id, text, reply_markup=kb, parse_mode="HTML")
+        except:
+            pass
         return
 
     chat_id = query.message.chat.id
@@ -272,14 +278,14 @@ async def edit_or_send(query, text, kb, image_url=None):
             except Exception as e:
                 print(f"❌ Ошибка загрузки локального файла: {e}")
         else:
-            # Если это file_id (загружено через админку)
             media = image_url
 
-    # РЕЖИМ 1: Без картинки (только текст)
     if not media:
         if has_photo:
-            try: await query.message.delete()
-            except: pass
+            try:
+                await query.message.delete()
+            except:
+                pass
             await bot.send_message(chat_id, text, reply_markup=kb, parse_mode="HTML")
         else:
             try:
@@ -289,31 +295,36 @@ async def edit_or_send(query, text, kb, image_url=None):
                 await bot.send_message(chat_id, text, reply_markup=kb, parse_mode="HTML")
         return
 
-    # РЕЖИМ 2: С картинкой
     if has_photo:
         if len(text) > 1024:
-            try: await query.message.delete()
-            except: pass
+            try:
+                await query.message.delete()
+            except:
+                pass
             await bot.send_message(chat_id, text, reply_markup=kb, parse_mode="HTML")
         else:
             try:
-                # ИСПРАВЛЕНИЕ: Используем edit_media, чтобы принудительно поменять картинку!
                 input_media = InputMediaPhoto(media=media, caption=text, parse_mode="HTML")
                 await query.message.edit_media(media=input_media, reply_markup=kb)
             except TelegramBadRequest as e:
                 if "message is not modified" in str(e): return
-                # Если не удалось отредактировать медиа - удаляем и шлем заново
-                try: await query.message.delete()
-                except: pass
+                try:
+                    await query.message.delete()
+                except:
+                    pass
                 await bot.send_photo(chat_id, media, caption=text, reply_markup=kb, parse_mode="HTML")
             except Exception as e:
                 print(f"❌ Ошибка edit_media: {e}")
-                try: await query.message.delete()
-                except: pass
+                try:
+                    await query.message.delete()
+                except:
+                    pass
                 await bot.send_photo(chat_id, media, caption=text, reply_markup=kb, parse_mode="HTML")
     else:
-        try: await query.message.delete()
-        except: pass
+        try:
+            await query.message.delete()
+        except:
+            pass
         if len(text) > 1024:
             await bot.send_message(chat_id, text, reply_markup=kb, parse_mode="HTML")
         else:
@@ -324,15 +335,11 @@ async def edit_or_send(query, text, kb, image_url=None):
                 await bot.send_message(chat_id, text, reply_markup=kb, parse_mode="HTML")
 
 
-import json
-from aiogram import Bot
-
-
 # ================= НОВЫЕ ФУНКЦИИ ДЛЯ РАНГОВ =================
+
 async def get_ranks_config():
-    from db import get_setting
     default_json = json.dumps(DEFAULT_ADMIN_RANKS)
-    conf = await get_setting("admin_ranks_config", default_json)
+    conf = await get_setting("admin_ranks", default_json)
     try:
         return json.loads(conf)
     except:
@@ -340,8 +347,7 @@ async def get_ranks_config():
 
 
 async def save_ranks_config(config):
-    from db import set_setting
-    await set_setting("admin_ranks_config", json.dumps(config))
+    await set_setting("admin_ranks", json.dumps(config))
 
 
 async def get_user_rank_data(user):
@@ -372,58 +378,6 @@ def parse_admin_target(message):
         return username, reason
 
     return None, None
-
-
-async def update_user_tag(bot, chat_id: int, user_id: int, user: dict = None):
-    if not user:
-        from db import get_user
-        user = await get_user(user_id, chat_id)
-    if not user: return
-
-    char_name = user.get("character_name", "") or ""
-    rank_key = user.get("admin_rank", "")
-
-    NAME_ABBREVIATIONS = {
-        "Аяка Камисато": "Аяка",
-        "Аято Камисато": "Аято",
-        "Дайнслейф": "Дайн",
-        "Рэйндоттир": "Рэйн"
-    }
-
-    rank_name = ""
-    if rank_key:
-        ranks = await get_ranks_config()
-        if rank_key in ranks:
-            raw_rank = ranks[rank_key]["name"]
-            rank_name = "".join([c for c in raw_rank if c.isalnum() or c in (".", " ", "-")]).strip()
-
-    tag = ""
-    if rank_name:
-        if char_name in NAME_ABBREVIATIONS:
-            short_name = NAME_ABBREVIATIONS[char_name]
-        else:
-            max_char_len = 16 - len(rank_name) - 1
-            if max_char_len >= 3:
-                short_name = char_name[:max_char_len].strip()
-            else:
-                short_name = "Админ"
-        tag = f"{short_name} {rank_name}"
-    else:
-        tag = char_name[:16]
-
-    try:
-        await bot.promote_chat_member(
-            chat_id=chat_id, user_id=user_id,
-            can_change_info=False, can_delete_messages=False, can_invite_users=False,
-            can_restrict_members=False, can_pin_messages=False, can_promote_members=False,
-            can_manage_chat=False, can_manage_video_chats=False, can_manage_topics=False
-        )
-        if tag:
-            await bot.set_chat_administrator_custom_title(chat_id=chat_id, user_id=user_id, custom_title=tag)
-        else:
-            await bot.set_chat_administrator_custom_title(chat_id=chat_id, user_id=user_id, custom_title="")
-    except Exception as e:
-        print(f"⚠️ Ошибка установки тега: {e}")
 
 
 async def apply_tg_rights(bot: Bot, chat_id: int, user_id: int, rank_data: dict):
@@ -460,157 +414,44 @@ async def remove_tg_rights(bot: Bot, chat_id: int, user_id: int):
         return False
 
 
-# ==========================================
-# ИСПРАВЛЕННЫЕ ФУНКЦИИ ДЛЯ ВЫДАЧИ РАНГОВ
-# (Вставлено в конец файла для перезаписи старых версий)
-# ==========================================
-
-async def apply_tg_rights(bot, chat_id, user_id, rank_data):
-    """Выдает права в Telegram на основе конфигурации ранга"""
-    tg_rights = rank_data.get("tg_rights", {})
-
-    if not tg_rights:
-        await remove_tg_rights(bot, chat_id, user_id)
-        return
-
-    try:
-        await bot.promote_chat_member(
-            chat_id=chat_id,
-            user_id=user_id,
-            can_manage_chat=True,
-            can_delete_messages=tg_rights.get("can_delete_messages", False),
-            can_restrict_members=tg_rights.get("can_restrict_members", False),
-            can_manage_tags=tg_rights.get("can_manage_tags", False),
-            can_invite_users=True,
-            can_pin_messages=True
-        )
-    except Exception as e:
-        print(f"[Ошибка выдачи прав] Не удалось выдать права {user_id}: {e}")
-
-
-async def remove_tg_rights(bot, chat_id, user_id):
-    """Полностью снимает админку с пользователя"""
-    try:
-        await bot.promote_chat_member(
-            chat_id=chat_id,
-            user_id=user_id,
-            can_manage_chat=False,
-            can_delete_messages=False,
-            can_restrict_members=False,
-            can_invite_users=False,
-            can_pin_messages=False,
-            can_change_info=False,
-            can_promote_members=False,
-            can_manage_video_chats=False,
-            can_manage_topics=False,
-            is_anonymous=False,
-            can_manage_tags=False
-        )
-    except Exception:
-        pass
-
-
-async def update_user_tag(bot, chat_id, user_id, user):
-    """Ставит тег или должность. Срабатывает после выдачи ранга."""
-    if not user or not user.get("character_name"):
-        return
-
-    tag = user["character_name"][:16]
-
-    try:
-        member = await bot.get_chat_member(chat_id, user_id)
-
-        if member.status in ("administrator", "creator"):
-            await bot.set_chat_administrator_custom_title(
-                chat_id=chat_id,
-                user_id=user_id,
-                custom_title=tag
-            )
-        else:
-            await bot.set_chat_member_tag(
-                chat_id=chat_id,
-                user_id=user_id,
-                tag=tag
-            )
-    except Exception:
-        pass
-
-
-# ==========================================
-# ИСПРАВЛЕННЫЕ И ДОБАВЛЕННЫЕ ФУНКЦИИ (Вставить в конец helpers.py)
-# ==========================================
-import json
-from constants import DEFAULT_ADMIN_RANKS
-from db import get_setting, set_setting
-
-
-async def get_ranks_config():
-    config = await get_setting("admin_ranks")
-    if config:
-        try:
-            return json.loads(config)
-        except:
-            pass
-    return DEFAULT_ADMIN_RANKS
-
-
-async def save_ranks_config(ranks):
-    await set_setting("admin_ranks", json.dumps(ranks))
-
-
-async def apply_tg_rights(bot, chat_id, user_id, rank_data):
-    tg_rights = rank_data.get("tg_rights", {})
-    if not tg_rights:
-        await remove_tg_rights(bot, chat_id, user_id)
-        return "⚠️ В настройках ранга нет прав Телеграма."
-
-    try:
-        await bot.promote_chat_member(
-            chat_id=chat_id,
-            user_id=user_id,
-            can_manage_chat=True,
-            can_delete_messages=tg_rights.get("can_delete_messages", False),
-            can_restrict_members=tg_rights.get("can_restrict_members", False),
-            can_manage_tags=tg_rights.get("can_manage_tags", False),
-            can_invite_users=True,
-            can_pin_messages=True
-        )
-        return ""
-    except Exception as e:
-        return f"❌ Ошибка прав Телеграм: {e}. (Проверь, есть ли у бота галочка 'Добавлять администраторов')"
-
-
-async def remove_tg_rights(bot, chat_id, user_id):
-    try:
-        await bot.promote_chat_member(
-            chat_id=chat_id, user_id=user_id,
-            can_manage_chat=False, can_delete_messages=False, can_restrict_members=False,
-            can_invite_users=False, can_pin_messages=False, can_change_info=False,
-            can_promote_members=False, can_manage_video_chats=False, can_manage_topics=False,
-            is_anonymous=False, can_manage_tags=False
-        )
-    except Exception:
-        pass
-
-
-async def update_user_tag(bot, chat_id, user_id, user):
+async def update_user_tag(bot: Bot, chat_id: int, user_id: int, user: dict = None):
+    if not user:
+        user = await get_user(user_id, chat_id)
     if not user: return ""
-    char_name = user.get("character_name", "")
+
+    char_name = user.get("character_name", "") or ""
     rank_key = user.get("admin_rank", "")
 
-    tag_parts = []
-    if char_name: tag_parts.append(char_name)
+    NAME_ABBREVIATIONS = {
+        "Аяка Камисато": "Аяка",
+        "Аято Камисато": "Аято",
+        "Дайнслейф": "Дайн",
+        "Рэйндоттир": "Рэйн"
+    }
+
+    tag = ""
     if rank_key:
         ranks = await get_ranks_config()
-        rank_name = ranks.get(rank_key, {}).get("name", "")
-        if rank_name:
-            clean_rank = rank_name.replace("👑 ", "").replace("🛡 ", "").replace("⚔ ", "").replace("⚙ ", "").replace("🔨 ",
-                                                                                                                   "").replace(
-                "🔧 ", "").replace("📝 ", "").strip()
-            tag_parts.append(clean_rank)
+        if rank_key in ranks:
+            rank_data = ranks[rank_key]
+            raw_rank = rank_data.get("tag_text") or rank_data.get("name", "")
 
-    if not tag_parts: return ""
-    tag = " | ".join(tag_parts)[:16]
+            clean_rank = "".join([c for c in raw_rank if c.isalnum() or c in (".", " ", "-")]).strip()
+
+            if clean_rank:
+                if char_name in NAME_ABBREVIATIONS:
+                    short_name = NAME_ABBREVIATIONS[char_name]
+                else:
+                    max_char_len = 16 - len(clean_rank) - 3
+                    if max_char_len >= 2:
+                        short_name = char_name[:max_char_len].strip()
+                    else:
+                        short_name = "Админ"
+                tag = f"{short_name} | {clean_rank}"
+            else:
+                tag = char_name[:16]
+    else:
+        tag = char_name[:16]
 
     try:
         member = await bot.get_chat_member(chat_id, user_id)
@@ -620,4 +461,5 @@ async def update_user_tag(bot, chat_id, user_id, user):
             await bot.set_chat_member_tag(chat_id=chat_id, user_id=user_id, tag=tag)
         return ""
     except Exception as e:
-        return f"⚠️ Ошибка тега: {e}"
+        pass
+        return ""

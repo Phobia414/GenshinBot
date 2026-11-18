@@ -302,12 +302,9 @@ async def cb_profile(query, callback_data, user, chat_id):
         ranks = await get_ranks_config()
         r_data = ranks.get(user["admin_rank"])
         if r_data:
-            emoji = "👑" if r_data.get("weight", 0) >= 80 else "🛡"
-            raw_name = r_data.get("name", "").strip()
-            for e in ["👑", "🛡", "⚔", "⚙", "🔨", "🔧", "📝"]:
-                raw_name = raw_name.replace(e, "")
-            clean_rank = raw_name.strip()
-            admin_rank_text = f"{emoji} Должность: <b>{clean_rank}</b>\n"
+            # Берем profile_text, если его нет - name
+            display_rank = r_data.get("profile_text") or r_data.get("name", "")
+            admin_rank_text = f"👑 Должность: <b>{display_rank}</b>\n"
 
     text = (
         f"─ [ 🖼 ПРОФИЛЬ ] ─\n\n"
