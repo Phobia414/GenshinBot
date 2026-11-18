@@ -214,18 +214,17 @@ async def fetch_all(query, params=()):
 
 async def execute(query, params=()):
     async with aiosqlite.connect(DB_PATH) as db:
-        # Включаем WAL и ставим таймаут ожидания
         await db.execute("PRAGMA journal_mode=WAL;")
-        await db.execute("PRAGMA busy_timeout=5000;")
+        await db.execute("PRAGMA busy_timeout=10000;")  # 10 секунд
 
-        for attempt in range(3):  # 3 попытки при блокировке
+        for attempt in range(3):
             try:
                 cur = await db.execute(query, params)
                 await db.commit()
                 return cur.lastrowid
             except aiosqlite.OperationalError as e:
                 if "database is locked" in str(e):
-                    await asyncio.sleep(1)  # Ждем секунду и пробуем снова
+                    await asyncio.sleep(2)
                 else:
                     raise e
 

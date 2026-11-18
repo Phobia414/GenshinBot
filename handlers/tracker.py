@@ -14,7 +14,7 @@ from constants import (
 )
 from db import (
     get_user, update_user, increment_user_field,
-    get_guild, update_guild,
+    get_guild, update_guild, execute, # <--- ДОБАВЛЕН ИМПОРТ execute
     add_ingredient, get_ingredients, INGREDIENTS,
     get_food_buff, get_total_bonuses, update_primogems,
     get_application, update_application_status, get_all_custom_interactions
@@ -226,13 +226,18 @@ async def track_text(message: types.Message, user: dict, chat_id: int):
     if now - user["last_msg_time"] < ANTISPAM_SECONDS:
         return
 
-    await increment_user_field(message.from_user.id, chat_id, "messages_count", 1)
-    await increment_user_field(message.from_user.id, chat_id, "board_msgs", 1)
-    await increment_user_field(message.from_user.id, chat_id, "msgs_week", 1)
-    await increment_user_field(message.from_user.id, chat_id, "msgs_month", 1)
-    await increment_user_field(message.from_user.id, chat_id, "msgs_day", 1)
+    # ОПТИМИЗАЦИЯ: Обновляем все счетчики ОДНИМ запросом к базе
+    await execute("""
+        UPDATE users SET 
+            messages_count = IFNULL(messages_count, 0) + 1,
+            board_msgs = IFNULL(board_msgs, 0) + 1,
+            msgs_week = IFNULL(msgs_week, 0) + 1,
+            msgs_month = IFNULL(msgs_month, 0) + 1,
+            msgs_day = IFNULL(msgs_day, 0) + 1,
+            last_msg_time = ?
+        WHERE user_id = ? AND chat_id = ?
+    """, (now, message.from_user.id, chat_id))
 
-    await update_user(message.from_user.id, chat_id, last_msg_time=now)
     await _gain_rep(message.from_user.id, chat_id, REP_PER_MESSAGE, message.from_user.first_name)
 
     if random.random() < INGREDIENT_DROP_CHANCE:
