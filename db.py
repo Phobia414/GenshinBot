@@ -225,10 +225,19 @@ async def fetch_all(query, params=()):
 
 async def execute(query, params=()):
     async with aiosqlite.connect(DB_PATH) as db:
-        cur = await db.execute(query, params)
-        await db.commit()
-        return cur.lastrowid
+        await db.execute("PRAGMA journal_mode=WAL;")
+        await db.execute("PRAGMA busy_timeout=5000;")
 
+        for attempt in range(3):
+            try:
+                cur = await db.execute(query, params)
+                await db.commit()
+                return cur.lastrowid
+            except aiosqlite.OperationalError as e:
+                if "database is locked" in str(e):
+                    await asyncio.sleep(1)
+                else:
+                    raise e
 
 # ================= ПОЛЬЗОВАТЕЛИ =================
 async def get_user(user_id, chat_id=0):
