@@ -707,3 +707,59 @@ async def cmd_untrust(message: types.Message):
 
     await remove_trusted_admin(target_id)
     await message.answer(f"✅ Пользователь {esc(display)} больше не получает анкеты.")
+
+
+from aiogram import types, F
+from aiogram.filters import Command
+from bot_instance import bot, dp
+from config import OWNER_ID
+from db import get_user, update_user
+from helpers import update_user_tag, parse_admin_target, resolve_user_id
+from keyboards import back_kb
+
+
+@dp.message(Command("demote"))
+@dp.message(F.text.startswith("!снять"))
+async def cmd_demote(message: types.Message):
+    chat_id = message.chat.id
+
+    # Проверка прав (только владелец бота или тот, у кого есть права)
+    # Если у тебя есть система проверки прав, можешь использовать её
+    if message.from_user.id != OWNER_ID:
+        user = await get_user(message.from_user.id, chat_id)
+        if not user or user.get("admin_rank") in (None, "", "Игрок"):
+            return await message.answer("❌ У вас нет прав для снятия должностей.")
+
+    # Определяем цель
+    target_ref, reason = parse_admin_target(message)
+    if not target_ref:
+        return await message.answer(
+            "❌ Используй: <code>/demote</code> (ответом на сообщение) или <code>/demote @username</code>",
+            parse_mode="HTML")
+
+    if isinstance(target_ref, str):
+        target_id = await resolve_user_id(target_ref)
+        if not target_id:
+            return await message.answer("❌ Пользователь не найден в базе.")
+    else:
+        target_id = target_ref
+
+    if target_id == OWNER_ID:
+        return await message.answer("❌ Нельзя снять должность с владельца бота.")
+
+    target_user = await get_user(target_id, chat_id)
+    if not target_user:
+        return await message.answer("❌ Пользователь не найден в базе этого чата.")
+
+    # Снимаем ранг (ставим базовый)
+    await update_user(target_id, chat_id, admin_rank="Игрок")
+
+    # Обновляем тег в Telegram
+    await update_user_tag(bot, chat_id, target_id, target_user)
+
+    mention = f'<a href="tg://user?id={target_id}">{target_user.get("character_name") or "Игрок"}</a>'
+    await message.answer(
+        f"✅ С пользователя {mention} снята должность.\nТеперь он снова обычный игрок.",
+        parse_mode="HTML",
+        reply_markup=back_kb(message.from_user.id)
+    )

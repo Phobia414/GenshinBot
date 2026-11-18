@@ -519,38 +519,48 @@ async def _check_board_auto_locked(message):
     earn_b, _ = await get_total_bonuses(message.from_user.id, chat_id)
     rep_earn, _, _ = get_reputation_bonuses(user["reputation"])
     _, food_value = await get_food_buff(message.from_user.id, chat_id)
-    total_earn = earn_b + rep_earn + food_value
+
     from constants import TASKS
 
     for t_id in accepted:
         if t_id in claimed or t_id not in TASKS:
             continue
         t = TASKS[t_id]
-        if get_progress(user, t["cat"]) >= t["need"]:
-            new_claimed = list(claimed) + [t_id]
-            await update_user(message.from_user.id, chat_id, board_claimed=";".join(new_claimed))
-            claimed = new_claimed
 
+        # Проверяем, выполнено ли задание
+        if get_progress(user, t["cat"]) >= t["need"]:
             coins_reward = random.randint(100, 300)
             primo_reward = random.randint(20, 60)
 
-            await increment_user_field(message.from_user.id, chat_id, "balance", coins_reward)
-            await update_primogems(message.from_user.id, chat_id, primo_reward)
-            await _gain_rep(message.from_user.id, chat_id, REP_PER_BOARD_TASK, message.from_user.first_name)
-
-            mention = f'<a href="tg://user?id={message.from_user.id}">{esc(message.from_user.first_name)}</a>'
             try:
-                await message.answer(
-                    f"🎉 {mention}, задание выполнено!\n\n"
-                    f"«{t['text']}»\n"
-                    f"💰 Награда: {coins_reward} монет\n"
-                    f"💎 +{primo_reward} Примогемов\n"
-                    f"🎖️ +{REP_PER_BOARD_TASK} репутации",
+                # 1. СНАЧАЛА начисляем награду
+                await increment_user_field(message.from_user.id, chat_id, "balance", coins_reward)
+                await update_primogems(message.from_user.id, chat_id, primo_reward)
+                await _gain_rep(message.from_user.id, chat_id, REP_PER_BOARD_TASK, message.from_user.first_name)
+
+                # 2. ТОЛЬКО ПОСЛЕ ЭТОГО ставим отметку "получено"
+                new_claimed = list(claimed) + [t_id]
+                await update_user(message.from_user.id, chat_id, board_claimed=";".join(new_claimed))
+                claimed = new_claimed
+
+                # 3. Отправляем уведомление (через bot.send_message, чтобы не зависеть от reply)
+                mention = f'<a href="tg://user?id={message.from_user.id}">{esc(message.from_user.first_name)}</a>'
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=(
+                        f"🎉 {mention}, задание выполнено!\n\n"
+                        f"«{t['text']}»\n"
+                        f"💰 Награда: {coins_reward} монет\n"
+                        f"💎 +{primo_reward} Примогемов\n"
+                        f"🎖️ +{REP_PER_BOARD_TASK} репутации"
+                    ),
                     parse_mode="HTML",
                     reply_markup=back_kb(message.from_user.id)
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                # Если произошла ошибка при начислении (например, база заблокирована),
+                # мы НЕ помечаем задание выполненным, чтобы бот попробовал снова в следующий раз.
+                print(f"Ошибка при выдаче награды за задание {t_id}: {e}")
 
 
 @dp.chat_member()
