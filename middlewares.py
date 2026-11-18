@@ -110,18 +110,6 @@ async def auto_register_cb(handler, event: types.CallbackQuery, data: dict):
     )
     cb_data = event.data or ""
 
-    @dp.callback_query()
-    async def check_user_character(query: types.CallbackQuery):
-        # --- ДОБАВЛЯЕМ ИСКЛЮЧЕНИЕ ДЛЯ АНКЕТ В АДМИНИСТРАЦИЮ ---
-        if query.data.startswith("a_ans_") or query.data.startswith("aapp:"):
-            return  # Пропускаем без проверки на персонажа
-        # ------------------------------------------------------
-
-        user = await get_user(query.from_user.id, query.message.chat.id)
-        if not user or not user.get("character_name"):
-            await query.answer("❌ Сначала выбери персонажа: /start", show_alert=True)
-            return
-
     if event.from_user.id != OWNER_ID:
         key = (event.from_user.id, chat_id)
         now_ts = _now_ts()
@@ -153,3 +141,48 @@ async def auto_register_cb(handler, event: types.CallbackQuery, data: dict):
             await event.answer()
         except:
             pass
+
+
+# ==========================================
+# ГЛОБАЛЬНЫЙ ОБРАБОТЧИК КНОПОК (ПРОВЕРКА ПЕРСОНАЖА)
+# ==========================================
+from aiogram.fsm.context import FSMContext
+from aiogram.filters import StateFilter
+
+
+@dp.callback_query()
+async def check_user_character_global(query: types.CallbackQuery, state: FSMContext):
+    # 1. Пропускаем кнопки анкет (любые, начинающиеся с этих префиксов)
+    if query.data.startswith("a_ans_") or query.data.startswith("aapp:"):
+        return
+
+    # 2. Пропускаем кнопки, если человек прямо сейчас заполняет анкету
+    current_state = await state.get_state()
+    if current_state and (
+            current_state.startswith("AdminApplyForm") or
+            current_state.startswith("ApplyForm") or
+            current_state.startswith("ReviewForm")
+    ):
+        return
+
+    # 3. Пропускаем меню выбора пола и региона (чтобы новички могли зайти)
+    if query.data.startswith("menu:gender") or query.data.startswith("reg:") or query.data.startswith("char:"):
+        return
+
+    # 4. Пропускаем меню подписки
+    if query.data.startswith("sub:"):
+        return
+
+    # 5. Если это меню владельца/админа — тоже не блокируем
+    if query.data.startswith("admin_") or query.data.startswith("aapp"):
+        return
+
+    # 6. Основная проверка: если у человека нет персонажа — блокируем
+    chat_id = query.message.chat.id
+    user = await get_user(query.from_user.id, chat_id)
+
+    if not user or not user.get("character_name"):
+        # Проверяем, не является ли это меню главным (чтобы не спамить)
+        if not query.data.startswith("menu:menu"):
+            await query.answer("❌ Сначала выбери персонажа: /start", show_alert=True)
+            return

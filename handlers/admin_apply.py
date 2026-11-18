@@ -2,7 +2,7 @@ from aiogram import types, F
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
 
 from bot_instance import bot, dp
 from config import OWNER_ID
@@ -28,6 +28,7 @@ class AdminApplyForm(StatesGroup):
     confirm = State()
 
 
+# ... (QUESTIONS оставляем как было) ...
 QUESTIONS = {
     "q1": "1. Ваш опыт во флудах/ролевых, других проектах (Игры, группы, работа) как администратора. Напишите подробный ответ. (Сколько были на посту администрации, какие должности занимали и как относитесь к должностной лестнице, можете добавить свое, если есть, что рассказать.)",
     "q2": "2. Ваше свободное время в реальной жизни, напишите примерное количество времени или расскажите о вашей занятости. (Время на учебу/работу, хобби, отдых, так нам будет легче узнать о вашем свободном времени для флуда.)",
@@ -46,7 +47,7 @@ QUESTIONS = {
         "3) Нет, не читал"
     ),
     "q5": "5. Почему решили стать частью администрации нашего проекта?",
-    "q6": "6. В административном чате происходит спор двух членов администрации, один из них намного меньше рангом другого. (Например Мл. Модер спорит с Гл. Админом) Вы являетесь обычным модератором и видите как Гл. Админ, начинает унижать или переходить на личности Мл. Модера в чате администрации. Владельца или Совладельца нет в сети на данный момент, ваши действия? (Гл. Админ является членом высшей администрации, отвечает за должности ниже себя и курирует их)",
+    "q6": "6. В административном чате происходит спор двух членов администрации, один из них намного меньше рангом другого. (Например Мл. Модер спорит с Гл. Админом) Вы являетесь обычным модератором и видите как Гл. Админ, начинает унижать или переходить на личности Мл. Модера в чате администрации. Владельца или Совладельца нет в сети на данный момент, ваши действия?",
     "q7": "7. Участник в чате начинает указывать на не точности в системе проекта, бота, администрации. Вы как ответственный администратор, начинаете выяснять, что именно не нравится участнику и почему. Он указывает на моменты которые вы можете оспорить. Вы начнете спор отстояв проект, бота, администрацию или отступите и просто примете к сведению упрёк который вы могли оспорить? (Ответить кратко, что предпримете и почему?)",
     "q8": "8. Администрация должна подстраиваться под участников или участники под администрацию? (2-3 предложения, что и почему?)",
     "q9": "9. Действующее правило: \"Всем участникам чата запрещено оскорблять, унижать, провоцировать, угнетать других участников чата.\" Два друга знакомые между собой начали друг друга в \"шутку\" оскорблять, ваши действия, учитывая, действующее правило? (Ответить кратко, что предпримете и почему?)",
@@ -94,7 +95,7 @@ async def start_admin_apply(message: types.Message, state: FSMContext, chat_id: 
             return await message.answer("✅ Вы уже являетесь частью администрации.")
 
     await state.clear()
-    await state.update_data(target_chat_id=chat_id)  # ЗАПОМИНАЕМ ID ЧАТА
+    await state.update_data(target_chat_id=chat_id)
     await state.set_state(AdminApplyForm.q1)
 
     text = (
@@ -111,12 +112,10 @@ async def cmd_admin_apply(message: types.Message, state: FSMContext):
     await start_admin_apply(message, state, 0)
 
 
-@dp.message(Command("cancel"))
+@dp.message(Command("cancel"), StateFilter(AdminApplyForm))
 async def cmd_cancel_apply(message: types.Message, state: FSMContext):
-    current_state = await state.get_state()
-    if current_state is not None and current_state.startswith("AdminApplyForm"):
-        await state.clear()
-        await message.answer("❌ Заполнение анкеты отменено.")
+    await state.clear()
+    await message.answer("❌ Заполнение анкеты отменено.")
 
 
 @dp.message(AdminApplyForm.q1, F.text)
@@ -141,13 +140,13 @@ async def process_q2(message: types.Message, state: FSMContext):
     await message.answer(QUESTIONS["q3"], reply_markup=b.as_markup())
 
 
-@dp.callback_query(AdminApplyForm.q3, F.data.startswith("a_ans_q3_"))
+# ЖЕСТКАЯ ПРИВЯЗКА К СОСТОЯНИЮ (StateFilter)
+@dp.callback_query(F.data.startswith("a_ans_q3_"), StateFilter(AdminApplyForm.q3))
 async def process_q3_btn(query: types.CallbackQuery, state: FSMContext):
     ans_key = query.data.replace("a_ans_q3_", "")
     ans_text = Q3_ANSWERS.get(ans_key, "Неизвестно")
 
     await state.update_data(q3=ans_text)
-    # ДОБАВЛЕН parse_mode="HTML"
     await query.message.edit_text(f"{QUESTIONS['q3']}\n\n✅ <b>Ваш ответ:</b> {ans_text}", parse_mode="HTML")
 
     await state.set_state(AdminApplyForm.q4)
@@ -160,13 +159,12 @@ async def process_q3_btn(query: types.CallbackQuery, state: FSMContext):
     await query.answer()
 
 
-@dp.callback_query(AdminApplyForm.q4, F.data.startswith("a_ans_q4_"))
+@dp.callback_query(F.data.startswith("a_ans_q4_"), StateFilter(AdminApplyForm.q4))
 async def process_q4_btn(query: types.CallbackQuery, state: FSMContext):
     ans_key = query.data.replace("a_ans_q4_", "")
     ans_text = Q4_ANSWERS.get(ans_key, "Неизвестно")
 
     await state.update_data(q4=ans_text)
-    # ДОБАВЛЕН parse_mode="HTML"
     await query.message.edit_text(f"{QUESTIONS['q4']}\n\n✅ <b>Ваш ответ:</b> {ans_text}", parse_mode="HTML")
 
     await state.set_state(AdminApplyForm.q5)
@@ -246,7 +244,7 @@ async def process_q12(message: types.Message, state: FSMContext):
     await message.answer(preview, reply_markup=b.as_markup(), parse_mode="HTML")
 
 
-@dp.callback_query(AdminApplyForm.confirm, F.data == "a_ans_submit")
+@dp.callback_query(F.data == "a_ans_submit", StateFilter(AdminApplyForm.confirm))
 async def process_submit(query: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     username = f"@{query.from_user.username}" if query.from_user.username else query.from_user.first_name
@@ -282,7 +280,7 @@ async def process_submit(query: types.CallbackQuery, state: FSMContext):
     await query.answer()
 
 
-@dp.callback_query(AdminApplyForm.confirm, F.data == "a_ans_restart")
+@dp.callback_query(F.data == "a_ans_restart", StateFilter(AdminApplyForm.confirm))
 async def process_restart(query: types.CallbackQuery, state: FSMContext):
     await state.clear()
     await query.message.delete()
