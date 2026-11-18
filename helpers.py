@@ -2,11 +2,12 @@ import html
 import random
 import aiohttp
 import json
+import asyncio
 from datetime import datetime, timezone
 from functools import wraps
 from aiogram import types
 from aiogram.types import FSInputFile, InputMediaPhoto, BufferedInputFile
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 from aiogram import Bot
 from bot_instance import bot
 from config import DB_PATH
@@ -422,6 +423,10 @@ async def update_user_tag(bot: Bot, chat_id: int, user_id: int, user: dict = Non
     char_name = user.get("character_name", "") or ""
     rank_key = user.get("admin_rank", "")
 
+    # ЗАЩИТА: Если нет ни персонажа, ни ранга - не трогаем тег
+    if not char_name and not rank_key:
+        return ""
+
     NAME_ABBREVIATIONS = {
         "Аяка Камисато": "Аяка",
         "Аято Камисато": "Аято",
@@ -449,17 +454,26 @@ async def update_user_tag(bot: Bot, chat_id: int, user_id: int, user: dict = Non
                         short_name = "Админ"
                 tag = f"{short_name} | {clean_rank}"
             else:
-                tag = char_name[:16]
+                tag = char_name[:16] if char_name else ""
     else:
         tag = char_name[:16]
 
-    try:
-        member = await bot.get_chat_member(chat_id, user_id)
-        if member.status in ("administrator", "creator"):
-            await bot.set_chat_administrator_custom_title(chat_id=chat_id, user_id=user_id, custom_title=tag)
-        else:
-            await bot.set_chat_member_tag(chat_id=chat_id, user_id=user_id, tag=tag)
-        return ""
-    except Exception as e:
-        pass
-        return ""
+    if not tag: return ""
+
+    # Пытаемся установить тег (3 попытки при Flood Control)
+    for attempt in range(3):
+        try:
+            member = await bot.get_chat_member(chat_id, user_id)
+            if member.status in ("administrator", "creator"):
+                await bot.set_chat_administrator_custom_title(chat_id=chat_id, user_id=user_id, custom_title=tag)
+            else:
+                await bot.set_chat_member_tag(chat_id=chat_id, user_id=user_id, tag=tag)
+            return ""
+        except TelegramRetryAfter as e:
+            print(f"⚠️ Flood control при установке тега. Ждем {e.retry_after} сек...")
+            await asyncio.sleep(e.retry_after + 1)
+        except Exception as e:
+            print(f"⚠️ Ошибка установки тега: {e}")
+            break
+
+    return ""

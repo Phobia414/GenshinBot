@@ -168,33 +168,27 @@ async def track_text(message: types.Message, user: dict, chat_id: int):
                     "⚔️ Чтобы вызвать на дуэль, ответь на сообщение игрока или укажи @username, и напиши сумму (например: Вызвать на дуэль 500)")
                 return
 
-    # --- ЛОГИКА ПОИСКА ДЕЙСТВИЙ (СТАНДАРТНЫХ И КАСТОМНЫХ) ---
     matched = None
     custom_inter = None
 
-    # 1. Сначала ищем кастомные действия
     all_customs = await get_all_custom_interactions(chat_id)
-    # Сортируем от длинных названий к коротким, чтобы фразы из 3 слов срабатывали раньше, чем из 1.
     all_customs.sort(key=lambda x: len(x['name']), reverse=True)
 
     for ci in all_customs:
         ci_name = ci['name']
         if text_lower == ci_name or text_lower.startswith(ci_name + " "):
-            # Если действие приватное и юзер не его создатель - пропускаем
             if ci['is_private'] and ci['creator_id'] != message.from_user.id:
                 continue
             custom_inter = ci
             matched = ci_name
             break
 
-    # 2. Если кастомное не нашли, ищем стандартное
     if not matched:
         for phrase in sorted(INTERACTIONS.keys(), key=len, reverse=True):
             if text_lower == phrase or text_lower.startswith(phrase + " "):
                 matched = phrase
                 break
 
-    # 3. Передаем в обработчик
     if matched or text_lower in ("усыновить", "удочерить"):
         if custom_inter:
             if await handle_interaction(message, user, matched, chat_id, custom_inter=custom_inter):
@@ -357,7 +351,6 @@ async def handle_interaction(message, user, matched_phrase, chat_id, custom_inte
             reply_markup=back_kb(message.from_user.id))
         return True
 
-    # ОБРАБОТКА КАСТОМНОГО ДЕЙСТВИЯ
     if custom_inter:
         inter = {
             "emoji": custom_inter['emoji'],
@@ -419,7 +412,6 @@ async def handle_interaction(message, user, matched_phrase, chat_id, custom_inte
 
 
 async def show_user_card(message, user, tg_user, chat_id):
-    # ... (код карточки пользователя оставляем без изменений) ...
     name = esc(user["character_name"] or "Не выбран")
     gtext = "Мужской" if user["gender"] == "male" else ("Женский" if user["gender"] == "female" else "Не указан")
 
@@ -456,7 +448,6 @@ async def show_user_card(message, user, tg_user, chat_id):
         ranks = await get_ranks_config()
         r_data = ranks.get(user["admin_rank"])
         if r_data:
-            # Берем profile_text, если его нет - name
             display_rank = r_data.get("profile_text") or r_data.get("name", "")
             admin_rank_text = f"👑 Должность: <b>{display_rank}</b>\n\n"
 

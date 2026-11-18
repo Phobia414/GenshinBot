@@ -20,7 +20,7 @@ from constants import DIV, PLACEHOLDER_IMAGES, WARN_LIMIT, REP_PER_MESSAGE, REP_
 from helpers import (
     esc, user_display_name, get_placeholder_image, _ensure_user,
     edit_or_send, get_section_image, find_region_by_character, get_reputation_bonuses,
-    get_reputation_title, inject_user, format_text, update_user_tag
+    get_reputation_title, inject_user, format_text, update_user_tag, get_ranks_config
 )
 from keyboards import (
     gender_kb, regions_kb, characters_kb, main_menu_kb, profile_kb, adventurers_kb,
@@ -54,7 +54,6 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
         await process_report_start(message, chat_id_report, state)
         return
 
-    # Обработка ссылки на анкету в администрацию
     if command.args and command.args.startswith("admin_apply_"):
         from handlers.admin_apply import start_admin_apply
         try:
@@ -298,7 +297,6 @@ async def cb_profile(query, callback_data, user, chat_id):
     # УМНЫЙ ВЫВОД РАНГА
     admin_rank_text = ""
     if user.get("admin_rank"):
-        from helpers import get_ranks_config
         ranks = await get_ranks_config()
         r_data = ranks.get(user["admin_rank"])
         if r_data:

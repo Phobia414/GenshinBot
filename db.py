@@ -1,10 +1,13 @@
 import aiosqlite
+import asyncio
+import json
 from config import DB_PATH
 from datetime import datetime, timezone
 
 
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("PRAGMA journal_mode=WAL;")
         for table in ["users", "guilds", "artifacts", "protected_users", "gacha_inventory", "world_boss", "guild_boss",
                       "guild_member_stats"]:
             try:
@@ -124,7 +127,8 @@ async def init_db():
         await db.execute("CREATE TABLE IF NOT EXISTS gacha_gifs (rarity TEXT PRIMARY KEY, file_id TEXT)")
         await db.execute("CREATE TABLE IF NOT EXISTS gacha_custom_images (item_name TEXT PRIMARY KEY, image_url TEXT)")
         await db.execute("CREATE TABLE IF NOT EXISTS known_groups (chat_id INTEGER PRIMARY KEY)")
-
+        await db.execute(
+            "CREATE TABLE IF NOT EXISTS custom_interactions (id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER, creator_id INTEGER, creator_name TEXT, name TEXT, emoji TEXT, is_private INTEGER DEFAULT 0)")
         await db.execute("""
             CREATE TABLE IF NOT EXISTS admin_applications (
                 user_id INTEGER PRIMARY KEY,
@@ -138,8 +142,6 @@ async def init_db():
                 target_chat_id INTEGER DEFAULT 0
             )
         """)
-
-        # ТАБЛИЦА ДЛЯ ВАРНОВ С ИСТЕЧЕНИЕМ ВРЕМЕНИ
         await db.execute("""
             CREATE TABLE IF NOT EXISTS user_warns (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -151,34 +153,17 @@ async def init_db():
                 created_at INTEGER
             )
         """)
-        await db.execute("""
-                    CREATE TABLE IF NOT EXISTS custom_interactions (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        chat_id INTEGER,
-                        creator_id INTEGER,
-                        creator_name TEXT,
-                        name TEXT,
-                        emoji TEXT,
-                        is_private INTEGER DEFAULT 0
-                    )
-                """)
 
         await db.commit()
 
-        # Миграция: добавляем новые колонки, если их нет
+        # Миграции колонок
         missing_columns = [
-            "rel_image TEXT DEFAULT ''",
-            "search_rp_partner TEXT DEFAULT ''",
-            "msgs_week INTEGER DEFAULT 0",
-            "msgs_month INTEGER DEFAULT 0",
-            "msgs_day INTEGER DEFAULT 0",
-            "gacha_banner TEXT DEFAULT 'event_char'",
-            "gacha_pity_4 INTEGER DEFAULT 0",
+            "rel_image TEXT DEFAULT ''", "search_rp_partner TEXT DEFAULT ''",
+            "msgs_week INTEGER DEFAULT 0", "msgs_month INTEGER DEFAULT 0", "msgs_day INTEGER DEFAULT 0",
+            "gacha_banner TEXT DEFAULT 'event_char'", "gacha_pity_4 INTEGER DEFAULT 0",
             "gacha_pity_5 INTEGER DEFAULT 0",
-            "gacha_guaranteed_5 INTEGER DEFAULT 0",
-            "gacha_lost_50_50 INTEGER DEFAULT 0",
-            "sub_passed INTEGER DEFAULT 0",
-            "admin_rank TEXT DEFAULT 'Игрок'"
+            "gacha_guaranteed_5 INTEGER DEFAULT 0", "gacha_lost_50_50 INTEGER DEFAULT 0",
+            "sub_passed INTEGER DEFAULT 0", "admin_rank TEXT DEFAULT 'Игрок'"
         ]
         for col in missing_columns:
             try:
@@ -212,13 +197,6 @@ async def init_gacha_db(): pass
 async def init_gacha_images_db(): pass
 
 
-async def load_gacha_images():
-    import state
-    rows = await fetch_all("SELECT item_name, image_url FROM gacha_custom_images")
-    for r in rows:
-        state._gacha_images[r['item_name']] = r['image_url']
-
-
 async def fetch_one(query, params=()):
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
@@ -236,11 +214,23 @@ async def fetch_all(query, params=()):
 
 async def execute(query, params=()):
     async with aiosqlite.connect(DB_PATH) as db:
-        cur = await db.execute(query, params)
-        await db.commit()
-        return cur.lastrowid
+        # Включаем WAL и ставим таймаут ожидания
+        await db.execute("PRAGMA journal_mode=WAL;")
+        await db.execute("PRAGMA busy_timeout=5000;")
+
+        for attempt in range(3):  # 3 попытки при блокировке
+            try:
+                cur = await db.execute(query, params)
+                await db.commit()
+                return cur.lastrowid
+            except aiosqlite.OperationalError as e:
+                if "database is locked" in str(e):
+                    await asyncio.sleep(1)  # Ждем секунду и пробуем снова
+                else:
+                    raise e
 
 
+# ================= ПОЛЬЗОВАТЕЛИ =================
 async def get_user(user_id, chat_id=0):
     return await fetch_one("SELECT * FROM users WHERE user_id = ? AND chat_id = ?", (user_id, chat_id))
 
@@ -264,6 +254,12 @@ async def increment_user_field(user_id, chat_id, field, amount=1):
                   (amount, user_id, chat_id))
 
 
+async def get_user_by_username(username):
+    res = await fetch_one("SELECT user_id FROM users WHERE LOWER(username) = ?", (username,))
+    return res['user_id'] if res else None
+
+
+# ================= ПЕРСОНАЖИ =================
 async def is_character_taken(character, chat_id=0):
     res = await fetch_one("SELECT user_id FROM users WHERE character_name = ? AND chat_id = ?", (character, chat_id))
     return res is not None
@@ -276,6 +272,7 @@ async def get_taken_characters(chat_id=0):
     return {r['character_name'] for r in rows}
 
 
+# ================= ТОПЫ =================
 async def get_top_balance(chat_id=0, limit=50):
     return await fetch_all(
         "SELECT user_id, character_name, balance FROM users "
@@ -297,6 +294,7 @@ async def get_top_reputation(chat_id=0, limit=50):
         "ORDER BY reputation DESC LIMIT ?", (chat_id, limit))
 
 
+# ================= КАНАЛЫ И СПИСКИ =================
 async def set_group_channel(group_id, channel_id, message_id):
     await execute("INSERT OR REPLACE INTO group_channels (group_id, channel_id, message_id) VALUES (?, ?, ?)",
                   (group_id, channel_id, message_id))
@@ -329,6 +327,7 @@ async def get_custom_names(group_id):
     return {r['default_name']: r['custom_name'] for r in rows}
 
 
+# ================= ГИЛЬДИИ =================
 async def get_guild(guild_id):
     g = await fetch_one("SELECT * FROM guilds WHERE guild_id = ?", (guild_id,))
     if g:
@@ -394,6 +393,7 @@ async def get_guild_craft_stats(guild_id):
     return row
 
 
+# ================= АРТЕФАКТЫ =================
 async def add_artifact(user_id, chat_id, slot, rarity, bonus_type, bonus_value, name):
     return await execute(
         "INSERT INTO artifacts (user_id, chat_id, slot, rarity, bonus_type, bonus_value, name) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -429,6 +429,7 @@ async def get_total_bonuses(user_id, chat_id):
     return earn, drop
 
 
+# ================= ВАРНЫ И РЕПУТАЦИЯ =================
 async def add_warn(user_id, chat_id, amount=1):
     user = await get_user(user_id, chat_id)
     if not user: return 0
@@ -466,6 +467,7 @@ async def add_reputation(user_id, chat_id, amount=1):
     return new_rep
 
 
+# ================= СМОЛА =================
 RESIN_MAX = 160
 RESIN_REGEN_SECONDS = 480
 RESIN_COST_DUNGEON = 40
@@ -490,6 +492,7 @@ async def update_resin(user_id, chat_id):
     return current
 
 
+# ================= ЕДА =================
 INGREDIENTS = {
     "apple": {"name": "🍎 Яблоко", "emoji": "🍎"}, "mushroom": {"name": "🍄 Гриб", "emoji": "🍄"},
     "fish": {"name": "🐟 Рыба", "emoji": "🐟"}, "meat": {"name": "🥩 Мясо", "emoji": "🥩"},
@@ -544,6 +547,7 @@ async def get_food_buff(user_id, chat_id):
     return "", 0
 
 
+# ================= БОССЫ =================
 async def get_world_boss(chat_id):
     return await fetch_one("SELECT * FROM world_boss WHERE chat_id = ?", (chat_id,))
 
@@ -580,6 +584,7 @@ async def damage_guild_boss(chat_id, amount):
     return new_hp
 
 
+# ================= ЗАЩИТА И НАСТРОЙКИ =================
 async def add_protected_user(user_id, chat_id, owner_id):
     await execute("INSERT OR REPLACE INTO protected_users (user_id, chat_id, owner_id) VALUES (?, ?, ?)",
                   (user_id, chat_id, owner_id))
@@ -617,53 +622,47 @@ async def set_local_setting(key, value, chat_id=0):
         await set_setting(key, value)
 
 
+# ================= КАСТОМНЫЕ ДАННЫЕ =================
 async def load_custom_data_to_state():
     import state
     rows = await fetch_all("SELECT name, image_url FROM char_photos")
     for r in rows: state._char_photos[r['name']] = r['image_url']
+
     rows = await fetch_all("SELECT name, region, image_url FROM custom_chars")
     for r in rows: state._custom_chars[r['name']] = {"region": r['region'], "image": r['image_url']}
-    rows = await fetch_all("SELECT item_name, image_url FROM gacha_custom_images")
-    for r in rows: state._gacha_images[r['item_name']] = r['image_url']
 
 
-async def save_char_photo(name, url):
-    import state
-    state._char_photos[name] = url
-    await execute("INSERT OR REPLACE INTO char_photos (name, image_url) VALUES (?, ?)", (name, url))
+async def save_char_photo(name, image_url):
+    await execute("INSERT OR REPLACE INTO char_photos (name, image_url) VALUES (?, ?)", (name, image_url))
 
 
-async def save_custom_char(name, region, url):
-    import state
-    state._custom_chars[name] = {"region": region, "image": url}
-    await execute("INSERT OR REPLACE INTO custom_chars (name, region, image_url) VALUES (?, ?, ?)", (name, region, url))
+async def save_custom_char(name, region, image_url):
+    await execute("INSERT OR REPLACE INTO custom_chars (name, region, image_url) VALUES (?, ?, ?)",
+                  (name, region, image_url))
 
 
 async def delete_custom_char(name):
-    import state
-    if name in state._custom_chars: del state._custom_chars[name]
     await execute("DELETE FROM custom_chars WHERE name = ?", (name,))
-    await execute("DELETE FROM char_photos WHERE name = ?", (name,))
-
-
-async def save_gacha_image(name, url):
     import state
-    state._gacha_images[name] = url
-    await execute("INSERT OR REPLACE INTO gacha_custom_images (item_name, image_url) VALUES (?, ?)", (name, url))
+    state._custom_chars.pop(name, None)
 
 
-async def add_known_group(chat_id):
-    await execute("INSERT OR IGNORE INTO known_groups (chat_id) VALUES (?)", (chat_id,))
+async def load_gacha_images():
+    import state
+    rows = await fetch_all("SELECT item_name, image_url FROM gacha_custom_images")
+    for r in rows:
+        state._gacha_images[r['item_name']] = r['image_url']
 
 
-async def get_known_groups():
-    rows = await fetch_all("SELECT chat_id FROM known_groups")
-    return [r['chat_id'] for r in rows]
+async def save_gacha_image(item_name, image_url):
+    await execute("INSERT OR REPLACE INTO gacha_custom_images (item_name, image_url) VALUES (?, ?)",
+                  (item_name, image_url))
+    import state
+    state._gacha_images[item_name] = image_url
 
 
-async def update_primogems(user_id, chat_id, amount):
-    await execute("UPDATE users SET primogems = IFNULL(primogems, 0) + ? WHERE user_id = ? AND chat_id = ?",
-                  (amount, user_id, chat_id))
+async def set_gacha_gif(rarity, file_id):
+    await execute("INSERT OR REPLACE INTO gacha_gifs (rarity, file_id) VALUES (?, ?)", (rarity, file_id))
 
 
 async def get_gacha_gif(rarity):
@@ -671,8 +670,12 @@ async def get_gacha_gif(rarity):
     return res['file_id'] if res else None
 
 
-async def set_gacha_gif(rarity, file_id):
-    await execute("INSERT OR REPLACE INTO gacha_gifs (rarity, file_id) VALUES (?, ?)", (rarity, file_id))
+# ================= ГАЧА =================
+async def update_primogems(user_id, chat_id, amount):
+    user = await get_user(user_id, chat_id)
+    if user:
+        new_val = max(0, user.get("primogems", 0) + amount)
+        await update_user(user_id, chat_id, primogems=new_val)
 
 
 async def add_gacha_item(user_id, chat_id, item_name, item_type, rarity, image_url):
@@ -682,16 +685,18 @@ async def add_gacha_item(user_id, chat_id, item_name, item_type, rarity, image_u
 
 
 async def get_gacha_inventory(user_id, chat_id):
-    return await fetch_all("SELECT * FROM gacha_inventory WHERE user_id = ? AND chat_id = ? ORDER BY id DESC",
-                           (user_id, chat_id))
+    return await fetch_all(
+        "SELECT * FROM gacha_inventory WHERE user_id = ? AND chat_id = ? ORDER BY id DESC",
+        (user_id, chat_id))
 
 
-async def save_application(user_id, chat_id, character_name, age, experience, about, timezone, triggers, metagaming,
-                           activity):
+# ================= АНКЕТЫ (ВСТУПЛЕНИЕ) =================
+async def save_application(user_id, chat_id, char_name, age, exp, about, tz, triggers, meta, activity):
     await execute("""
-        INSERT OR REPLACE INTO applications (user_id, chat_id, character_name, age, experience, about, timezone, triggers, metagaming, activity, status)
+        INSERT OR REPLACE INTO applications 
+        (user_id, chat_id, character_name, age, experience, about, timezone, triggers, metagaming, activity, status) 
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
-    """, (user_id, chat_id, character_name, age, experience, about, timezone, triggers, metagaming, activity))
+    """, (user_id, chat_id, char_name, age, exp, about, tz, triggers, meta, activity))
 
 
 async def get_application(user_id, chat_id):
@@ -702,112 +707,59 @@ async def update_application_status(user_id, chat_id, status):
     await execute("UPDATE applications SET status = ? WHERE user_id = ? AND chat_id = ?", (status, user_id, chat_id))
 
 
-async def get_cleanup_settings(chat_id):
-    row = await fetch_one("SELECT * FROM chat_cleanup_settings WHERE chat_id = ?", (chat_id,))
-    if not row:
-        await execute(
-            "INSERT OR IGNORE INTO chat_cleanup_settings (chat_id, enabled, min_messages, frequency_days, last_cleanup) VALUES (?, 0, 100, 7, 0)",
-            (chat_id,))
-        row = await fetch_one("SELECT * FROM chat_cleanup_settings WHERE chat_id = ?", (chat_id,))
-    return row
-
-
-async def update_cleanup_settings(chat_id, **kwargs):
-    await get_cleanup_settings(chat_id)
-    if not kwargs: return
-    fields = ", ".join(f"{k} = ?" for k in kwargs.keys())
-    values = list(kwargs.values()) + [chat_id]
-    await execute(f"UPDATE chat_cleanup_settings SET {fields} WHERE chat_id = ?", values)
-
-
-async def add_trusted_admin(user_id: int):
-    await execute("INSERT OR IGNORE INTO bot_settings (key, value) VALUES (?, ?)", (f"trusted_admin_{user_id}", "1"))
-
-
-async def remove_trusted_admin(user_id: int):
-    await execute("DELETE FROM bot_settings WHERE key = ?", (f"trusted_admin_{user_id}",))
-
-
-async def get_trusted_admins() -> list[int]:
-    rows = await fetch_all("SELECT key FROM bot_settings WHERE key LIKE 'trusted_admin_%'")
-    return [int(r['key'].replace('trusted_admin_', '')) for r in rows]
-
-
+# ================= ЖАЛОБЫ =================
 async def save_complaint(chat_id, reporter_id, target_id, target_name, reason, is_anonymous):
     now = int(datetime.now(timezone.utc).timestamp())
-    await execute(
-        "INSERT INTO complaints (chat_id, reporter_id, target_id, target_name, reason, is_anonymous, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (chat_id, reporter_id, target_id, target_name, reason, is_anonymous, now)
-    )
-
-
-# ==================== АНКЕТЫ В АДМИНИСТРАЦИЮ ====================
-
-async def save_admin_application(user_id, username, answers: dict):
-    now = int(datetime.now(timezone.utc).timestamp())
     await execute("""
-        INSERT OR REPLACE INTO admin_applications 
-        (user_id, username, q1, q2, q3, q4, q5, q6, q7, q8, q9, q10, q11, q12, status, created_at, target_chat_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
-    """, (
-        user_id, username, answers.get('q1'), answers.get('q2'), answers.get('q3'),
-        answers.get('q4'), answers.get('q5'), answers.get('q6'), answers.get('q7'),
-        answers.get('q8'), answers.get('q9'), answers.get('q10'), answers.get('q11'),
-        answers.get('q12'), now, answers.get('target_chat_id', 0)
-    ))
+        INSERT INTO complaints (chat_id, reporter_id, target_id, target_name, reason, is_anonymous, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (chat_id, reporter_id, target_id, target_name, reason, is_anonymous, now))
+
+
+# ================= ИЗВЕСТНЫЕ ГРУППЫ =================
+async def add_known_group(chat_id):
+    await execute("INSERT OR IGNORE INTO known_groups (chat_id) VALUES (?)", (chat_id,))
+
+
+async def get_known_groups():
+    rows = await fetch_all("SELECT chat_id FROM known_groups")
+    return [r['chat_id'] for r in rows]
+
+
+# ================= КАСТОМНЫЕ ВЗАИМОДЕЙСТВИЯ =================
+async def add_custom_interaction(chat_id, creator_id, creator_name, name, emoji, is_private):
+    await execute("""
+        INSERT INTO custom_interactions (chat_id, creator_id, creator_name, name, emoji, is_private)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (chat_id, creator_id, creator_name, name, emoji, is_private))
+
+
+async def get_all_custom_interactions(chat_id):
+    return await fetch_all("SELECT * FROM custom_interactions WHERE chat_id = ?", (chat_id,))
+
+
+async def delete_custom_interaction(inter_id):
+    await execute("DELETE FROM custom_interactions WHERE id = ?", (inter_id,))
+
+
+# ================= АДМИН-АНКЕТЫ =================
+async def get_pending_admin_applications():
+    return await fetch_all("SELECT * FROM admin_applications WHERE status = 'pending' ORDER BY created_at DESC")
 
 
 async def get_admin_application(user_id):
     return await fetch_one("SELECT * FROM admin_applications WHERE user_id = ?", (user_id,))
 
 
-async def get_pending_admin_applications():
-    return await fetch_all(
-        "SELECT user_id, username, created_at FROM admin_applications WHERE status = 'pending' ORDER BY created_at ASC")
-
-
 async def update_admin_application_status(user_id, status, reviewer_id=0, flaws_text=""):
-    await execute(
-        "UPDATE admin_applications SET status = ?, reviewer_id = ?, flaws_text = ? WHERE user_id = ?",
-        (status, reviewer_id, flaws_text, user_id)
-    )
+    await execute("""
+        UPDATE admin_applications 
+        SET status = ?, reviewer_id = ?, flaws_text = ? 
+        WHERE user_id = ?
+    """, (status, reviewer_id, flaws_text, user_id))
 
 
-# ==================== СИСТЕМА ВАРНОВ ====================
-
-async def add_user_warn(user_id, chat_id, admin_id, reason, expires_at=0):
-    now = int(datetime.now(timezone.utc).timestamp())
-    await execute(
-        "INSERT INTO user_warns (user_id, chat_id, admin_id, reason, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-        (user_id, chat_id, admin_id, reason, expires_at, now)
-    )
-
-
-async def get_active_warns(user_id, chat_id):
-    now = int(datetime.now(timezone.utc).timestamp())
-    return await fetch_all(
-        "SELECT * FROM user_warns WHERE user_id = ? AND chat_id = ? AND (expires_at = 0 OR expires_at > ?)",
-        (user_id, chat_id, now)
-    )
-
-
-async def clear_user_warns(user_id, chat_id):
-    await execute("DELETE FROM user_warns WHERE user_id = ? AND chat_id = ?", (user_id, chat_id))
-
-
-async def remove_last_warn(user_id, chat_id):
-    await execute(
-        "DELETE FROM user_warns WHERE id = (SELECT id FROM user_warns WHERE user_id = ? AND chat_id = ? ORDER BY id DESC LIMIT 1)",
-        (user_id, chat_id))
-# ============ КАСТОМНЫЕ ВЗАИМОДЕЙСТВИЯ (ДОБАВИТЬ В КОНЕЦ ФАЙЛА) ============
-async def add_custom_interaction(chat_id, creator_id, creator_name, name, emoji, is_private):
-    return await execute(
-        "INSERT INTO custom_interactions (chat_id, creator_id, creator_name, name, emoji, is_private) VALUES (?, ?, ?, ?, ?, ?)",
-        (chat_id, creator_id, creator_name, name.lower().strip(), emoji, is_private)
-    )
-
-async def get_all_custom_interactions(chat_id):
-    return await fetch_all("SELECT * FROM custom_interactions WHERE chat_id = ?", (chat_id,))
-
-async def delete_custom_interaction(inter_id):
-    await execute("DELETE FROM custom_interactions WHERE id = ?", (inter_id,))
+async def get_trusted_admins():
+    # Получаем ID доверенных админов (например, у кого есть ранг выше 'Игрок')
+    rows = await fetch_all("SELECT user_id FROM users WHERE admin_rank != 'Игрок' AND admin_rank != ''")
+    return [r['user_id'] for r in rows]
