@@ -47,12 +47,21 @@ async def cb_shop(query: types.CallbackQuery, callback_data: MenuCB, user: dict,
 
 @dp.callback_query(ShopCB.filter())
 @inject_user
-@dp.callback_query(ShopCB.filter())
-@inject_user
 async def cb_shop_buy(query: types.CallbackQuery, callback_data: ShopCB, user: dict, chat_id: int, state: FSMContext):
     if query.from_user.id != callback_data.owner_id:
         await query.answer("⚠️ Чужое меню!", show_alert=True)
         return
+
+    # Определяем цену для стандартных товаров
+    price = 0
+    if callback_data.item == "role":
+        price = PRICE_ROLE_CHANGE
+    elif callback_data.item == "rest":
+        price = PRICE_REST
+    elif callback_data.item == "clean":
+        price = PRICE_CLEAN
+    elif callback_data.item == "elixir":
+        price = PRICE_ELIXIR
 
     # НОВАЯ ОБРАБОТКА КАСТОМНЫХ ДЕЙСТВИЙ
     if callback_data.item in ["create_public", "create_private"]:
