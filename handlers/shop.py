@@ -1,5 +1,7 @@
 from aiogram import types, F
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 
 from bot_instance import dp
 from callbacks import MenuCB, ShopCB
