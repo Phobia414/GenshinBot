@@ -65,7 +65,7 @@ async def cb_shop_buy(query: types.CallbackQuery, callback_data: ShopCB, user: d
     elif callback_data.item == "elixir":
         price = PRICE_ELIXIR
 
-    # НОВАЯ ОБРАБОТКА КАСТОМНЫХ ДЕЙСТВИЙ
+    # ОБРАБОТКА КАСТОМНЫХ ДЕЙСТВИЙ
     if callback_data.item in ["create_public", "create_private"]:
         is_private = 1 if callback_data.item == "create_private" else 0
         price = 8000 if is_private else 4000
@@ -74,18 +74,30 @@ async def cb_shop_buy(query: types.CallbackQuery, callback_data: ShopCB, user: d
             await query.answer(f"❌ Нужно {price} монет", show_alert=True)
             return
 
+        # 1. Списываем баланс
         await update_user(query.from_user.id, chat_id, balance=user["balance"] - price)
 
+        # 2. Включаем режим ожидания названия
         from handlers.custom_shop import CustomInteraction
         await state.set_state(CustomInteraction.waiting_for_name)
         await state.update_data(is_private=is_private)
 
-        await query.message.edit_text(
+        # 3. Отправляем инструкцию (безопасно)
+        prompt_text = (
             "📝 **Создание нового действия**\n\n"
             "Напиши название действия (например: `потрепать по голове`).\n"
-            "Оно должно быть коротким и начинаться с глагола.",
-            parse_mode="Markdown"
+            "Оно должно быть коротким и начинаться с глагола."
         )
+
+        try:
+            # Пытаемся отредактировать текущее сообщение
+            await query.message.edit_text(prompt_text, parse_mode="Markdown")
+        except Exception:
+            # Если это было фото или сообщение уже удалено — отправляем новое
+            await query.message.answer(prompt_text, parse_mode="Markdown")
+
+        # 4. Обязательно отвечаем на коллбэк, чтобы кнопка перестала грузиться
+        await query.answer("Оплата прошла успешно!")
         return
 
     nb = user["balance"] - price
@@ -116,7 +128,8 @@ async def cb_shop_buy(query: types.CallbackQuery, callback_data: ShopCB, user: d
             await update_user(query.from_user.id, chat_id, balance=nb, rel_xp=new_xp)
             await update_user(partner["user_id"], chat_id, rel_xp=partner.get("rel_xp", 0) + 50)
             level = min(new_xp // XP_PER_LEVEL, MAX_LEVEL)
-            msg = f"🧪 Эликсир выпит! Вы с {esc(partner['partner_name'])} получили +50 XP.\n📊 Текущий уровень: {level} / {MAX_LEVEL}"
+            # ИСПРАВЛЕНО: partner['partner_name'] заменен на partner['character_name']
+            msg = f"🧪 Эликсир выпит! Вы с {esc(partner['character_name'])} получили +50 XP.\n📊 Текущий уровень: {level} / {MAX_LEVEL}"
         else:
             await query.answer("❌ Ошибка данных партнера.", show_alert=True)
             return
