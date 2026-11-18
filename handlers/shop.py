@@ -24,7 +24,7 @@ async def cb_shop(query: types.CallbackQuery, callback_data: MenuCB, user: dict,
         f"🍃 <b>{{name}}</b>, загляни!\n\n"
         f"💰 Баланс: <b>{{balance}}</b>\n\n"
         f"🎖️ Скидка: <b>{{discount}}</b>\n\n"
-        f"Ассортимент:\n\n"
+        f"Ассортимент:\n\n      "
         f"🎭 Смена персонажа: {{price_role}}\n"
         f"😴 Рест: {{price_rest}}\n"
         f"🧹 Чистка: {{price_clean}}\n"
@@ -47,18 +47,34 @@ async def cb_shop(query: types.CallbackQuery, callback_data: MenuCB, user: dict,
 
 @dp.callback_query(ShopCB.filter())
 @inject_user
-async def cb_shop_buy(query: types.CallbackQuery, callback_data: ShopCB, user: dict, chat_id: int):
+@dp.callback_query(ShopCB.filter())
+@inject_user
+async def cb_shop_buy(query: types.CallbackQuery, callback_data: ShopCB, user: dict, chat_id: int, state: FSMContext):
     if query.from_user.id != callback_data.owner_id:
         await query.answer("⚠️ Чужое меню!", show_alert=True)
         return
 
-    _, _, disc = get_reputation_bonuses(user["reputation"])
-    prices = {"role": PRICE_ROLE_CHANGE, "rest": PRICE_REST, "clean": PRICE_CLEAN, "elixir": PRICE_ELIXIR}
-    base = prices.get(callback_data.item, 0)
-    price = int(base * (100 - disc) / 100) if disc else base
+    # НОВАЯ ОБРАБОТКА КАСТОМНЫХ ДЕЙСТВИЙ
+    if callback_data.item in ["create_public", "create_private"]:
+        is_private = 1 if callback_data.item == "create_private" else 0
+        price = 8000 if is_private else 4000
 
-    if user["balance"] < price:
-        await query.answer(f"❌ Нужно {price} монет", show_alert=True)
+        if user["balance"] < price:
+            await query.answer(f"❌ Нужно {price} монет", show_alert=True)
+            return
+
+        await update_user(query.from_user.id, chat_id, balance=user["balance"] - price)
+
+        from handlers.custom_shop import CustomInteraction
+        await state.set_state(CustomInteraction.waiting_for_name)
+        await state.update_data(is_private=is_private)
+
+        await query.message.edit_text(
+            "📝 **Создание нового действия**\n\n"
+            "Напиши название действия (например: `потрепать по голове`).\n"
+            "Оно должно быть коротким и начинаться с глагола.",
+            parse_mode="Markdown"
+        )
         return
 
     nb = user["balance"] - price

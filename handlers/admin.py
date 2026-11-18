@@ -1,6 +1,7 @@
 from datetime import datetime, timezone, timedelta
 import asyncio
 import aiosqlite
+import re
 
 from aiogram import types, F
 from aiogram.filters import Command
@@ -14,7 +15,8 @@ from db import (
     get_user, create_user, update_user, add_warn, remove_warn,
     add_reputation, get_rep_level, RESIN_MAX, add_protected_user, remove_protected_user,
     update_primogems, get_guild_by_name, get_cleanup_settings, update_cleanup_settings,
-    fetch_all, execute, fetch_one, add_trusted_admin, remove_trusted_admin
+    fetch_all, execute, fetch_one, add_trusted_admin, remove_trusted_admin,
+    add_user_warn, get_active_warns, clear_user_warns, remove_last_warn
 )
 from helpers import (
     esc, is_chat_admin, _ensure_user, extract_target, resolve_user_id,
@@ -55,25 +57,66 @@ async def cmd_warn(message: types.Message):
         return await message.reply(
             "⚠️ Вы ответили на сообщение бота. Ответьте на сообщение игрока или укажите @username.")
 
-    target_ref, reason = parse_admin_target(message)
+    target_ref, _ = parse_admin_target(message)
     if not target_ref:
-        return await message.reply("Используй: <code>/warn @user Причина</code> или ответом на сообщение игрока.",
-                                   parse_mode="HTML")
+        return await message.reply(
+            "Используй: <code>/warn 1d Причина</code> (ответом) или <code>/warn @user 1d Причина</code>",
+            parse_mode="HTML")
 
     target_id = target_ref if isinstance(target_ref, int) else await resolve_user_id(target_ref)
     if not target_id: return await message.reply("❌ Игрок не найден.")
     if target_id == message.from_user.id: return await message.reply("❌ Себе нельзя.")
-    if target_id == bot.id: return await message.reply("❌ Боту нельзя выдать варн.")
 
-    user = await _ensure_user(target_id, message.chat.id)
-    warns = await add_warn(target_id, message.chat.id, 1)
+    # Парсим время и причину
+    parts = message.text.split()
+    args = parts[1:] if message.reply_to_message else parts[2:]
+
+    duration_seconds = 0
+    reason = "Не указана"
+
+    if args:
+        time_match = re.match(r"^(\d+)([mhd])$", args[0].lower())
+        if time_match:
+            amount = int(time_match.group(1))
+            unit = time_match.group(2)
+            if unit == 'm':
+                duration_seconds = amount * 60
+            elif unit == 'h':
+                duration_seconds = amount * 3600
+            elif unit == 'd':
+                duration_seconds = amount * 86400
+            reason = " ".join(args[1:])
+        else:
+            reason = " ".join(args)
+
+    expires_at = 0
+    if duration_seconds > 0:
+        expires_at = int((datetime.now(timezone.utc) + timedelta(seconds=duration_seconds)).timestamp())
+
+    await add_user_warn(target_id, message.chat.id, message.from_user.id, reason, expires_at)
+
+    active_warns = await get_active_warns(target_id, message.chat.id)
+    warns_count = len(active_warns)
+
     mention = f'<a href="tg://user?id={target_id}">Игрок</a>'
 
-    await log_action(message.chat.id, message.from_user.first_name, "Warn", target_id, reason)
+    exp_str = ""
+    if duration_seconds > 0:
+        if duration_seconds >= 86400:
+            exp_str = f" (сгорит через {duration_seconds // 86400} дн.)"
+        elif duration_seconds >= 3600:
+            exp_str = f" (сгорит через {duration_seconds // 3600} ч.)"
+        else:
+            exp_str = f" (сгорит через {duration_seconds // 60} мин.)"
+    else:
+        exp_str = " (навсегда)"
 
-    if warns >= WARN_LIMIT:
+    await log_action(message.chat.id, message.from_user.first_name, f"Warn", target_id, reason)
+
+    if warns_count >= WARN_LIMIT:
         mu = int((datetime.now(timezone.utc) + timedelta(hours=WARN_MUTE_HOURS)).timestamp())
-        await update_user(target_id, message.chat.id, muted_until=mu, warns=0)
+        await update_user(target_id, message.chat.id, muted_until=mu)
+        await clear_user_warns(target_id, message.chat.id)
         try:
             await bot.restrict_chat_member(message.chat.id, target_id,
                                            permissions=ChatPermissions(can_send_messages=False), until_date=mu)
@@ -83,7 +126,8 @@ async def cmd_warn(message: types.Message):
             f"⚠️ {mention} получил {WARN_LIMIT}-й варн и замучен на {WARN_MUTE_HOURS}ч.\nПричина: {reason}",
             parse_mode="HTML")
     else:
-        await message.reply(f"⚠️ {mention} получил варн ({warns}/{WARN_LIMIT}).\nПричина: {reason}", parse_mode="HTML")
+        await message.reply(f"⚠️ {mention} получил варн ({warns_count}/{WARN_LIMIT}){exp_str}.\nПричина: {reason}",
+                            parse_mode="HTML")
 
 
 @dp.message(Command("unwarn"))
@@ -99,8 +143,9 @@ async def cmd_unwarn(message: types.Message):
     target_id = target_ref if isinstance(target_ref, int) else await resolve_user_id(target_ref)
     if not target_id: return await message.reply("❌ Не найден.")
 
-    warns = await remove_warn(target_id, message.chat.id, 1)
-    await message.reply(f"✅ Снят 1 варн. Осталось: {warns}")
+    await remove_last_warn(target_id, message.chat.id)
+    active_warns = await get_active_warns(target_id, message.chat.id)
+    await message.reply(f"✅ Снят 1 последний варн. Осталось активных: {len(active_warns)}")
 
 
 @dp.message(Command("mute"))
@@ -216,7 +261,6 @@ async def cmd_unban(message: types.Message):
 # ==================== НАЗНАЧЕНИЕ РАНГОВ ====================
 
 @dp.message(F.text.startswith("!"))
-@dp.message(F.text.startswith("!"))
 async def cmd_set_rank(message: types.Message):
     if message.chat.type not in ("group", "supergroup"): return
     user = await get_user(message.from_user.id, message.chat.id)
@@ -258,17 +302,13 @@ async def cmd_set_rank(message: types.Message):
     try:
         await _ensure_user(target_id, message.chat.id)
 
-        # 1. Сохраняем в БД
         await update_user(target_id, message.chat.id, admin_rank=target_rank_key)
         target_user = await get_user(target_id, message.chat.id)
 
-        # 2. Выдаем права
         err1 = await apply_tg_rights(bot, message.chat.id, target_id, target_rank_data)
 
-        # ЖДЕМ 2 СЕКУНДЫ (чтобы Телеграм выдал админку)
         await asyncio.sleep(2)
 
-        # 3. Ставим тег/должность
         await update_user_tag(bot, message.chat.id, target_id, target_user)
 
         await message.reply(f"✅ Игроку назначен ранг: <b>{target_rank_data['name']}</b>\n{err1 if err1 else ''}",
@@ -276,6 +316,28 @@ async def cmd_set_rank(message: types.Message):
 
     except Exception as e:
         await message.reply(f"⚠️ Ошибка при выдаче ранга: {e}")
+
+
+@dp.message(Command("unsetsrank"))
+async def cmd_unset_rank(message: types.Message):
+    user = await get_user(message.from_user.id, message.chat.id)
+    my_rank = await get_user_rank_data(user)
+    if message.from_user.id != OWNER_ID and not has_permission(my_rank, "assign_lower"):
+        return await message.reply("❌ Нет прав.")
+
+    target_ref, _ = parse_admin_target(message)
+    if not target_ref: return await message.reply("Ответьте или укажите @user.")
+    target_id = target_ref if isinstance(target_ref, int) else await resolve_user_id(target_ref)
+
+    await update_user(target_id, message.chat.id, admin_rank="")
+    await remove_tg_rights(bot, message.chat.id, target_id)
+
+    target_user = await get_user(target_id, message.chat.id)
+    await update_user_tag(bot, message.chat.id, target_id, target_user)
+
+    await message.reply("✅ С игрока сняты все админ-права.")
+
+
 # ==================== ЧИСТКА И СТАТИСТИКА ====================
 
 @dp.message(Command("kicklist", "cleanup_list"))

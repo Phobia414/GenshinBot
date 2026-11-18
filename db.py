@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
-        # Проверяем старые таблицы (миграция)
         for table in ["users", "guilds", "artifacts", "protected_users", "gacha_inventory", "world_boss", "guild_boss",
                       "guild_member_stats"]:
             try:
@@ -126,7 +125,6 @@ async def init_db():
         await db.execute("CREATE TABLE IF NOT EXISTS gacha_custom_images (item_name TEXT PRIMARY KEY, image_url TEXT)")
         await db.execute("CREATE TABLE IF NOT EXISTS known_groups (chat_id INTEGER PRIMARY KEY)")
 
-        # НОВАЯ ТАБЛИЦА ДЛЯ АНКЕТ АДМИНОВ (с target_chat_id)
         await db.execute("""
             CREATE TABLE IF NOT EXISTS admin_applications (
                 user_id INTEGER PRIMARY KEY,
@@ -140,6 +138,30 @@ async def init_db():
                 target_chat_id INTEGER DEFAULT 0
             )
         """)
+
+        # ТАБЛИЦА ДЛЯ ВАРНОВ С ИСТЕЧЕНИЕМ ВРЕМЕНИ
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS user_warns (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                chat_id INTEGER,
+                admin_id INTEGER,
+                reason TEXT,
+                expires_at INTEGER DEFAULT 0,
+                created_at INTEGER
+            )
+        """)
+        await db.execute("""
+                    CREATE TABLE IF NOT EXISTS custom_interactions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        chat_id INTEGER,
+                        creator_id INTEGER,
+                        creator_name TEXT,
+                        name TEXT,
+                        emoji TEXT,
+                        is_private INTEGER DEFAULT 0
+                    )
+                """)
 
         await db.commit()
 
@@ -163,12 +185,6 @@ async def init_db():
                 await db.execute(f"ALTER TABLE users ADD COLUMN {col}")
             except Exception:
                 pass
-
-        # Миграция для анкет
-        try:
-            await db.execute("ALTER TABLE admin_applications ADD COLUMN target_chat_id INTEGER DEFAULT 0")
-        except Exception:
-            pass
 
         try:
             await db.execute("ALTER TABLE guilds ADD COLUMN bonus_slots INTEGER DEFAULT 0")
@@ -755,3 +771,43 @@ async def update_admin_application_status(user_id, status, reviewer_id=0, flaws_
         "UPDATE admin_applications SET status = ?, reviewer_id = ?, flaws_text = ? WHERE user_id = ?",
         (status, reviewer_id, flaws_text, user_id)
     )
+
+
+# ==================== СИСТЕМА ВАРНОВ ====================
+
+async def add_user_warn(user_id, chat_id, admin_id, reason, expires_at=0):
+    now = int(datetime.now(timezone.utc).timestamp())
+    await execute(
+        "INSERT INTO user_warns (user_id, chat_id, admin_id, reason, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (user_id, chat_id, admin_id, reason, expires_at, now)
+    )
+
+
+async def get_active_warns(user_id, chat_id):
+    now = int(datetime.now(timezone.utc).timestamp())
+    return await fetch_all(
+        "SELECT * FROM user_warns WHERE user_id = ? AND chat_id = ? AND (expires_at = 0 OR expires_at > ?)",
+        (user_id, chat_id, now)
+    )
+
+
+async def clear_user_warns(user_id, chat_id):
+    await execute("DELETE FROM user_warns WHERE user_id = ? AND chat_id = ?", (user_id, chat_id))
+
+
+async def remove_last_warn(user_id, chat_id):
+    await execute(
+        "DELETE FROM user_warns WHERE id = (SELECT id FROM user_warns WHERE user_id = ? AND chat_id = ? ORDER BY id DESC LIMIT 1)",
+        (user_id, chat_id))
+# ============ КАСТОМНЫЕ ВЗАИМОДЕЙСТВИЯ (ДОБАВИТЬ В КОНЕЦ ФАЙЛА) ============
+async def add_custom_interaction(chat_id, creator_id, creator_name, name, emoji, is_private):
+    return await execute(
+        "INSERT INTO custom_interactions (chat_id, creator_id, creator_name, name, emoji, is_private) VALUES (?, ?, ?, ?, ?, ?)",
+        (chat_id, creator_id, creator_name, name.lower().strip(), emoji, is_private)
+    )
+
+async def get_all_custom_interactions(chat_id):
+    return await fetch_all("SELECT * FROM custom_interactions WHERE chat_id = ?", (chat_id,))
+
+async def delete_custom_interaction(inter_id):
+    await execute("DELETE FROM custom_interactions WHERE id = ?", (inter_id,))

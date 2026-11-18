@@ -20,6 +20,7 @@ from . import gacha
 from . import daily
 from . import economy
 from . import apply
-from . import reports
-from . import admin_apply    # <--- НОВОЕ
-from . import admin_review   # <--- НОВОЕ
+from . import report
+from . import admin_apply
+from . import admin_review
+from . import custom_shop

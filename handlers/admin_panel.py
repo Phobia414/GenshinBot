@@ -105,6 +105,7 @@ async def render_admin_menu(message, state):
     b.button(text=f"⊱ 🔒 Обязательная подписка: {sub_status} ⊰", callback_data="admin_toggle_sub")
     b.button(text="⊱ 📢 Настроить каналы ⊰", callback_data="admin_edit_channels")
     b.button(text="⊱ 👑 Настроить ранги ⊰", callback_data="admin_edit_ranks")
+    b.button(text="⊱ 🎭 Кастомные действия ⊰", callback_data="admin_custom_inters")
     b.adjust(1)
 
     text = f"⚙️ АДМИН-ПАНЕЛЬ\n\n🌐 Контекст: <b>{context_text}</b>\n\nВыбери категорию:"
@@ -130,6 +131,7 @@ async def cmd_admin(message, state):
     b.button(text=f"⊱ 🔒 Обязательная подписка: {sub_status} ⊰", callback_data="admin_toggle_sub")
     b.button(text="⊱ 📢 Настроить каналы ⊰", callback_data="admin_edit_channels")
     b.button(text="⊱ 👑 Настроить ранги ⊰", callback_data="admin_edit_ranks")
+    b.button(text="⊱ 🎭 Кастомные действия ⊰", callback_data="admin_custom_inters")
     b.adjust(1)
 
     text = f"⚙️ АДМИН-ПАНЕЛЬ\n\n🌐 Контекст: <b>ВСЕ ЧАТЫ (Глобально)</b>\n\nВыбери категорию:"
@@ -732,3 +734,45 @@ async def process_char_photo(message, state):
     b.button(text="‹ В админ-панель", callback_data="admin_back")
     b.adjust(1)
     await message.answer(msg, reply_markup=b.as_markup())
+
+
+from db import get_all_custom_interactions, delete_custom_interaction
+
+
+@dp.callback_query(F.data == "admin_custom_inters")
+async def cb_admin_custom_inters(query: types.CallbackQuery, state: FSMContext):
+    if query.from_user.id != OWNER_ID: return
+
+    data = await state.get_data()
+    target_chat_id = data.get("target_chat_id", 0)
+
+    if not target_chat_id:
+        return await query.message.edit_text("❌ Сначала выберите конкретный чат в меню «Контекст» (не глобально).")
+
+    inters = await get_all_custom_interactions(target_chat_id)
+
+    b = InlineKeyboardBuilder()
+    if not inters:
+        text = "🎭 <b>КАСТОМНЫЕ ДЕЙСТВИЯ</b>\n\nВ этом чате нет кастомных действий."
+    else:
+        text = "🎭 <b>КАСТОМНЫЕ ДЕЙСТВИЯ</b>\n\nНажми на действие, чтобы удалить его:\n\n"
+        for i in inters:
+            status = "🔒" if i['is_private'] else "🌐"
+            b.button(text=f"❌ {status} {i['emoji']} {i['name']} (от {i['creator_name']})",
+                     callback_data=f"admin_del_inter_{i['id']}")
+
+    b.button(text="‹ Назад", callback_data="admin_back")
+    b.adjust(1)
+
+    await query.message.edit_text(text, reply_markup=b.as_markup(), parse_mode="HTML")
+
+
+@dp.callback_query(F.data.startswith("admin_del_inter_"))
+async def cb_admin_del_inter(query: types.CallbackQuery, state: FSMContext):
+    if query.from_user.id != OWNER_ID: return
+    inter_id = int(query.data.replace("admin_del_inter_", ""))
+
+    await delete_custom_interaction(inter_id)
+    await query.answer("✅ Действие удалено!", show_alert=True)
+
+    await cb_admin_custom_inters(query, state)

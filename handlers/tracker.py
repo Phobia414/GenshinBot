@@ -17,7 +17,7 @@ from db import (
     get_guild, update_guild,
     add_ingredient, get_ingredients, INGREDIENTS,
     get_food_buff, get_total_bonuses, update_primogems,
-    get_application, update_application_status
+    get_application, update_application_status, get_all_custom_interactions
 )
 from helpers import (
     esc, _mention, extract_target, resolve_user_id,
@@ -168,15 +168,40 @@ async def track_text(message: types.Message, user: dict, chat_id: int):
                     "⚔️ Чтобы вызвать на дуэль, ответь на сообщение игрока или укажи @username, и напиши сумму (например: Вызвать на дуэль 500)")
                 return
 
+    # --- ЛОГИКА ПОИСКА ДЕЙСТВИЙ (СТАНДАРТНЫХ И КАСТОМНЫХ) ---
     matched = None
-    for phrase in sorted(INTERACTIONS.keys(), key=len, reverse=True):
-        if text_lower == phrase or text_lower.startswith(phrase + " "):
-            matched = phrase
+    custom_inter = None
+
+    # 1. Сначала ищем кастомные действия
+    all_customs = await get_all_custom_interactions(chat_id)
+    # Сортируем от длинных названий к коротким, чтобы фразы из 3 слов срабатывали раньше, чем из 1.
+    all_customs.sort(key=lambda x: len(x['name']), reverse=True)
+
+    for ci in all_customs:
+        ci_name = ci['name']
+        if text_lower == ci_name or text_lower.startswith(ci_name + " "):
+            # Если действие приватное и юзер не его создатель - пропускаем
+            if ci['is_private'] and ci['creator_id'] != message.from_user.id:
+                continue
+            custom_inter = ci
+            matched = ci_name
             break
 
+    # 2. Если кастомное не нашли, ищем стандартное
+    if not matched:
+        for phrase in sorted(INTERACTIONS.keys(), key=len, reverse=True):
+            if text_lower == phrase or text_lower.startswith(phrase + " "):
+                matched = phrase
+                break
+
+    # 3. Передаем в обработчик
     if matched or text_lower in ("усыновить", "удочерить"):
-        if await handle_interaction(message, user, matched or text_lower, chat_id):
-            return
+        if custom_inter:
+            if await handle_interaction(message, user, matched, chat_id, custom_inter=custom_inter):
+                return
+        else:
+            if await handle_interaction(message, user, matched or text_lower, chat_id):
+                return
 
     if text_lower == "кто я":
         await show_user_card(message, user, message.from_user, chat_id)
@@ -295,7 +320,7 @@ async def track_photo(message: types.Message, user: dict, chat_id: int):
             await db.commit()
 
 
-async def handle_interaction(message, user, matched_phrase, chat_id):
+async def handle_interaction(message, user, matched_phrase, chat_id, custom_inter=None):
     target_ref, target_disp = extract_target(message)
     target_id = None
     if isinstance(target_ref, int):
@@ -332,8 +357,27 @@ async def handle_interaction(message, user, matched_phrase, chat_id):
             reply_markup=back_kb(message.from_user.id))
         return True
 
-    inter = INTERACTIONS.get(matched_phrase)
-    if not inter: return False
+    # ОБРАБОТКА КАСТОМНОГО ДЕЙСТВИЯ
+    if custom_inter:
+        inter = {
+            "emoji": custom_inter['emoji'],
+            "verb_m": custom_inter['name'],
+            "verb_f": custom_inter['name']
+        }
+        xp = 0
+    else:
+        inter = INTERACTIONS.get(matched_phrase)
+        if not inter: return False
+
+        xp = inter.get("xp", 0)
+        if inter.get("pair_only"):
+            if user["partner_id"] != target_id:
+                await message.reply("💕 Это взаимодействие только для пары.")
+                return True
+            if xp:
+                await update_user(message.from_user.id, chat_id, rel_xp=(user["rel_xp"] or 0) + xp)
+                await update_user(target_id, chat_id, rel_xp=(target["rel_xp"] or 0) + xp)
+                user = await get_user(message.from_user.id, chat_id)
 
     now = int(datetime.now(timezone.utc).timestamp())
     last = _inter_cooldown.get(message.from_user.id, 0)
@@ -343,16 +387,6 @@ async def handle_interaction(message, user, matched_phrase, chat_id):
         except:
             pass
         return True
-
-    xp = inter.get("xp", 0)
-    if inter.get("pair_only"):
-        if user["partner_id"] != target_id:
-            await message.reply("💕 Это взаимодействие только для пары.")
-            return True
-        if xp:
-            await update_user(message.from_user.id, chat_id, rel_xp=(user["rel_xp"] or 0) + xp)
-            await update_user(target_id, chat_id, rel_xp=(target["rel_xp"] or 0) + xp)
-            user = await get_user(message.from_user.id, chat_id)
 
     verb = inter["verb_f"] if user["gender"] == "female" else inter["verb_m"]
     emoji = inter["emoji"]
@@ -385,6 +419,7 @@ async def handle_interaction(message, user, matched_phrase, chat_id):
 
 
 async def show_user_card(message, user, tg_user, chat_id):
+    # ... (код карточки пользователя оставляем без изменений) ...
     name = esc(user["character_name"] or "Не выбран")
     gtext = "Мужской" if user["gender"] == "male" else ("Женский" if user["gender"] == "female" else "Не указан")
 
@@ -416,7 +451,6 @@ async def show_user_card(message, user, tg_user, chat_id):
 
     rep_level = get_rep_level(user["reputation"])
 
-    # УМНЫЙ ВЫВОД РАНГА
     admin_rank_text = ""
     if user.get("admin_rank"):
         ranks = await get_ranks_config()
@@ -427,7 +461,7 @@ async def show_user_card(message, user, tg_user, chat_id):
             for e in ["👑", "🛡", "⚔", "⚙", "🔨", "🔧", "📝"]:
                 raw_name = raw_name.replace(e, "")
             clean_rank = raw_name.strip()
-            admin_rank_text = f"{emoji} Должность: <b>{clean_rank}</b>\n\n"  # Двойной перенос для красоты
+            admin_rank_text = f"{emoji} Должность: <b>{clean_rank}</b>\n\n"
 
     join_date = ""
     if user.get("first_seen"):

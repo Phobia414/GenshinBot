@@ -78,9 +78,16 @@ async def cmd_antispam(handler, event: types.Message, data: dict):
 
 @dp.callback_query.middleware()
 async def check_user_character_middleware(handler, event: types.CallbackQuery, data: dict):
-    # 1. Пропускаем кнопки анкет
     cb_data = event.data or ""
-    if cb_data.startswith("a_ans_") or cb_data.startswith("aapp:"):
+
+    # 1. СПИСОК ИСКЛЮЧЕНИЙ: кнопки, которые НЕ ТРЕБУЮТ наличия персонажа
+    allowed_prefixes = (
+        "menu:gender_", "menu:regions", "reg:", "char:", "menu:tops", "top:",
+        "menu:lists", "lists:", "cmd:", "apply_", "appr_", "newchar_",
+        "sub:", "report_", "a_ans_", "aapp:", "admin_"
+    )
+
+    if cb_data.startswith(allowed_prefixes):
         return await handler(event, data)
 
     # 2. Пропускаем кнопки, если человек в процессе анкеты
@@ -94,19 +101,7 @@ async def check_user_character_middleware(handler, event: types.CallbackQuery, d
         ):
             return await handler(event, data)
 
-    # 3. Пропускаем меню выбора пола и региона
-    if cb_data.startswith("menu:gender") or cb_data.startswith("reg:") or cb_data.startswith("char:"):
-        return await handler(event, data)
-
-    # 4. Пропускаем подписку
-    if cb_data.startswith("sub:"):
-        return await handler(event, data)
-
-    # 5. Меню владельца/админа
-    if cb_data.startswith("admin_") or cb_data.startswith("aapp"):
-        return await handler(event, data)
-
-    # 6. Основная проверка
+    # 3. Основная проверка: если у человека нет персонажа — блокируем
     chat_id = event.message.chat.id if event.message else event.from_user.id
     user = await get_user(event.from_user.id, chat_id)
 
@@ -116,7 +111,6 @@ async def check_user_character_middleware(handler, event: types.CallbackQuery, d
             return
 
     return await handler(event, data)
-
 
 @dp.callback_query.middleware()
 async def auto_register_cb(handler, event: types.CallbackQuery, data: dict):

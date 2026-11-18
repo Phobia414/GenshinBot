@@ -102,6 +102,7 @@ def board_kb(uid, user, tasks, accepted, claimed):
     b.adjust(1)
     return b.as_markup()
 
+
 def shop_kb(uid, discount=0):
     def p(x):
         return int(x * (100 - discount) / 100) if discount else x
@@ -111,10 +112,13 @@ def shop_kb(uid, discount=0):
     b.button(text=f"⊱ 😴 Рест · {p(PRICE_REST)} ⊰", callback_data=ShopCB(item="rest", owner_id=uid))
     b.button(text=f"⊱ 🧹 Освобождение от чистки · {p(PRICE_CLEAN)} ⊰", callback_data=ShopCB(item="clean", owner_id=uid))
     b.button(text=f"⊱ 🧪 Эликсир Любви · {p(PRICE_ELIXIR)} ⊰", callback_data=ShopCB(item="elixir", owner_id=uid))
+
+    b.button(text="⊱ ➕ Создать общее действие · 4000 ⊰", callback_data=ShopCB(item="create_public", owner_id=uid))
+    b.button(text="⊱ 🔒 Создать личное действие · 8000 ⊰", callback_data=ShopCB(item="create_private", owner_id=uid))
+
     b.button(text="⊱ ‹ Назад в меню ⊰", callback_data=MenuCB(action="menu", owner_id=uid))
     b.adjust(1)
     return b.as_markup()
-
 def relations_kb(uid, has_partner, married, can_marry, has_child, gender):
     b = InlineKeyboardBuilder()
     if has_partner:
