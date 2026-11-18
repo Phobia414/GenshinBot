@@ -127,8 +127,6 @@ async def init_db():
         await db.execute("CREATE TABLE IF NOT EXISTS gacha_custom_images (item_name TEXT PRIMARY KEY, image_url TEXT)")
         await db.execute("CREATE TABLE IF NOT EXISTS known_groups (chat_id INTEGER PRIMARY KEY)")
         await db.execute("CREATE TABLE IF NOT EXISTS blocked_users (user_id INTEGER PRIMARY KEY)")
-
-        # НОВАЯ ТАБЛИЦА ДЛЯ ДОВЕРЕННЫХ АДМИНОВ
         await db.execute("CREATE TABLE IF NOT EXISTS trusted_admins (user_id INTEGER PRIMARY KEY)")
 
         await db.execute("""
@@ -446,6 +444,22 @@ async def remove_warn(user_id, chat_id, amount=1):
     new_warns = max(0, (user["warns"] or 0) - amount)
     await update_user(user_id, chat_id, warns=new_warns)
     return new_warns
+
+
+async def add_user_warn(user_id, chat_id, admin_id, reason, expires_at=0):
+    now = int(datetime.now(timezone.utc).timestamp())
+    return await execute(
+        "INSERT INTO user_warns (user_id, chat_id, admin_id, reason, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (user_id, chat_id, admin_id, reason, expires_at, now)
+    )
+
+
+async def remove_user_warn(warn_id):
+    await execute("DELETE FROM user_warns WHERE id = ?", (warn_id,))
+
+
+async def get_user_warns(user_id, chat_id):
+    return await fetch_all("SELECT * FROM user_warns WHERE user_id = ? AND chat_id = ?", (user_id, chat_id))
 
 
 def get_rep_level(reputation):
@@ -801,7 +815,6 @@ async def remove_trusted_admin(user_id: int):
 
 
 async def get_trusted_admins():
-    # Берем и из новой таблицы, и тех, у кого есть админский ранг в профиле
     rows = await fetch_all("SELECT user_id FROM trusted_admins")
     users = [r['user_id'] for r in rows]
 
