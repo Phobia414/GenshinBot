@@ -128,7 +128,6 @@ async def init_db():
         await db.execute("CREATE TABLE IF NOT EXISTS known_groups (chat_id INTEGER PRIMARY KEY)")
         await db.execute("CREATE TABLE IF NOT EXISTS blocked_users (user_id INTEGER PRIMARY KEY)")
         await db.execute("CREATE TABLE IF NOT EXISTS trusted_admins (user_id INTEGER PRIMARY KEY)")
-
         await db.execute("""
             CREATE TABLE IF NOT EXISTS admin_applications (
                 user_id INTEGER PRIMARY KEY,
@@ -469,6 +468,16 @@ async def get_active_warns(user_id: int, chat_id: int):
         (user_id, chat_id, now))
 
 
+async def clear_user_warns(user_id: int, chat_id: int):
+    await execute("DELETE FROM user_warns WHERE user_id = ? AND chat_id = ?", (user_id, chat_id))
+
+
+async def get_all_warns(chat_id: int = 0):
+    if chat_id:
+        return await fetch_all("SELECT * FROM user_warns WHERE chat_id = ?", (chat_id,))
+    return await fetch_all("SELECT * FROM user_warns")
+
+
 def get_rep_level(reputation):
     if reputation is None: reputation = 0
     return min(10, reputation // 500 + 1)
@@ -659,6 +668,10 @@ async def update_cleanup_settings(chat_id, enabled, min_messages, frequency_days
             min_messages = excluded.min_messages,
             frequency_days = excluded.frequency_days
     """, (chat_id, enabled, min_messages, frequency_days))
+
+
+async def get_all_cleanup_settings():
+    return await fetch_all("SELECT * FROM chat_cleanup_settings")
 
 
 # ================= КАСТОМНЫЕ ДАННЫЕ =================
