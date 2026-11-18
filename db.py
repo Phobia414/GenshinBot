@@ -457,6 +457,16 @@ async def remove_user_warn(warn_id):
     await execute("DELETE FROM user_warns WHERE id = ?", (warn_id,))
 
 
+async def remove_last_warn(user_id: int, chat_id: int):
+    # Находим ID последнего варна и удаляем его
+    res = await fetch_one("SELECT id FROM user_warns WHERE user_id = ? AND chat_id = ? ORDER BY id DESC LIMIT 1",
+                          (user_id, chat_id))
+    if res:
+        await execute("DELETE FROM user_warns WHERE id = ?", (res['id'],))
+        return True
+    return False
+
+
 async def get_user_warns(user_id, chat_id):
     return await fetch_all("SELECT * FROM user_warns WHERE user_id = ? AND chat_id = ?", (user_id, chat_id))
 
