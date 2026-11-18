@@ -6,6 +6,8 @@ from db import get_user, update_user, add_known_group, get_setting
 from helpers import _ensure_user, _now_ts
 from state import _username_cache, _cb_cooldown, _cmd_cooldown
 import state
+from aiogram.fsm.context import FSMContext
+from aiogram.filters import StateFilter
 
 
 def _remember_username(tg_user):
@@ -28,7 +30,6 @@ async def auto_register_msg(handler, event: types.Message, data: dict):
 
 @dp.message.middleware()
 async def check_subscription_middleware(handler, event: types.Message, data: dict):
-    # ИСПРАВЛЕНИЕ: Проверяем подписку ТОЛЬКО в группах
     if event.chat.type not in ("group", "supergroup"):
         return await handler(event, data)
 
@@ -76,6 +77,48 @@ async def cmd_antispam(handler, event: types.Message, data: dict):
 
 
 @dp.callback_query.middleware()
+async def check_user_character_middleware(handler, event: types.CallbackQuery, data: dict):
+    # 1. Пропускаем кнопки анкет
+    cb_data = event.data or ""
+    if cb_data.startswith("a_ans_") or cb_data.startswith("aapp:"):
+        return await handler(event, data)
+
+    # 2. Пропускаем кнопки, если человек в процессе анкеты
+    state: FSMContext = data.get("state")
+    if state:
+        current_state = await state.get_state()
+        if current_state and (
+                current_state.startswith("AdminApplyForm") or
+                current_state.startswith("ApplyForm") or
+                current_state.startswith("ReviewForm")
+        ):
+            return await handler(event, data)
+
+    # 3. Пропускаем меню выбора пола и региона
+    if cb_data.startswith("menu:gender") or cb_data.startswith("reg:") or cb_data.startswith("char:"):
+        return await handler(event, data)
+
+    # 4. Пропускаем подписку
+    if cb_data.startswith("sub:"):
+        return await handler(event, data)
+
+    # 5. Меню владельца/админа
+    if cb_data.startswith("admin_") or cb_data.startswith("aapp"):
+        return await handler(event, data)
+
+    # 6. Основная проверка
+    chat_id = event.message.chat.id if event.message else event.from_user.id
+    user = await get_user(event.from_user.id, chat_id)
+
+    if not user or not user.get("character_name"):
+        if not cb_data.startswith("menu:menu"):
+            await event.answer("❌ Сначала выбери персонажа: /start", show_alert=True)
+            return
+
+    return await handler(event, data)
+
+
+@dp.callback_query.middleware()
 async def auto_register_cb(handler, event: types.CallbackQuery, data: dict):
     chat_id = 0
     chat_type = "private"
@@ -92,7 +135,6 @@ async def auto_register_cb(handler, event: types.CallbackQuery, data: dict):
         if event.from_user.username and u and u.get("username") != event.from_user.username:
             await update_user(event.from_user.id, chat_id, username=event.from_user.username)
 
-    # ИСПРАВЛЕНИЕ: Блокируем кнопки по подписке ТОЛЬКО в группах
     if chat_type in ("group", "supergroup"):
         if event.from_user.id != OWNER_ID:
             sub_enabled = await get_setting("sub_enabled", "0")
@@ -101,14 +143,9 @@ async def auto_register_cb(handler, event: types.CallbackQuery, data: dict):
                 if u and u.get("sub_passed") == 0:
                     cb_data = event.data or ""
                     if not cb_data.startswith(("sub:", "start", "report_")):
-                        await event.answer("❌ Сначала подпишитесь на каналы! Напишите /start в группе.", show_alert=True)
+                        await event.answer("❌ Сначала подпишитесь на каналы! Напишите /start в группе.",
+                                           show_alert=True)
                         return
-
-    allowed_prefixes = (
-        "menu:gender_", "menu:regions", "reg:", "char:", "menu:tops", "top:",
-        "menu:lists", "lists:", "cmd:", "apply_", "appr_", "newchar_", "sub:", "report_", "a_ans_", "aapp:"
-    )
-    cb_data = event.data or ""
 
     if event.from_user.id != OWNER_ID:
         key = (event.from_user.id, chat_id)
@@ -141,48 +178,3 @@ async def auto_register_cb(handler, event: types.CallbackQuery, data: dict):
             await event.answer()
         except:
             pass
-
-
-# ==========================================
-# ГЛОБАЛЬНЫЙ ОБРАБОТЧИК КНОПОК (ПРОВЕРКА ПЕРСОНАЖА)
-# ==========================================
-from aiogram.fsm.context import FSMContext
-from aiogram.filters import StateFilter
-
-
-@dp.callback_query()
-async def check_user_character_global(query: types.CallbackQuery, state: FSMContext):
-    # 1. Пропускаем кнопки анкет (любые, начинающиеся с этих префиксов)
-    if query.data.startswith("a_ans_") or query.data.startswith("aapp:"):
-        return
-
-    # 2. Пропускаем кнопки, если человек прямо сейчас заполняет анкету
-    current_state = await state.get_state()
-    if current_state and (
-            current_state.startswith("AdminApplyForm") or
-            current_state.startswith("ApplyForm") or
-            current_state.startswith("ReviewForm")
-    ):
-        return
-
-    # 3. Пропускаем меню выбора пола и региона (чтобы новички могли зайти)
-    if query.data.startswith("menu:gender") or query.data.startswith("reg:") or query.data.startswith("char:"):
-        return
-
-    # 4. Пропускаем меню подписки
-    if query.data.startswith("sub:"):
-        return
-
-    # 5. Если это меню владельца/админа — тоже не блокируем
-    if query.data.startswith("admin_") or query.data.startswith("aapp"):
-        return
-
-    # 6. Основная проверка: если у человека нет персонажа — блокируем
-    chat_id = query.message.chat.id
-    user = await get_user(query.from_user.id, chat_id)
-
-    if not user or not user.get("character_name"):
-        # Проверяем, не является ли это меню главным (чтобы не спамить)
-        if not query.data.startswith("menu:menu"):
-            await query.answer("❌ Сначала выбери персонажа: /start", show_alert=True)
-            return
