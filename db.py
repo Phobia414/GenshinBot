@@ -462,6 +462,13 @@ async def get_user_warns(user_id, chat_id):
     return await fetch_all("SELECT * FROM user_warns WHERE user_id = ? AND chat_id = ?", (user_id, chat_id))
 
 
+async def get_active_warns(user_id: int, chat_id: int):
+    now = int(datetime.now(timezone.utc).timestamp())
+    return await fetch_all(
+        "SELECT * FROM user_warns WHERE user_id = ? AND chat_id = ? AND (expires_at = 0 OR expires_at > ?)",
+        (user_id, chat_id, now))
+
+
 def get_rep_level(reputation):
     if reputation is None: reputation = 0
     return min(10, reputation // 500 + 1)
