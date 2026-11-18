@@ -613,11 +613,11 @@ async def set_local_setting(key, value, chat_id=0):
         await set_setting(key, value)
 
 
-# ================= АВТО-ЧИСТКА (ДОБАВЛЕНО) =================
+# ================= АВТО-ЧИСТКА =================
 async def get_cleanup_settings(chat_id):
     return await fetch_one("SELECT * FROM chat_cleanup_settings WHERE chat_id = ?", (chat_id,))
 
-async def set_cleanup_settings(chat_id, enabled, min_messages, frequency_days):
+async def update_cleanup_settings(chat_id, enabled, min_messages, frequency_days):
     await execute("""
         INSERT INTO chat_cleanup_settings (chat_id, enabled, min_messages, frequency_days)
         VALUES (?, ?, ?, ?)
