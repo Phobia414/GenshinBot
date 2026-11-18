@@ -106,16 +106,21 @@ async def auto_register_cb(handler, event: types.CallbackQuery, data: dict):
 
     allowed_prefixes = (
         "menu:gender_", "menu:regions", "reg:", "char:", "menu:tops", "top:",
-        "menu:lists", "lists:", "cmd:", "apply_", "appr_", "newchar_", "sub:", "report_"
+        "menu:lists", "lists:", "cmd:", "apply_", "appr_", "newchar_", "sub:", "report_", "a_ans_", "aapp:"
     )
     cb_data = event.data or ""
 
-    if not cb_data.startswith(allowed_prefixes):
-        if event.from_user.id != OWNER_ID:
-            u = await get_user(event.from_user.id, chat_id)
-            if not u or not u["character_name"]:
-                await event.answer("❌ Сначала выбери персонажа: /start", show_alert=True)
-                return
+    @dp.callback_query()
+    async def check_user_character(query: types.CallbackQuery):
+        # --- ДОБАВЛЯЕМ ИСКЛЮЧЕНИЕ ДЛЯ АНКЕТ В АДМИНИСТРАЦИЮ ---
+        if query.data.startswith("a_ans_") or query.data.startswith("aapp:"):
+            return  # Пропускаем без проверки на персонажа
+        # ------------------------------------------------------
+
+        user = await get_user(query.from_user.id, query.message.chat.id)
+        if not user or not user.get("character_name"):
+            await query.answer("❌ Сначала выбери персонажа: /start", show_alert=True)
+            return
 
     if event.from_user.id != OWNER_ID:
         key = (event.from_user.id, chat_id)
