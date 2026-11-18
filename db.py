@@ -127,6 +127,10 @@ async def init_db():
         await db.execute("CREATE TABLE IF NOT EXISTS gacha_custom_images (item_name TEXT PRIMARY KEY, image_url TEXT)")
         await db.execute("CREATE TABLE IF NOT EXISTS known_groups (chat_id INTEGER PRIMARY KEY)")
         await db.execute("CREATE TABLE IF NOT EXISTS blocked_users (user_id INTEGER PRIMARY KEY)")
+
+        # НОВАЯ ТАБЛИЦА ДЛЯ ДОВЕРЕННЫХ АДМИНОВ
+        await db.execute("CREATE TABLE IF NOT EXISTS trusted_admins (user_id INTEGER PRIMARY KEY)")
+
         await db.execute("""
             CREATE TABLE IF NOT EXISTS admin_applications (
                 user_id INTEGER PRIMARY KEY,
@@ -169,7 +173,8 @@ async def init_db():
         missing_columns = [
             "rel_image TEXT DEFAULT ''", "search_rp_partner TEXT DEFAULT ''",
             "msgs_week INTEGER DEFAULT 0", "msgs_month INTEGER DEFAULT 0", "msgs_day INTEGER DEFAULT 0",
-            "gacha_banner TEXT DEFAULT 'event_char'", "gacha_pity_4 INTEGER DEFAULT 0", "gacha_pity_5 INTEGER DEFAULT 0",
+            "gacha_banner TEXT DEFAULT 'event_char'", "gacha_pity_4 INTEGER DEFAULT 0",
+            "gacha_pity_5 INTEGER DEFAULT 0",
             "gacha_guaranteed_5 INTEGER DEFAULT 0", "gacha_lost_50_50 INTEGER DEFAULT 0",
             "sub_passed INTEGER DEFAULT 0", "admin_rank TEXT DEFAULT 'Игрок'"
         ]
@@ -194,8 +199,14 @@ async def init_db():
 
 
 async def init_settings_db(): pass
+
+
 async def init_known_groups_db(): pass
+
+
 async def init_gacha_db(): pass
+
+
 async def init_gacha_images_db(): pass
 
 
@@ -617,6 +628,7 @@ async def set_local_setting(key, value, chat_id=0):
 async def get_cleanup_settings(chat_id):
     return await fetch_one("SELECT * FROM chat_cleanup_settings WHERE chat_id = ?", (chat_id,))
 
+
 async def update_cleanup_settings(chat_id, enabled, min_messages, frequency_days):
     await execute("""
         INSERT INTO chat_cleanup_settings (chat_id, enabled, min_messages, frequency_days)
@@ -765,18 +777,37 @@ async def update_admin_application_status(user_id, status, reviewer_id=0, flaws_
     """, (status, reviewer_id, flaws_text, user_id))
 
 
-async def get_trusted_admins():
-    rows = await fetch_all("SELECT user_id FROM users WHERE admin_rank != 'Игрок' AND admin_rank != ''")
-    return [r['user_id'] for r in rows]
-
-
 # ================= БЛОКИРОВКА ПОЛЬЗОВАТЕЛЕЙ =================
 async def block_user_db(user_id: int):
     await execute("INSERT OR IGNORE INTO blocked_users (user_id) VALUES (?)", (user_id,))
 
+
 async def unblock_user_db(user_id: int):
     await execute("DELETE FROM blocked_users WHERE user_id = ?", (user_id,))
+
 
 async def is_user_blocked(user_id: int):
     res = await fetch_one("SELECT user_id FROM blocked_users WHERE user_id = ?", (user_id,))
     return res is not None
+
+
+# ================= ДОВЕРЕННЫЕ АДМИНЫ =================
+async def add_trusted_admin(user_id: int):
+    await execute("INSERT OR IGNORE INTO trusted_admins (user_id) VALUES (?)", (user_id,))
+
+
+async def remove_trusted_admin(user_id: int):
+    await execute("DELETE FROM trusted_admins WHERE user_id = ?", (user_id,))
+
+
+async def get_trusted_admins():
+    # Берем и из новой таблицы, и тех, у кого есть админский ранг в профиле
+    rows = await fetch_all("SELECT user_id FROM trusted_admins")
+    users = [r['user_id'] for r in rows]
+
+    rank_rows = await fetch_all("SELECT user_id FROM users WHERE admin_rank != 'Игрок' AND admin_rank != ''")
+    for r in rank_rows:
+        if r['user_id'] not in users:
+            users.append(r['user_id'])
+
+    return users
