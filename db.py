@@ -128,6 +128,7 @@ async def init_db():
         await db.execute("CREATE TABLE IF NOT EXISTS known_groups (chat_id INTEGER PRIMARY KEY)")
         await db.execute("CREATE TABLE IF NOT EXISTS blocked_users (user_id INTEGER PRIMARY KEY)")
         await db.execute("CREATE TABLE IF NOT EXISTS trusted_admins (user_id INTEGER PRIMARY KEY)")
+
         await db.execute("""
             CREATE TABLE IF NOT EXISTS admin_applications (
                 user_id INTEGER PRIMARY KEY,
@@ -458,7 +459,6 @@ async def remove_user_warn(warn_id):
 
 
 async def remove_last_warn(user_id: int, chat_id: int):
-    # Находим ID последнего варна и удаляем его
     res = await fetch_one("SELECT id FROM user_warns WHERE user_id = ? AND chat_id = ? ORDER BY id DESC LIMIT 1",
                           (user_id, chat_id))
     if res:
@@ -805,8 +805,22 @@ async def delete_custom_interaction(inter_id):
 
 
 # ================= АДМИН-АНКЕТЫ =================
+async def save_admin_application(user_id: int, username: str, q1: str, q2: str, q3: str, q4: str, q5: str, q6: str,
+                                 q7: str, q8: str, q9: str, q10: str, q11: str, q12: str, target_chat_id: int = 0):
+    now = int(datetime.now(timezone.utc).timestamp())
+    await execute("""
+        INSERT OR REPLACE INTO admin_applications 
+        (user_id, username, q1, q2, q3, q4, q5, q6, q7, q8, q9, q10, q11, q12, status, target_chat_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+    """, (user_id, username, q1, q2, q3, q4, q5, q6, q7, q8, q9, q10, q11, q12, target_chat_id, now))
+
+
 async def get_pending_admin_applications():
     return await fetch_all("SELECT * FROM admin_applications WHERE status = 'pending' ORDER BY created_at DESC")
+
+
+async def get_all_admin_applications():
+    return await fetch_all("SELECT * FROM admin_applications ORDER BY created_at DESC")
 
 
 async def get_admin_application(user_id):
