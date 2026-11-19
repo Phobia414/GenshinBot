@@ -17,7 +17,7 @@ from db import (
     get_guild, update_guild,
     add_ingredient, get_ingredients, INGREDIENTS,
     get_food_buff, get_total_bonuses, update_primogems,
-    get_application, update_application_status, get_all_custom_interactions
+    get_application, update_application_status, get_all_custom_interactions, execute
 )
 from helpers import (
     esc, _mention, extract_target, resolve_user_id,
