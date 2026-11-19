@@ -7,7 +7,7 @@ from aiogram.types import FSInputFile
 from aiogram.filters import StateFilter, Command
 
 from bot_instance import bot, dp
-from config import ANTISPAM_SECONDS, DB_PATH
+from config import ANTISPAM_SECONDS, DB_PATH, OWNER_ID
 from constants import (
     INTERACTIONS, INGREDIENT_DROP_CHANCE, REP_PER_MESSAGE,
     REP_PER_BOARD_TASK, DIV, PLACEHOLDER_IMAGES, QUIZ_REWARD
