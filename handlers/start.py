@@ -322,18 +322,6 @@ async def cb_profile(query, callback_data, user, chat_id):
     image = await get_section_image("profile", fallback, chat_id)
     await edit_or_send(query, text, profile_kb(query.from_user.id), image_url=image)
 
-
-@dp.callback_query(MenuCB.filter(F.action == "freerole"))
-@inject_user
-async def cb_freerole(query, callback_data, user, chat_id):
-    if query.from_user.id != callback_data.owner_id or not user["character_name"]: return
-    old = user["character_name"]
-    await update_user(query.from_user.id, chat_id, character_name="")
-    await query.answer(f"⚠️ Роль «{old}» освобождена. Вернуть можно за {PRICE_ROLE_CHANGE} монет.", show_alert=True)
-    if chat_id: await update_chat_list(chat_id)
-    await cb_profile(query, MenuCB(action="profile", owner_id=query.from_user.id), user=user, chat_id=chat_id)
-
-
 @dp.callback_query(MenuCB.filter(F.action == "adventurers"))
 @inject_user
 async def cb_adventurers(query, callback_data, user, chat_id):
@@ -371,19 +359,6 @@ async def cb_reputation(query, callback_data, user, chat_id):
     )
     image = await get_section_image("reputation", chat_id=chat_id)
     await edit_or_send(query, text, reputation_kb(query.from_user.id), image_url=image)
-
-
-@dp.message(Command("freerole"))
-async def cmd_freerole(message):
-    chat_id = message.chat.id
-    user = await _ensure_user(message.from_user.id, chat_id)
-    if not user["character_name"]: return await message.answer("У тебя нет персонажа.")
-    old = user["character_name"]
-    await update_user(message.from_user.id, chat_id, character_name="")
-    await message.answer(f"✅ Роль «{esc(old)}» освобождена.\n\n⚠️ Вернуть можно за {PRICE_ROLE_CHANGE} монет.",
-                         parse_mode="HTML", reply_markup=back_kb(message.from_user.id))
-    await update_chat_list(chat_id)
-
 
 # ==================== СОБЫТИЯ ВХОДА ====================
 
