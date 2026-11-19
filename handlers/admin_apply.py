@@ -244,62 +244,87 @@ async def process_q12(message: types.Message, state: FSMContext):
     await message.answer(preview, reply_markup=b.as_markup(), parse_mode="HTML")
 
 
-@dp.callback_query(F.data == "a_ans_submit", StateFilter(AdminApplyForm.confirm))
+@dp.callback_query(F.data == "a_ans_submit")
 async def process_submit(query: types.CallbackQuery, state: FSMContext):
-    await query.answer("Отправка анкеты...", show_alert=False)  # Сразу убираем часики на кнопке
+    # Убираем часики на кнопке
+    await query.answer("Отправка анкеты...", show_alert=False)
 
     data = await state.get_data()
-    username = f"@{query.from_user.username}" if query.from_user.username else query.from_user.first_name
 
-    await save_admin_application(query.from_user.id, username, data)
+    # Проверка: если данных нет (сессия истекла), просим начать заново
+    if not data or not data.get("q1"):
+        await query.message.edit_text(
+            "❌ <b>Ошибка: данные анкеты утеряны или устарели.</b>\n\n"
+            "Пожалуйста, начните заполнение заново: /admin_apply",
+            parse_mode="HTML"
+        )
+        return
 
-    admins = await get_trusted_admins()
-    if OWNER_ID not in admins:
-        admins.append(OWNER_ID)
+    try:
+        username = f"@{query.from_user.username}" if query.from_user.username else query.from_user.first_name
 
-    # ИСПРАВЛЕНИЕ: Используем esc() для всех данных от пользователя, чтобы не ломались теги
-    text_1 = f"📥 <b>НОВАЯ АНКЕТА В АДМИНИСТРАЦИЮ</b>\n👤 От: {esc(username)} (<code>{query.from_user.id}</code>)\n{DIV}\n<b>1. Опыт:</b>\n{esc(data.get('q1', ''))}\n\n<b>2. Время:</b>\n{esc(data.get('q2', ''))}\n\n<b>3. Правила:</b>\n{esc(data.get('q3', ''))}\n\n<b>4. Бот:</b>\n{esc(data.get('q4', ''))}\n\n<b>5. Мотивация:</b>\n{esc(data.get('q5', ''))}"
+        # Сохраняем в БД
+        await save_admin_application(query.from_user.id, username, data)
 
-    text_2 = f"<b>6. Ситуация (спор):</b>\n{esc(data.get('q6', ''))}\n\n<b>7. Ситуация (недочеты):</b>\n{esc(data.get('q7', ''))}\n\n<b>8. Подстройка:</b>\n{esc(data.get('q8', ''))}\n\n<b>9. Оскорбления друзей:</b>\n{esc(data.get('q9', ''))}"
+        admins = await get_trusted_admins()
+        if OWNER_ID not in admins:
+            admins.append(OWNER_ID)
 
-    text_3 = f"<b>10. Сложный конфликт:</b>\n{esc(data.get('q10', ''))}\n\n<b>11. Срыв:</b>\n{esc(data.get('q11', ''))}\n\n<b>12. Ошибка:</b>\n{esc(data.get('q12', ''))}"
+        # Формируем текст (обрезаем ответы до 1000 символов, чтобы не превысить лимит Telegram)
+        def short(text):
+            return esc(str(text)[:1000]) if text else ""
 
-    b = InlineKeyboardBuilder()
-    b.button(text="✅ Принять", callback_data=AdminAppCB(action="accept", user_id=query.from_user.id).pack())
-    b.button(text="❌ Отклонить", callback_data=AdminAppCB(action="reject", user_id=query.from_user.id).pack())
-    b.button(text="✍️ Указать недочеты", callback_data=AdminAppCB(action="flaws", user_id=query.from_user.id).pack())
-    b.button(text="💬 Связаться", url=f"tg://user?id={query.from_user.id}")
-    b.adjust(2, 1, 1)
+        text_1 = f"📥 <b>НОВАЯ АНКЕТА В АДМИНИСТРАЦИЮ</b>\n👤 От: {esc(username)} (<code>{query.from_user.id}</code>)\n{DIV}\n<b>1. Опыт:</b>\n{short(data.get('q1'))}\n\n<b>2. Время:</b>\n{short(data.get('q2'))}\n\n<b>3. Правила:</b>\n{short(data.get('q3'))}\n\n<b>4. Бот:</b>\n{short(data.get('q4'))}\n\n<b>5. Мотивация:</b>\n{short(data.get('q5'))}"
+        text_2 = f"<b>6. Ситуация (спор):</b>\n{short(data.get('q6'))}\n\n<b>7. Ситуация (недочеты):</b>\n{short(data.get('q7'))}\n\n<b>8. Подстройка:</b>\n{short(data.get('q8'))}\n\n<b>9. Оскорбления друзей:</b>\n{short(data.get('q9'))}"
+        text_3 = f"<b>10. Сложный конфликт:</b>\n{short(data.get('q10'))}\n\n<b>11. Срыв:</b>\n{short(data.get('q11'))}\n\n<b>12. Ошибка:</b>\n{short(data.get('q12'))}"
 
-    sent_success = False
-    for admin_id in admins:
-        try:
-            await bot.send_message(admin_id, text_1, parse_mode="HTML")
-            await bot.send_message(admin_id, text_2, parse_mode="HTML")
-            await bot.send_message(admin_id, text_3, reply_markup=b.as_markup(), parse_mode="HTML")
-            sent_success = True
-        except Exception as e:
-            print(f"ОШИБКА ОТПРАВКИ АНКЕТЫ АДМИНУ {admin_id}: {e}")  # Выводим ошибку в консоль хостинга
+        b = InlineKeyboardBuilder()
+        b.button(text="✅ Принять", callback_data=AdminAppCB(action="accept", user_id=query.from_user.id).pack())
+        b.button(text="❌ Отклонить", callback_data=AdminAppCB(action="reject", user_id=query.from_user.id).pack())
+        b.button(text="✍️ Указать недочеты",
+                 callback_data=AdminAppCB(action="flaws", user_id=query.from_user.id).pack())
+        b.button(text="💬 Связаться", url=f"tg://user?id={query.from_user.id}")
+        b.adjust(2, 1, 1)
 
-    if sent_success:
+        sent_success = False
+        for admin_id in admins:
+            try:
+                await bot.send_message(admin_id, text_1, parse_mode="HTML")
+                await bot.send_message(admin_id, text_2, parse_mode="HTML")
+                await bot.send_message(admin_id, text_3, reply_markup=b.as_markup(), parse_mode="HTML")
+                sent_success = True
+            except Exception as e:
+                print(f"ОШИБКА ОТПРАВКИ АНКЕТЫ АДМИНУ {admin_id}: {e}")
+
         await state.clear()
-        await query.message.edit_text(
-            "✅ <b>Ваша анкета отправлена на рассмотрение!</b>\nОжидайте ответа от администрации.",
-            parse_mode="HTML")
-    else:
-        await query.message.edit_text(
-            "⚠️ <b>Произошла ошибка при отправке.</b>\nПожалуйста, свяжитесь с администрацией напрямую.",
-            parse_mode="HTML")
 
-@dp.callback_query(F.data == "a_ans_restart", StateFilter(AdminApplyForm.confirm))
+        if sent_success:
+            await query.message.edit_text(
+                "✅ <b>Ваша анкета отправлена на рассмотрение!</b>\nОжидайте ответа от администрации.",
+                parse_mode="HTML"
+            )
+        else:
+            await query.message.edit_text(
+                "⚠️ <b>Произошла ошибка при отправке.</b>\n"
+                "Возможно, у администраторов закрыты личные сообщения. Пожалуйста, свяжитесь с ними напрямую.",
+                parse_mode="HTML"
+            )
+
+    except Exception as e:
+        print(f"КРИТИЧЕСКАЯ ОШИБКА В SUBMIT: {e}")
+        await query.message.edit_text(
+            f"❌ <b>Произошла системная ошибка при отправке.</b>\nПожалуйста, напишите администрации.\nКод ошибки: <code>{e}</code>",
+            parse_mode="HTML"
+        )
+@dp.callback_query(F.data == "a_ans_restart")
 async def process_restart(query: types.CallbackQuery, state: FSMContext):
     await state.clear()
-    await query.message.delete()
+    try:
+        await query.message.delete()
+    except:
+        pass
     await start_admin_apply(query.message, state, 0)
     await query.answer()
 
-
-@dp.message(AdminApplyForm.q3)
-@dp.message(AdminApplyForm.q4)
 async def process_btn_states_text(message: types.Message):
     await message.answer("⚠️ Пожалуйста, выберите один из вариантов на кнопках выше.")
