@@ -129,7 +129,7 @@ QUIZ_QUESTIONS = {
     ]
 }
 
-QUIZ_WEIGHTS = [60, 30, 10]
+QUIZ_WEIGHTS = [40, 30, 30]
 
 ARTIFACT_SLOTS = {
     "flower": {"name": "🌸 Цветок жизни", "bonus_type": "earn"},

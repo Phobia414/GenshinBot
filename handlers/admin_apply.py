@@ -244,40 +244,83 @@ async def process_q12(message: types.Message, state: FSMContext):
     await message.answer(preview, reply_markup=b.as_markup(), parse_mode="HTML")
 
 
+import html
+from aiogram import types, F
+from aiogram.fsm.context import FSMContext
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+from bot_instance import bot
+from config import OWNER_ID
+from callbacks import AdminAppCB
+from db import save_admin_application, get_trusted_admins
+from constants import DIV
+
+
 @dp.callback_query(AdminApplyForm.confirm, F.data == "a_ans_submit")
 async def process_submit(query: types.CallbackQuery, state: FSMContext):
+    # 1. МГНОВЕННО ОТВЕЧАЕМ НА КНОПКУ (чтобы она не зависала)
+    await query.answer("Анкета отправляется...", show_alert=False)
+
     data = await state.get_data()
+
+    # 2. ЗАЩИТА ОТ ПУСТЫХ ОТВЕТОВ (если бот перезапускался)
+    if not data or not data.get('q1'):
+        await state.clear()
+        return await query.message.edit_text(
+            "❌ Ошибка: данные анкеты потеряны (возможно, бот перезагружался). Пожалуйста, начните заново: /admin_apply")
+
     username = f"@{query.from_user.username}" if query.from_user.username else query.from_user.first_name
 
-    await save_admin_application(query.from_user.id, username, data)
+    try:
+        # Сохраняем в БД
+        await save_admin_application(query.from_user.id, username, data)
 
-    admins = await get_trusted_admins()
-    if OWNER_ID not in admins: admins.append(OWNER_ID)
+        admins = await get_trusted_admins()
+        if OWNER_ID not in admins:
+            admins.append(OWNER_ID)
 
-    text_1 = f"📥 <b>НОВАЯ АНКЕТА В АДМИНИСТРАЦИЮ</b>\n👤 От: {username} (<code>{query.from_user.id}</code>)\n{DIV}\n<b>1. Опыт:</b>\n{data['q1']}\n\n<b>2. Время:</b>\n{data['q2']}\n\n<b>3. Правила:</b>\n{data['q3']}\n\n<b>4. Бот:</b>\n{data['q4']}\n\n<b>5. Мотивация:</b>\n{data['q5']}"
-    text_2 = f"<b>6. Ситуация (спор):</b>\n{data['q6']}\n\n<b>7. Ситуация (недочеты):</b>\n{data['q7']}\n\n<b>8. Подстройка:</b>\n{data['q8']}\n\n<b>9. Оскорбления друзей:</b>\n{data['q9']}"
-    text_3 = f"<b>10. Сложный конфликт:</b>\n{data['q10']}\n\n<b>11. Срыв:</b>\n{data['q11']}\n\n<b>12. Ошибка:</b>\n{data['q12']}"
+        # 3. ЭКРАНИРУЕМ HTML (чтобы символы < > не ломали бота)
+        q1 = html.escape(str(data.get('q1', 'Нет ответа')))
+        q2 = html.escape(str(data.get('q2', 'Нет ответа')))
+        q3 = html.escape(str(data.get('q3', 'Нет ответа')))
+        q4 = html.escape(str(data.get('q4', 'Нет ответа')))
+        q5 = html.escape(str(data.get('q5', 'Нет ответа')))
+        q6 = html.escape(str(data.get('q6', 'Нет ответа')))
+        q7 = html.escape(str(data.get('q7', 'Нет ответа')))
+        q8 = html.escape(str(data.get('q8', 'Нет ответа')))
+        q9 = html.escape(str(data.get('q9', 'Нет ответа')))
+        q10 = html.escape(str(data.get('q10', 'Нет ответа')))
+        q11 = html.escape(str(data.get('q11', 'Нет ответа')))
+        q12 = html.escape(str(data.get('q12', 'Нет ответа')))
 
-    b = InlineKeyboardBuilder()
-    b.button(text="✅ Принять", callback_data=AdminAppCB(action="accept", user_id=query.from_user.id).pack())
-    b.button(text="❌ Отклонить", callback_data=AdminAppCB(action="reject", user_id=query.from_user.id).pack())
-    b.button(text="✍️ Указать недочеты", callback_data=AdminAppCB(action="flaws", user_id=query.from_user.id).pack())
-    b.button(text="💬 Связаться", url=f"tg://user?id={query.from_user.id}")
-    b.adjust(2, 1, 1)
+        text_1 = f"📥 <b>НОВАЯ АНКЕТА В АДМИНИСТРАЦИЮ</b>\n👤 От: {username} (<code>{query.from_user.id}</code>)\n{DIV}\n<b>1. Опыт:</b>\n{q1}\n\n<b>2. Время:</b>\n{q2}\n\n<b>3. Правила:</b>\n{q3}\n\n<b>4. Бот:</b>\n{q4}\n\n<b>5. Мотивация:</b>\n{q5}"
+        text_2 = f"<b>6. Ситуация (спор):</b>\n{q6}\n\n<b>7. Ситуация (недочеты):</b>\n{q7}\n\n<b>8. Подстройка:</b>\n{q8}\n\n<b>9. Оскорбления друзей:</b>\n{q9}"
+        text_3 = f"<b>10. Сложный конфликт:</b>\n{q10}\n\n<b>11. Срыв:</b>\n{q11}\n\n<b>12. Ошибка:</b>\n{q12}"
 
-    for admin_id in admins:
-        try:
-            await bot.send_message(admin_id, text_1, parse_mode="HTML")
-            await bot.send_message(admin_id, text_2, parse_mode="HTML")
-            await bot.send_message(admin_id, text_3, reply_markup=b.as_markup(), parse_mode="HTML")
-        except:
-            pass
+        b = InlineKeyboardBuilder()
+        b.button(text="✅ Принять", callback_data=AdminAppCB(action="accept", user_id=query.from_user.id).pack())
+        b.button(text="❌ Отклонить", callback_data=AdminAppCB(action="reject", user_id=query.from_user.id).pack())
+        b.button(text="✍️ Указать недочеты",
+                 callback_data=AdminAppCB(action="flaws", user_id=query.from_user.id).pack())
+        b.button(text="💬 Связаться", url=f"tg://user?id={query.from_user.id}")
+        b.adjust(2, 1, 1)
 
-    await state.clear()
-    await query.message.edit_text(
-        "✅ <b>Ваша анкета отправлена на рассмотрение!</b>\nОжидайте ответа от администрации.",
-        parse_mode="HTML")
-    await query.answer()
+        for admin_id in admins:
+            try:
+                await bot.send_message(admin_id, text_1, parse_mode="HTML")
+                await bot.send_message(admin_id, text_2, parse_mode="HTML")
+                await bot.send_message(admin_id, text_3, reply_markup=b.as_markup(), parse_mode="HTML")
+            except Exception as e:
+                print(f"Не удалось отправить анкету админу {admin_id}: {e}")
+                pass
+
+        await state.clear()
+        await query.message.edit_text(
+            "✅ <b>Ваша анкета отправлена на рассмотрение!</b>\nОжидайте ответа от администрации.",
+            parse_mode="HTML")
+
+    except Exception as e:
+        # Если произошла ошибка БД или Телеграма, сообщаем пользователю
+        await query.message.edit_text(f"❌ Произошла ошибка при отправке: {e}\nПопробуйте позже.")
 
 
 @dp.callback_query(F.data == "a_ans_restart", StateFilter(AdminApplyForm.confirm))
