@@ -383,13 +383,16 @@ async def handle_interaction(message, user, matched_phrase, chat_id, custom_inte
     xp_line = f"\n💕 +{xp} XP" if xp else ""
 
     original_text = message.text or ""
+
+    # ИСПРАВЛЕНИЕ: Объявляем text_lower, чтобы не было NameError
+    text_lower = original_text.lower().strip()
     reply_text = original_text[len(matched_phrase):].strip()
 
-    # ИСПРАВЛЕНИЕ 1: Убираем @упоминание из реплики, если оно там есть
+    # ИСПРАВЛЕНИЕ: Убираем @упоминание из реплики, если оно там есть
     if isinstance(target_ref, str) and target_ref:
         reply_text = reply_text.replace(f"@{target_ref}", "").strip()
 
-    # ИСПРАВЛЕНИЕ 2: Делаем имена кликабельными (тегаем через tg://user?id=)
+    # ИСПРАВЛЕНИЕ: Делаем имена кликабельными (тегаем через tg://user?id=)
     sender_mention = f'<a href="tg://user?id={message.from_user.id}">{esc(user["character_name"])}</a>'
     target_mention = f'<a href="tg://user?id={target_id}">{esc(target["character_name"])}</a>'
 
@@ -402,7 +405,7 @@ async def handle_interaction(message, user, matched_phrase, chat_id, custom_inte
     # Добавляем реплику, если она осталась
     if reply_text:
         reply_text = reply_text.strip("()[] ")
-        if reply_text:  # Проверяем, что там не осталось пустоты
+        if reply_text:  # Проверяем, что там не осталось пустоты (например, только скобки)
             text += f"\n💬 <i>«{esc(reply_text)}»</i>"
 
     try:
