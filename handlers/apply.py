@@ -22,6 +22,7 @@ class ApplyForm(StatesGroup):
     timezone = State()
     triggers = State()
     activity = State()
+    source = State() # <--- НОВЫЙ ШАГ
 
 
 FORM_STEPS = [
@@ -31,7 +32,8 @@ FORM_STEPS = [
     (ApplyForm.about, "about"),  # 3
     (ApplyForm.timezone, "timezone"),  # 4
     (ApplyForm.triggers, "triggers"),  # 5
-    (ApplyForm.activity, "activity")  # 6
+    (ApplyForm.activity, "activity"),  # 6
+    (ApplyForm.source, "source")  # 7 <--- ДОБАВЛЕНО
 ]
 
 
@@ -63,6 +65,11 @@ async def send_step(chat_id: int, step_index: int, state: FSMContext):
         text = "⚠️ <b>Есть ли у вас триггерные темы или то, что категорически неприемлемо во флуде?</b>\n\nНапример: жестокость к животным, определенные фобии. Если таких тем нет — напишите «Нет»."
     elif st == ApplyForm.activity:
         text = "⚡ <b>Какова ваша ожидаемая активность?</b>\n\nКак часто или сколько сообщений в неделю вы сможете писать?"
+    elif st == ApplyForm.source: # <--- НОВЫЙ ВОПРОС
+        text = (
+            "📢 <b>Откуда вы о нас узнали?</b>\n\n"
+            "Тик ток, пиар чаты или кто-то посоветовал? Если вы связывались с участником или администратором нашего проекта для вступления, напишите его юзернейм пожалуйста или имя/никнейм."
+        )
 
     if step_index > 0:
         b.button(text="⬅️ Назад", callback_data="apply_nav_back")
@@ -192,8 +199,14 @@ async def process_triggers(message: types.Message, state: FSMContext):
 
 @dp.message(ApplyForm.activity, F.text, ~F.text.startswith("/"))
 async def process_activity(message: types.Message, state: FSMContext):
+    await state.update_data(activity=message.text)
+    await send_step(message.chat.id, 7, state) # Переходим к вопросу про источник
+
+
+@dp.message(ApplyForm.source, F.text, ~F.text.startswith("/"))
+async def process_source(message: types.Message, state: FSMContext):
     try:
-        await state.update_data(activity=message.text)
+        await state.update_data(source=message.text)
         data = await state.get_data()
 
         if "target_chat_id" not in data or not data["target_chat_id"]:
@@ -202,12 +215,13 @@ async def process_activity(message: types.Message, state: FSMContext):
                 "❌ Ошибка: не найден ID ролевой. Пожалуйста, начните заполнение анкеты заново по ссылке.")
             return
 
-        # ИСПРАВЛЕНИЕ: Используем .get(), чтобы не вылетал KeyError
+        # ИСПРАВЛЕНИЕ: Используем .get(), чтобы не вылетал KeyError и передаем source
         await save_application(
             message.from_user.id, data["target_chat_id"], "Не выбран",
             data.get("age", "Не указан"), data.get("experience", "Не указан"),
             data.get("about", "Не указано"), data.get("timezone", "Не указан"),
-            data.get("triggers", "Не указаны"), "", data.get("activity", "Не указана")
+            data.get("triggers", "Не указаны"), "", data.get("activity", "Не указана"),
+            data.get("source", "Не указан")
         )
         await state.clear()
 
@@ -224,7 +238,8 @@ async def process_activity(message: types.Message, state: FSMContext):
             f"🌟 <b>О себе:</b> {esc(data.get('about', 'Не указано'))}\n"
             f"🕒 <b>Часовой пояс:</b> {esc(data.get('timezone', 'Не указан'))}\n"
             f"⚠️ <b>Триггеры:</b> {esc(data.get('triggers', 'Не указаны'))}\n"
-            f"⚡ <b>Активность:</b> {esc(data.get('activity', 'Не указана'))}"
+            f"⚡ <b>Активность:</b> {esc(data.get('activity', 'Не указана'))}\n"
+            f"📢 <b>Откуда узнал(а):</b> {esc(data.get('source', 'Не указан'))}"
         )
 
         b = InlineKeyboardBuilder()

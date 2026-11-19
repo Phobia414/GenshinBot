@@ -89,6 +89,7 @@ async def init_db():
             CREATE TABLE IF NOT EXISTS applications (
                 user_id INTEGER, chat_id INTEGER, character_name TEXT,
                 age TEXT, experience TEXT, about TEXT, timezone TEXT, triggers TEXT, metagaming TEXT, activity TEXT,
+                source TEXT, -- <--- ДОБАВЛЕНО
                 status TEXT DEFAULT 'pending', PRIMARY KEY (user_id, chat_id)
             )
         """)
@@ -161,6 +162,7 @@ async def init_db():
                 creator_name TEXT,
                 name TEXT,
                 emoji TEXT,
+                action_text TEXT DEFAULT '',
                 is_private INTEGER DEFAULT 0
             )
         """)
@@ -188,12 +190,17 @@ async def init_db():
             pass
 
         app_cols = ["character_name TEXT", "age TEXT", "experience TEXT", "about TEXT", "timezone TEXT",
-                    "triggers TEXT", "metagaming TEXT", "activity TEXT", "status TEXT DEFAULT 'pending'"]
+                    "triggers TEXT", "metagaming TEXT", "activity TEXT", "source TEXT", # <--- ДОБАВЛЕНО
+                    "status TEXT DEFAULT 'pending'"]
         for col_def in app_cols:
             try:
                 await db.execute(f"ALTER TABLE applications ADD COLUMN {col_def}")
             except Exception:
                 pass
+        try:
+            await db.execute("ALTER TABLE custom_interactions ADD COLUMN action_text TEXT DEFAULT ''")
+        except Exception:
+            pass
 
 
 async def init_settings_db(): pass
@@ -762,12 +769,13 @@ async def get_gacha_inventory(user_id, chat_id):
 
 
 # ================= АНКЕТЫ (ВСТУПЛЕНИЕ) =================
-async def save_application(user_id, chat_id, char_name, age, exp, about, tz, triggers, meta, activity):
+
+async def save_application(user_id, chat_id, char_name, age, exp, about, tz, triggers, meta, activity, source=""):
     await execute("""
-        INSERT OR REPLACE INTO applications 
-        (user_id, chat_id, character_name, age, experience, about, timezone, triggers, metagaming, activity, status) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
-    """, (user_id, chat_id, char_name, age, exp, about, tz, triggers, meta, activity))
+         INSERT OR REPLACE INTO applications 
+         (user_id, chat_id, character_name, age, experience, about, timezone, triggers, metagaming, activity, source, status) 
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+    """, (user_id, chat_id, char_name, age, exp, about, tz, triggers, meta, activity, source))
 
 
 async def get_application(user_id, chat_id):
@@ -798,12 +806,11 @@ async def get_known_groups():
 
 
 # ================= КАСТОМНЫЕ ВЗАИМОДЕЙСТВИЯ =================
-async def add_custom_interaction(chat_id, creator_id, creator_name, name, emoji, is_private):
+async def add_custom_interaction(chat_id, creator_id, creator_name, name, emoji, is_private, action_text=""):
     await execute("""
-        INSERT INTO custom_interactions (chat_id, creator_id, creator_name, name, emoji, is_private)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (chat_id, creator_id, creator_name, name, emoji, is_private))
-
+        INSERT INTO custom_interactions (chat_id, creator_id, creator_name, name, emoji, is_private, action_text)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (chat_id, creator_id, creator_name, name, emoji, is_private, action_text))
 
 async def get_all_custom_interactions(chat_id):
     return await fetch_all("SELECT * FROM custom_interactions WHERE chat_id = ?", (chat_id,))

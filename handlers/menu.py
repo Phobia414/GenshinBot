@@ -131,17 +131,16 @@ async def cb_freerole_confirm(query, callback_data, user, chat_id):
     if query.from_user.id != callback_data.owner_id or not user["character_name"]: return
 
     old = user["character_name"]
-    # Освобождаем роль и сбрасываем связанные данные (включая поиск со-роли)
     await update_user(query.from_user.id, chat_id, character_name="", char_change_paid=0, search_rp_partner="")
-
     await query.answer(f"⚠️ Роль «{esc(old)}» освобождена. Вернуть можно за {PRICE_ROLE_CHANGE} монет.",
                        show_alert=True)
 
     if chat_id:
         await update_chat_list(chat_id)
 
-    # Вызываем профиль заново, чтобы подтянулись свежие данные из БД (без user)
-    await cb_profile(query, MenuCB(action="profile", owner_id=query.from_user.id), chat_id=chat_id)
+    # Получаем СВЕЖИЕ данные пользователя из БД и передаем их
+    updated_user = await get_user(query.from_user.id, chat_id)
+    await cb_profile(query, MenuCB(action="profile", owner_id=query.from_user.id), user=updated_user, chat_id=chat_id)
 
 
 @dp.callback_query(MenuCB.filter(F.action == "freerole_cancel"))
@@ -149,10 +148,8 @@ async def cb_freerole_confirm(query, callback_data, user, chat_id):
 async def cb_freerole_cancel(query, callback_data, user, chat_id):
     if query.from_user.id != callback_data.owner_id: return
     await query.answer("Отменено.")
-    # Возвращаем в профиль
-    await cb_profile(query, MenuCB(action="profile", owner_id=query.from_user.id), chat_id=chat_id)
-
-
+    # Передаем данные, которые уже есть
+    await cb_profile(query, MenuCB(action="profile", owner_id=query.from_user.id), user=user, chat_id=chat_id)
 # ==================== ОСВОБОЖДЕНИЕ РОЛИ (КОМАНДА) ====================
 
 @dp.message(Command("freerole"))

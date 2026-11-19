@@ -351,8 +351,8 @@ async def handle_interaction(message, user, matched_phrase, chat_id, custom_inte
     if custom_inter:
         inter = {
             "emoji": custom_inter['emoji'],
-            "verb_m": custom_inter['name'],
-            "verb_f": custom_inter['name']
+            "verb_m": custom_inter.get('action_text') or custom_inter['name'],
+            "verb_f": custom_inter.get('action_text') or custom_inter['name']
         }
         xp = 0
     else:
@@ -385,28 +385,33 @@ async def handle_interaction(message, user, matched_phrase, chat_id, custom_inte
     original_text = message.text or ""
     reply_text = original_text[len(matched_phrase):].strip()
 
-    if text_lower := (message.text or "").lower().strip():
-        if text_lower == "подарить цветок":
-            sender_mention = _mention(message.from_user.id, user.get("username"),
-                                      user.get("character_name"), message.from_user.first_name)
-            target_mention = _mention(target_id, target.get("username"),
-                                      target.get("character_name"), None)
-            text = f"🌸 {sender_mention} {verb} цветок {target_mention}!"
-        else:
-            text = f"{emoji} <b>{esc(user['character_name'])}</b> {verb} <b>{esc(target['character_name'])}</b>!{xp_line}"
+    # ИСПРАВЛЕНИЕ 1: Убираем @упоминание из реплики, если оно там есть
+    if isinstance(target_ref, str) and target_ref:
+        reply_text = reply_text.replace(f"@{target_ref}", "").strip()
 
-        if reply_text:
-            reply_text = reply_text.strip("()[] ")
+    # ИСПРАВЛЕНИЕ 2: Делаем имена кликабельными (тегаем через tg://user?id=)
+    sender_mention = f'<a href="tg://user?id={message.from_user.id}">{esc(user["character_name"])}</a>'
+    target_mention = f'<a href="tg://user?id={target_id}">{esc(target["character_name"])}</a>'
+
+    # Формируем текст
+    if text_lower == "подарить цветок":
+        text = f"🌸 {sender_mention} {verb} цветок {target_mention}!"
+    else:
+        text = f"{emoji} {sender_mention} {verb} {target_mention}!{xp_line}"
+
+    # Добавляем реплику, если она осталась
+    if reply_text:
+        reply_text = reply_text.strip("()[] ")
+        if reply_text:  # Проверяем, что там не осталось пустоты
             text += f"\n💬 <i>«{esc(reply_text)}»</i>"
 
-        try:
-            await message.delete()
-        except Exception:
-            pass
-        await message.answer(text, parse_mode="HTML", reply_markup=back_kb(message.from_user.id))
-        _inter_cooldown[message.from_user.id] = now
-        return True
-
+    try:
+        await message.delete()
+    except Exception:
+        pass
+    await message.answer(text, parse_mode="HTML", reply_markup=back_kb(message.from_user.id))
+    _inter_cooldown[message.from_user.id] = now
+    return True
 
 async def show_user_card(message, user, tg_user, chat_id):
     name = esc(user["character_name"] or "Не выбран")
