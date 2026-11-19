@@ -244,41 +244,43 @@ async def process_q12(message: types.Message, state: FSMContext):
     await message.answer(preview, reply_markup=b.as_markup(), parse_mode="HTML")
 
 
-import html
-from aiogram import types, F
-from aiogram.fsm.context import FSMContext
-from aiogram.utils.keyboard import InlineKeyboardBuilder
-from bot_instance import bot
-from config import OWNER_ID
-from callbacks import AdminAppCB
-from db import save_admin_application, get_trusted_admins
-from constants import DIV
-
-
-@dp.callback_query(AdminApplyForm.confirm, F.data == "a_ans_submit")
+@dp.callback_query(F.data == "a_ans_submit")
 async def process_submit(query: types.CallbackQuery, state: FSMContext):
-    # 1. МГНОВЕННО ОТВЕЧАЕМ НА КНОПКУ (чтобы она не зависала)
-    await query.answer("Анкета отправляется...", show_alert=False)
+    # 1. СРАЗУ УБИРАЕМ ЗАГРУЗКУ С КНОПКИ
+    try:
+        await query.answer("Обрабатываю анкету...", show_alert=False)
+    except:
+        pass
+
+    print(f"[DEBUG] Нажата кнопка отправки анкеты от {query.from_user.id}")
 
     data = await state.get_data()
 
-    # 2. ЗАЩИТА ОТ ПУСТЫХ ОТВЕТОВ (если бот перезапускался)
+    # 2. ЗАЩИТА ОТ ПОТЕРИ ДАННЫХ
     if not data or not data.get('q1'):
         await state.clear()
-        return await query.message.edit_text(
-            "❌ Ошибка: данные анкеты потеряны (возможно, бот перезагружался). Пожалуйста, начните заново: /admin_apply")
+        return await query.message.answer(
+            "❌ **Ошибка:** Данные анкеты потеряны.\n"
+            "Скорее всего, бот перезапускался, пока вы её заполняли.\n"
+            "Пожалуйста, начните заново: /admin_apply",
+            parse_mode="Markdown"
+        )
 
     username = f"@{query.from_user.username}" if query.from_user.username else query.from_user.first_name
 
     try:
+        print(f"[DEBUG] Сохраняю анкету в БД для {query.from_user.id}...")
         # Сохраняем в БД
         await save_admin_application(query.from_user.id, username, data)
+        print("[DEBUG] Анкета успешно сохранена в БД.")
 
         admins = await get_trusted_admins()
         if OWNER_ID not in admins:
             admins.append(OWNER_ID)
 
-        # 3. ЭКРАНИРУЕМ HTML (чтобы символы < > не ломали бота)
+        print(f"[DEBUG] Рассылка анкеты админам: {admins}")
+
+        # Экранируем HTML, чтобы символы не ломали бота
         q1 = html.escape(str(data.get('q1', 'Нет ответа')))
         q2 = html.escape(str(data.get('q2', 'Нет ответа')))
         q3 = html.escape(str(data.get('q3', 'Нет ответа')))
@@ -310,18 +312,24 @@ async def process_submit(query: types.CallbackQuery, state: FSMContext):
                 await bot.send_message(admin_id, text_2, parse_mode="HTML")
                 await bot.send_message(admin_id, text_3, reply_markup=b.as_markup(), parse_mode="HTML")
             except Exception as e:
-                print(f"Не удалось отправить анкету админу {admin_id}: {e}")
-                pass
+                print(f"[ERROR] Не удалось отправить анкету админу {admin_id}: {e}")
 
         await state.clear()
-        await query.message.edit_text(
+
+        # Отправляем новое сообщение об успехе вместо редактирования
+        await query.message.answer(
             "✅ <b>Ваша анкета отправлена на рассмотрение!</b>\nОжидайте ответа от администрации.",
-            parse_mode="HTML")
+            parse_mode="HTML"
+        )
+        print("[DEBUG] Анкета успешно обработана.")
 
     except Exception as e:
-        # Если произошла ошибка БД или Телеграма, сообщаем пользователю
-        await query.message.edit_text(f"❌ Произошла ошибка при отправке: {e}\nПопробуйте позже.")
-
+        print(f"[ERROR] Критическая ошибка при отправке анкеты: {e}")
+        await query.message.answer(
+            f"❌ **Ошибка при отправке:**\n`{str(e)}`\n\n"
+            "Пожалуйста, сделайте скриншот этого сообщения и отправьте владельцу бота.",
+            parse_mode="Markdown"
+        )
 
 @dp.callback_query(F.data == "a_ans_restart", StateFilter(AdminApplyForm.confirm))
 async def process_restart(query: types.CallbackQuery, state: FSMContext):
