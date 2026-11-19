@@ -244,7 +244,7 @@ async def process_q12(message: types.Message, state: FSMContext):
     await message.answer(preview, reply_markup=b.as_markup(), parse_mode="HTML")
 
 
-@dp.callback_query(F.data == "a_ans_submit", StateFilter(AdminApplyForm.confirm))
+@dp.callback_query(AdminApplyForm.confirm, F.data == "a_ans_submit")
 async def process_submit(query: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     username = f"@{query.from_user.username}" if query.from_user.username else query.from_user.first_name

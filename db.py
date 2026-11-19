@@ -814,14 +814,18 @@ async def delete_custom_interaction(inter_id):
 
 
 # ================= АДМИН-АНКЕТЫ =================
-async def save_admin_application(user_id: int, username: str, q1: str, q2: str, q3: str, q4: str, q5: str, q6: str,
-                                 q7: str, q8: str, q9: str, q10: str, q11: str, q12: str, target_chat_id: int = 0):
+async def save_admin_application(user_id, username, answers: dict):
     now = int(datetime.now(timezone.utc).timestamp())
     await execute("""
         INSERT OR REPLACE INTO admin_applications 
-        (user_id, username, q1, q2, q3, q4, q5, q6, q7, q8, q9, q10, q11, q12, status, target_chat_id, created_at)
+        (user_id, username, q1, q2, q3, q4, q5, q6, q7, q8, q9, q10, q11, q12, status, created_at, target_chat_id)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
-    """, (user_id, username, q1, q2, q3, q4, q5, q6, q7, q8, q9, q10, q11, q12, target_chat_id, now))
+    """, (
+        user_id, username, answers.get('q1'), answers.get('q2'), answers.get('q3'),
+        answers.get('q4'), answers.get('q5'), answers.get('q6'), answers.get('q7'),
+        answers.get('q8'), answers.get('q9'), answers.get('q10'), answers.get('q11'),
+        answers.get('q12'), now, answers.get('target_chat_id', 0)
+    ))
 
 
 async def get_pending_admin_applications():
