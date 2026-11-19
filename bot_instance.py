@@ -2,18 +2,29 @@ import asyncio
 from aiogram import Bot, Dispatcher
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.methods import SendMessage, SendPhoto, SendAnimation
+from aiogram.exceptions import TelegramNetworkError
 from config import BOT_TOKEN
 
 
 class AutoDeleteSession(AiohttpSession):
     async def make_request(self, bot: Bot, method, timeout=None):
-        result = await super().make_request(bot, method, timeout)
+        # Защита от сетевых ошибок (Connection reset by peer)
+        retries = 3
+        for attempt in range(retries):
+            try:
+                result = await super().make_request(bot, method, timeout)
+                break
+            except TelegramNetworkError as e:
+                if attempt == retries - 1:
+                    raise e
+                await asyncio.sleep(2)  # Ждем 2 секунды и пробуем снова
+            except Exception as e:
+                raise e
 
         if isinstance(method, (SendMessage, SendPhoto, SendAnimation)):
             if result and hasattr(result, 'chat'):
                 chat_type = result.chat.type
 
-                # В ЛС и каналах ничего не удаляем
                 if chat_type not in ('group', 'supergroup'):
                     return result
 
@@ -22,11 +33,8 @@ class AutoDeleteSession(AiohttpSession):
                 text_upper = text.upper()
 
                 exclude_phrases = [
-                    "ПОЗЫВНОЙ",
-                    "БОСС",
-                    "ОБЯЗАТЕЛЬНАЯ ПОДПИСКА",
-                    "У НАС НОВЕНЬКИЙ",
-                    "АНКЕТА ОПУБЛИКОВАНА"
+                    "ПОЗЫВНОЙ", "БОСС", "ОБЯЗАТЕЛЬНАЯ ПОДПИСКА",
+                    "У НАС НОВЕНЬКИЙ", "АНКЕТА ОПУБЛИКОВАНА"
                 ]
 
                 if any(phrase in text_upper for phrase in exclude_phrases):
@@ -44,7 +52,7 @@ class AutoDeleteSession(AiohttpSession):
                             break
 
                 if not is_excluded_msg:
-                    asyncio.create_task(self.delete_later(bot, result.chat.id, result.message_id, 3600))
+                    asyncio.create_task(self.delete_later(bot, result.chat.id, result.message_id, 300))
 
         return result
 

@@ -9,7 +9,7 @@ import time
 from bot_instance import bot, dp
 from config import OWNER_ID
 from constants import DIV
-from db import get_user, update_user, get_application, update_application_status, get_taken_characters, save_application
+from db import get_user, update_user, get_application, update_application_status, get_taken_characters, save_application, get_trusted_admins
 from characters import CHARACTERS
 from helpers import esc
 
@@ -274,6 +274,7 @@ async def cb_appr_accept(query: types.CallbackQuery):
     if not await is_admin_of_chat(query.from_user.id, chat_id):
         await query.answer("❌ Вы не являетесь админом этой группы.", show_alert=True)
         return
+
     try:
         expire_date = int(time.time()) + 86400
         link = await bot.create_chat_invite_link(chat_id, member_limit=1, expire_date=expire_date)
@@ -282,10 +283,27 @@ async def cb_appr_accept(query: types.CallbackQuery):
         await query.message.edit_text(f"{query.message.html_text}\n\n❌ <b>Ошибка создания ссылки:</b> {e}",
                                       parse_mode="HTML")
         return
+
     await update_application_status(user_id, chat_id, "accepted")
-    await query.message.edit_text(
-        f"{query.message.html_text}\n\n✅ <b>СТАТУС: ПРИНЯТ (Админ: {query.from_user.first_name})</b>",
-        parse_mode="HTML")
+
+    # Меняем текст в чате того админа, который нажал
+    new_text = f"{query.message.html_text}\n\n✅ <b>СТАТУС: ПРИНЯТ (Админ: {query.from_user.first_name})</b>"
+    await query.message.edit_text(new_text, parse_mode="HTML")
+
+    # ИСПРАВЛЕНИЕ: Уведомляем остальных админов
+    try:
+        admins = await bot.get_chat_administrators(chat_id)
+        for admin in admins:
+            if not admin.user.is_bot and admin.user.id != query.from_user.id:
+                try:
+                    await bot.send_message(admin.user.id,
+                                           f"🔔 Коллега {query.from_user.first_name} уже <b>ПРИНЯЛ</b> анкету пользователя <code>{user_id}</code>.\nДействий не требуется.",
+                                           parse_mode="HTML")
+                except:
+                    pass
+    except:
+        pass
+
     try:
         await bot.send_message(user_id,
                                f"🎉 <b>Поздравляем! Ваша анкета одобрена!</b>\n\n🔗 <b>Ссылка для вступления в группу:</b>\n{invite_link}\n\n<i>Как только вы зайдете в группу, бот попросит вас выбрать персонажа.</i>",
@@ -301,10 +319,26 @@ async def cb_appr_decline(query: types.CallbackQuery):
     if not await is_admin_of_chat(query.from_user.id, chat_id):
         await query.answer("❌ Вы не являетесь админом этой группы.", show_alert=True)
         return
+
     await update_application_status(user_id, chat_id, "rejected")
-    await query.message.edit_text(
-        f"{query.message.html_text}\n\n❌ <b>СТАТУС: ОТКЛОНЕН (Админ: {query.from_user.first_name})</b>",
-        parse_mode="HTML")
+
+    new_text = f"{query.message.html_text}\n\n❌ <b>СТАТУС: ОТКЛОНЕН (Админ: {query.from_user.first_name})</b>"
+    await query.message.edit_text(new_text, parse_mode="HTML")
+
+    # ИСПРАВЛЕНИЕ: Уведомляем остальных админов
+    try:
+        admins = await bot.get_chat_administrators(chat_id)
+        for admin in admins:
+            if not admin.user.is_bot and admin.user.id != query.from_user.id:
+                try:
+                    await bot.send_message(admin.user.id,
+                                           f"🔔 Коллега {query.from_user.first_name} уже <b>ОТКЛОНИЛ</b> анкету пользователя <code>{user_id}</code>.\nДействий не требуется.",
+                                           parse_mode="HTML")
+                except:
+                    pass
+    except:
+        pass
+
     try:
         await bot.send_message(user_id, "😔 <b>К сожалению, ваша анкета была отклонена.</b>", parse_mode="HTML")
     except Exception:

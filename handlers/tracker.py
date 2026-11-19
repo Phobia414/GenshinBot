@@ -444,12 +444,18 @@ async def show_user_card(message, user, tg_user, chat_id):
     rep_level = get_rep_level(user["reputation"])
 
     admin_rank_text = ""
-    if user.get("admin_rank"):
+    if user.get("user_id") == OWNER_ID:
+        admin_rank_text = "👑 Должность: <b>Владелец</b>\n\n"
+    elif user.get("admin_rank"):
         ranks = await get_ranks_config()
         r_data = ranks.get(user["admin_rank"])
         if r_data:
-            display_rank = r_data.get("profile_text") or r_data.get("name", "")
-            admin_rank_text = f"👑 Должность: <b>{display_rank}</b>\n\n"
+            emoji = "👑" if r_data.get("weight", 0) >= 80 else "🛡"
+            raw_name = r_data.get("name", "").strip()
+            for e in ["👑", "🛡", "⚔", "⚙", "🔨", "🔧", "📝"]:
+                raw_name = raw_name.replace(e, "")
+            clean_rank = raw_name.strip()
+            admin_rank_text = f"{emoji} Должность: <b>{clean_rank}</b>\n\n"
 
     join_date = ""
     if user.get("first_seen"):

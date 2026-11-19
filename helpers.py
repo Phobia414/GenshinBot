@@ -408,7 +408,9 @@ async def remove_tg_rights(bot: Bot, chat_id: int, user_id: int):
             can_restrict_members=False, can_pin_messages=False, can_promote_members=False,
             can_manage_chat=False, can_manage_video_chats=False, can_manage_topics=False
         )
-        await bot.set_chat_administrator_custom_title(chat_id=chat_id, user_id=user_id, custom_title="")
+        # ИСПРАВЛЕНИЕ: Убрано принудительное удаление тега (custom_title="")
+        # Telegram сам уберет админский титул при понижении,
+        # а функция update_user_tag следом поставит тег персонажа.
         return True
     except Exception:
         return False
