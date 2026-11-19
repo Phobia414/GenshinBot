@@ -421,6 +421,10 @@ async def update_user_tag(bot: Bot, chat_id: int, user_id: int, user: dict = Non
         user = await get_user(user_id, chat_id)
     if not user: return ""
 
+    # В личных сообщениях теги не работают
+    if chat_id > 0:
+        return ""
+
     char_name = user.get("character_name", "") or ""
     rank_key = user.get("admin_rank", "")
 
@@ -432,36 +436,42 @@ async def update_user_tag(bot: Bot, chat_id: int, user_id: int, user: dict = Non
     }
 
     tag = ""
-    if rank_key:
+    # ИСПРАВЛЕНИЕ: Добавлена проверка на "Игрок" и пустую строку
+    if rank_key and rank_key not in ("Игрок", ""):
         ranks = await get_ranks_config()
         if rank_key in ranks:
             rank_data = ranks[rank_key]
             raw_rank = rank_data.get("tag_text") or rank_data.get("name", "")
-
             clean_rank = "".join([c for c in raw_rank if c.isalnum() or c in (".", " ", "-")]).strip()
 
             if clean_rank:
+                # Жестко ограничиваем длину тега до 16 символов
                 if char_name in NAME_ABBREVIATIONS:
                     short_name = NAME_ABBREVIATIONS[char_name]
                 else:
-                    max_char_len = 16 - len(clean_rank) - 3
-                    if max_char_len >= 2:
-                        short_name = char_name[:max_char_len].strip()
-                    else:
-                        short_name = "Админ"
+                    short_name = char_name[:10].strip() if char_name else "Игрок"
+
                 tag = f"{short_name} | {clean_rank}"
+                # Если тег все равно длиннее 16 символов, обрезаем
+                if len(tag) > 16:
+                    tag = tag[:16].strip()
             else:
                 tag = char_name[:16]
+        else:
+            tag = char_name[:16]
     else:
         tag = char_name[:16]
 
     try:
         member = await bot.get_chat_member(chat_id, user_id)
         if member.status in ("administrator", "creator"):
-            await bot.set_chat_administrator_custom_title(chat_id=chat_id, user_id=user_id, custom_title=tag)
+            # Не обновляем тег, если он совпадает, чтобы не спамить API
+            if getattr(member, "custom_title", "") != tag:
+                await bot.set_chat_administrator_custom_title(chat_id=chat_id, user_id=user_id, custom_title=tag)
         else:
             await bot.set_chat_member_tag(chat_id=chat_id, user_id=user_id, tag=tag)
         return ""
     except Exception as e:
-        pass
-        return ""
+        # ИСПРАВЛЕНИЕ: Теперь ошибки будут видны в консоли
+        print(f"⚠️ Ошибка при обновлении тега для {user_id} в {chat_id}: {e}")
+        return str(e)

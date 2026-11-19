@@ -244,14 +244,12 @@ async def track_text(message: types.Message, user: dict, chat_id: int):
 
     user = await get_user(message.from_user.id, chat_id)
     if user["guild_id"]:
-        async with aiosqlite.connect(DB_PATH) as db:
-            await db.execute("""
+        await execute("""
                 INSERT INTO guild_member_stats (guild_id, user_id, msgs, replies) 
                 VALUES (?, ?, 1, ?) 
                 ON CONFLICT(guild_id, user_id) DO UPDATE SET msgs = msgs + 1, replies = replies + ?
             """, (user["guild_id"], user["user_id"], 1 if message.reply_to_message else 0,
                   1 if message.reply_to_message else 0))
-            await db.commit()
     await check_board_auto(message)
 
 
@@ -282,13 +280,12 @@ async def track_sticker(message: types.Message, user: dict, chat_id: int):
     await update_user(message.from_user.id, chat_id, last_msg_time=now)
 
     if user["guild_id"]:
-        async with aiosqlite.connect(DB_PATH) as db:
-            await db.execute("""
-                INSERT INTO guild_member_stats (guild_id, user_id, stickers) 
-                VALUES (?, ?, 1) 
-                ON CONFLICT(guild_id, user_id) DO UPDATE SET stickers = stickers + 1
-            """, (user["guild_id"], user["user_id"]))
-            await db.commit()
+        await execute("""
+                INSERT INTO guild_member_stats (guild_id, user_id, msgs, replies) 
+                VALUES (?, ?, 1, ?) 
+                ON CONFLICT(guild_id, user_id) DO UPDATE SET msgs = msgs + 1, replies = replies + ?
+            """, (user["guild_id"], user["user_id"], 1 if message.reply_to_message else 0,
+                  1 if message.reply_to_message else 0))
 
     await check_board_auto(message)
 
@@ -567,72 +564,3 @@ async def _check_board_auto_locked(message):
                 # Если произошла ошибка при начислении (например, база заблокирована),
                 # мы НЕ помечаем задание выполненным, чтобы бот попробовал снова в следующий раз.
                 print(f"Ошибка при выдаче награды за задание {t_id}: {e}")
-
-
-@dp.chat_member()
-async def on_chat_member_update(event: types.ChatMemberUpdated):
-    try:
-        if event.chat.type not in ("group", "supergroup"):
-            return
-
-        affected_user = event.new_chat_member.user
-        if affected_user.is_bot:
-            return
-
-        old_status = event.old_chat_member.status
-        new_status = event.new_chat_member.status
-
-        was_in = old_status in ("member", "administrator", "creator", "restricted")
-        is_gone = new_status in ("left", "kicked")
-        is_new = old_status in ("left", "kicked") and new_status in ("member", "administrator", "creator")
-
-        if was_in and is_gone:
-            user = await get_user(affected_user.id, event.chat.id)
-            if user and user["character_name"]:
-                old_name = user["character_name"]
-                await update_user(affected_user.id, event.chat.id, character_name="", char_change_paid=0,
-                                  search_rp_partner="")
-
-                await update_application_status(affected_user.id, event.chat.id, "rejected")
-
-                try:
-                    await bot.set_chat_member_tag(
-                        chat_id=event.chat.id,
-                        user_id=affected_user.id,
-                        tag=""
-                    )
-                except Exception:
-                    pass
-
-                try:
-                    await bot.send_message(
-                        event.chat.id,
-                        f"🎭 Роль «{esc(old_name)}» освобождена —\nеё владелец покинул группу.",
-                        parse_mode="HTML"
-                    )
-                except Exception:
-                    pass
-                await update_chat_list(event.chat.id)
-
-        elif is_new:
-            app = await get_application(affected_user.id, event.chat.id)
-            if app and app['status'] == 'accepted':
-                mention = f'<a href="tg://user?id={affected_user.id}">{esc(affected_user.first_name)}</a>'
-                await bot.send_message(
-                    event.chat.id,
-                    f"🎉 {mention}, твоя анкета одобрена!\n\nПожалуйста, выбери регион, откуда твой персонаж:",
-                    reply_markup=regions_kb(affected_user.id), parse_mode="HTML"
-                )
-                await update_application_status(affected_user.id, event.chat.id, 'waiting_char')
-            else:
-                user = await get_user(affected_user.id, event.chat.id)
-                if not user or not user["character_name"]:
-                    mention = f'<a href="tg://user?id={affected_user.id}">{esc(affected_user.first_name)}</a>'
-                    await bot.send_message(
-                        event.chat.id,
-                        f"👋 {mention}, добро пожаловать в Тейват!\n\n"
-                        f"Чтобы начать играть, выбери свой пол:",
-                        reply_markup=gender_kb(affected_user.id), parse_mode="HTML"
-                    )
-    except Exception as e:
-        print(f"ChatMemberUpdate error: {e}")

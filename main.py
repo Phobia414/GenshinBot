@@ -203,7 +203,7 @@ async def auto_cleanup_job():
                 min_time_to_kick = now - 86400
 
                 users_to_kick = await fetch_all(
-                    "SELECT user_id FROM users WHERE chat_id = ? AND messages_count < ? "
+                     "SELECT user_id FROM users WHERE chat_id = ? AND msgs_week < ? "
                     "AND (rest_active = 0 OR rest_active IS NULL) "
                     "AND (clean_exempt = 0 OR clean_exempt IS NULL) "
                     "AND (first_seen < ? OR first_seen IS NULL)",

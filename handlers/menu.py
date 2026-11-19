@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
 from aiogram import types, F
 from aiogram.filters import Command
+from aiogram.utils.keyboard import InlineKeyboardBuilder  # <--- ДОБАВЛЕНО ДЛЯ КНОПОК
+
 from bot_instance import bot, dp
 from callbacks import MenuCB
 from config import CREATOR_USERNAME, PRICE_ROLE_CHANGE
@@ -101,16 +103,82 @@ async def cb_profile(query, callback_data, user, chat_id):
     await edit_or_send(query, text, profile_kb(query.from_user.id), image_url=image)
 
 
+# ==================== ОСВОБОЖДЕНИЕ РОЛИ (КНОПКА) ====================
+
 @dp.callback_query(MenuCB.filter(F.action == "freerole"))
 @inject_user
 async def cb_freerole(query, callback_data, user, chat_id):
     if query.from_user.id != callback_data.owner_id or not user["character_name"]: return
-    old = user["character_name"]
-    await update_user(query.from_user.id, chat_id, character_name="")
-    await query.answer(f"⚠️ Роль «{old}» освобождена. Вернуть можно за {PRICE_ROLE_CHANGE} монет.", show_alert=True)
-    if chat_id: await update_chat_list(chat_id)
-    await cb_profile(query, MenuCB(action="profile", owner_id=query.from_user.id), user=user, chat_id=chat_id)
 
+    old = esc(user["character_name"])
+    text = (
+        f"─ [ ⚠️ ОСВОБОЖДЕНИЕ РОЛИ ] ─\n\n"
+        f"Ты действительно хочешь освободить роль <b>{old}</b>?\n\n"
+        f"⚠️ Вернуть её обратно можно будет только за <b>{PRICE_ROLE_CHANGE}</b> монет."
+    )
+
+    b = InlineKeyboardBuilder()
+    b.button(text="⊱ ✅ Да, освободить ⊰", callback_data=MenuCB(action="freerole_confirm", owner_id=query.from_user.id))
+    b.button(text="⊱ ❌ Отмена ⊰", callback_data=MenuCB(action="freerole_cancel", owner_id=query.from_user.id))
+    b.adjust(1)
+
+    await edit_or_send(query, text, b.as_markup(), image_url="")
+
+
+@dp.callback_query(MenuCB.filter(F.action == "freerole_confirm"))
+@inject_user
+async def cb_freerole_confirm(query, callback_data, user, chat_id):
+    if query.from_user.id != callback_data.owner_id or not user["character_name"]: return
+
+    old = user["character_name"]
+    # Освобождаем роль и сбрасываем связанные данные (включая поиск со-роли)
+    await update_user(query.from_user.id, chat_id, character_name="", char_change_paid=0, search_rp_partner="")
+
+    await query.answer(f"⚠️ Роль «{esc(old)}» освобождена. Вернуть можно за {PRICE_ROLE_CHANGE} монет.",
+                       show_alert=True)
+
+    if chat_id:
+        await update_chat_list(chat_id)
+
+    # Вызываем профиль заново, чтобы подтянулись свежие данные из БД (без user)
+    await cb_profile(query, MenuCB(action="profile", owner_id=query.from_user.id), chat_id=chat_id)
+
+
+@dp.callback_query(MenuCB.filter(F.action == "freerole_cancel"))
+@inject_user
+async def cb_freerole_cancel(query, callback_data, user, chat_id):
+    if query.from_user.id != callback_data.owner_id: return
+    await query.answer("Отменено.")
+    # Возвращаем в профиль
+    await cb_profile(query, MenuCB(action="profile", owner_id=query.from_user.id), chat_id=chat_id)
+
+
+# ==================== ОСВОБОЖДЕНИЕ РОЛИ (КОМАНДА) ====================
+
+@dp.message(Command("freerole"))
+async def cmd_freerole(message):
+    chat_id = message.chat.id
+    user = await _ensure_user(message.from_user.id, chat_id)
+    if not user["character_name"]:
+        return await message.answer("У тебя нет персонажа.")
+
+    old = esc(user["character_name"])
+    text = (
+        f"─ [ ⚠️ ОСВОБОЖДЕНИЕ РОЛИ ] ─\n\n"
+        f"Ты действительно хочешь освободить роль <b>{old}</b>?\n\n"
+        f"⚠️ Вернуть её обратно можно будет только за <b>{PRICE_ROLE_CHANGE}</b> монет."
+    )
+
+    b = InlineKeyboardBuilder()
+    b.button(text="⊱ ✅ Да, освободить ⊰",
+             callback_data=MenuCB(action="freerole_confirm", owner_id=message.from_user.id))
+    b.button(text="⊱ ❌ Отмена ⊰", callback_data=MenuCB(action="freerole_cancel", owner_id=message.from_user.id))
+    b.adjust(1)
+
+    await message.answer(text, reply_markup=b.as_markup(), parse_mode="HTML")
+
+
+# ==================== ОСТАЛЬНЫЕ МЕНЮ ====================
 
 @dp.callback_query(MenuCB.filter(F.action == "adventurers"))
 @inject_user
@@ -149,15 +217,3 @@ async def cb_reputation(query, callback_data, user, chat_id):
     )
     image = await get_section_image("reputation", chat_id=chat_id)
     await edit_or_send(query, text, reputation_kb(query.from_user.id), image_url=image)
-
-
-@dp.message(Command("freerole"))
-async def cmd_freerole(message):
-    chat_id = message.chat.id
-    user = await _ensure_user(message.from_user.id, chat_id)
-    if not user["character_name"]: return await message.answer("У тебя нет персонажа.")
-    old = user["character_name"]
-    await update_user(message.from_user.id, chat_id, character_name="")
-    await message.answer(f"✅ Роль «{esc(old)}» освобождена.\n\n⚠️ Вернуть можно за {PRICE_ROLE_CHANGE} монет.",
-                         parse_mode="HTML", reply_markup=back_kb(message.from_user.id))
-    await update_chat_list(chat_id)

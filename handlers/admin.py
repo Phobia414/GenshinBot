@@ -495,19 +495,46 @@ async def cmd_addmoney(message: types.Message):
         await message.answer("❌ Только владелец")
         return
     chat_id = message.chat.id
-    parts = message.text.split(maxsplit=1)
-    if len(parts) < 2 or not parts[1].isdigit():
-        await message.answer("Используй: /addmoney Сумма")
-        return
-    amount = int(parts[1])
-    tid = message.reply_to_message.from_user.id if message.reply_to_message else message.from_user.id
-    user = await get_user(tid, chat_id)
+
+    target_ref, display = extract_target(message)
+
+    if target_ref is None:
+        # Если не указан юзер, выдаем себе
+        target_id = message.from_user.id
+        parts = message.text.split(maxsplit=1)
+        if len(parts) < 2 or not parts[1].isdigit():
+            await message.answer(
+                "Используй: <code>/addmoney Сумма</code> (ответом на сообщение) или <code>/addmoney @username Сумма</code>",
+                parse_mode="HTML")
+            return
+        amount = int(parts[1])
+    else:
+        # Если юзер указан, берем последнее слово как сумму
+        if isinstance(target_ref, str):
+            target_id = await resolve_user_id(target_ref)
+            if not target_id:
+                await message.answer("❌ Игрок не найден.")
+                return
+        else:
+            target_id = target_ref
+
+        parts = message.text.split()
+        if not parts[-1].isdigit():
+            await message.answer("Укажи сумму в конце.")
+            return
+        amount = int(parts[-1])
+
+    user = await get_user(target_id, chat_id)
     if not user:
-        await message.answer("❌ Нет пользователя")
-        return
-    await update_user(tid, chat_id, balance=user["balance"] + amount)
-    await message.answer(f"✅ +{amount} монет. Баланс: {user['balance'] + amount}",
-                         reply_markup=back_kb(message.from_user.id))
+        await _ensure_user(target_id, chat_id)
+        user = await get_user(target_id, chat_id)
+
+    await update_user(target_id, chat_id, balance=user["balance"] + amount)
+
+    mention = f'<a href="tg://user?id={target_id}">{esc(user["character_name"] or display or "Игрок")}</a>'
+    await message.answer(
+        f"✅ Выдано <b>+{amount}</b> монет игроку {mention}.\n💰 Новый баланс: <b>{user['balance'] + amount}</b>",
+        parse_mode="HTML", reply_markup=back_kb(message.from_user.id))
 
 
 @dp.message(Command("setmoney"))
@@ -671,7 +698,6 @@ async def cmd_cleanup_set(message: types.Message):
         enabled=enabled_state,
         min_messages=min_msgs,
         frequency_days=days,
-        last_cleanup=now_ts
     )
     await message.answer("✅ Настройки авто-чистки обновлены. Таймер запущен заново.",
                          reply_markup=back_kb(message.from_user.id))

@@ -84,7 +84,7 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
             await message.answer("🌸 Возьмите ссылку для заполнения анкеты у администраторов группы.\n\n<i>Для игры перейдите в группу и напишите /start там.</i>", parse_mode="HTML")
         return
 
-    if user["character_name"]:
+    if user["character_name"] and message.chat.type in ("group", "supergroup"):
         await update_user_tag(bot, chat_id, message.from_user.id, user)
 
         name = esc(user_display_name(user))
@@ -179,7 +179,8 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
 
     chat = query.message.chat
 
-    await update_user_tag(bot, chat.id, query.from_user.id, {"character_name": name, "admin_rank": ""})
+    updated_user_data = await get_user(query.from_user.id, chat_id)
+    await update_user_tag(bot, chat.id, query.from_user.id, updated_user_data)
 
     app = await get_application(query.from_user.id, chat_id)
     if app and app['status'] == 'waiting_char':
