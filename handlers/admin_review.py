@@ -11,6 +11,7 @@ from callbacks import AdminAppCB
 from db import (get_pending_admin_applications, get_admin_application,
                 update_admin_application_status, get_trusted_admins)
 from constants import DIV
+from helpers import esc  # <--- ДОБАВЛЕН ИМПОРТ ESC
 
 
 class ReviewForm(StatesGroup):
@@ -68,9 +69,10 @@ async def cb_view_app(query: types.CallbackQuery, callback_data: AdminAppCB, sta
     if app['status'] != 'pending':
         return await query.answer(f"Эта анкета уже рассмотрена (Статус: {app['status']}).", show_alert=True)
 
-    text_1 = f"👤 <b>АНКЕТА ОТ:</b> {app['username']} (<code>{user_id}</code>)\n{DIV}\n<b>1. Опыт:</b>\n{app['q1']}\n\n<b>2. Время:</b>\n{app['q2']}\n\n<b>3. Правила:</b>\n{app['q3']}\n\n<b>4. Бот:</b>\n{app['q4']}\n\n<b>5. Мотивация:</b>\n{app['q5']}"
-    text_2 = f"<b>6. Ситуация (спор):</b>\n{app['q6']}\n\n<b>7. Ситуация (недочеты):</b>\n{app['q7']}\n\n<b>8. Подстройка:</b>\n{app['q8']}\n\n<b>9. Оскорбления друзей:</b>\n{app['q9']}"
-    text_3 = f"<b>10. Сложный конфликт:</b>\n{app['q10']}\n\n<b>11. Срыв:</b>\n{app['q11']}\n\n<b>12. Ошибка:</b>\n{app['q12']}"
+    # ИСПРАВЛЕНИЕ: Экранируем все поля через esc(), чтобы HTML не ломался
+    text_1 = f"👤 <b>АНКЕТА ОТ:</b> {esc(app['username'])} (<code>{user_id}</code>)\n{DIV}\n<b>1. Опыт:</b>\n{esc(app['q1'])}\n\n<b>2. Время:</b>\n{esc(app['q2'])}\n\n<b>3. Правила:</b>\n{esc(app['q3'])}\n\n<b>4. Бот:</b>\n{esc(app['q4'])}\n\n<b>5. Мотивация:</b>\n{esc(app['q5'])}"
+    text_2 = f"<b>6. Ситуация (спор):</b>\n{esc(app['q6'])}\n\n<b>7. Ситуация (недочеты):</b>\n{esc(app['q7'])}\n\n<b>8. Подстройка:</b>\n{esc(app['q8'])}\n\n<b>9. Оскорбления друзей:</b>\n{esc(app['q9'])}"
+    text_3 = f"<b>10. Сложный конфликт:</b>\n{esc(app['q10'])}\n\n<b>11. Срыв:</b>\n{esc(app['q11'])}\n\n<b>12. Ошибка:</b>\n{esc(app['q12'])}"
 
     b = InlineKeyboardBuilder()
     b.button(text="✅ Принять", callback_data=AdminAppCB(action="accept", user_id=user_id).pack())
@@ -89,7 +91,6 @@ async def cb_view_app(query: types.CallbackQuery, callback_data: AdminAppCB, sta
     await query.answer()
 
 
-# ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ССЫЛКИ
 async def send_accept_message(user_id: int, target_chat_id: int):
     msg = "🎉 <b>Поздравляем!</b>\nВаша анкета в администрацию была <b>ПРИНЯТА</b>!\n\n"
     if target_chat_id:
@@ -123,7 +124,7 @@ async def cb_accept_app(query: types.CallbackQuery, callback_data: AdminAppCB):
     await send_accept_message(user_id, target_chat_id)
 
     await bot.send_message(OWNER_ID,
-                           f"👑 <b>ЛОГ АНКЕТ</b>\nАдмин {query.from_user.first_name} (@{query.from_user.username}) ПРИНЯЛ анкету пользователя <code>{user_id}</code>.",
+                           f"👑 <b>ЛОГ АНКЕТ</b>\nАдмин {esc(query.from_user.first_name)} (@{esc(query.from_user.username)}) ПРИНЯЛ анкету пользователя <code>{user_id}</code>.",
                            parse_mode="HTML")
 
     b = InlineKeyboardBuilder().button(text="‹ К списку анкет", callback_data=AdminAppCB(action="list").pack())
@@ -144,7 +145,7 @@ async def cb_reject_app(query: types.CallbackQuery, callback_data: AdminAppCB):
         pass
 
     await bot.send_message(OWNER_ID,
-                           f"👑 <b>ЛОГ АНКЕТ</b>\nАдмин {query.from_user.first_name} (@{query.from_user.username}) ОТКЛОНИЛ анкету пользователя <code>{user_id}</code>.",
+                           f"👑 <b>ЛОГ АНКЕТ</b>\nАдмин {esc(query.from_user.first_name)} (@{esc(query.from_user.username)}) ОТКЛОНИЛ анкету пользователя <code>{user_id}</code>.",
                            parse_mode="HTML")
 
     b = InlineKeyboardBuilder().button(text="‹ К списку анкет", callback_data=AdminAppCB(action="list").pack())
@@ -202,7 +203,7 @@ async def process_flaws_final(query: types.CallbackQuery, state: FSMContext):
     await update_admin_application_status(user_id, final_status, reviewer_id=query.from_user.id, flaws_text=flaws_text)
 
     status_str = "✅ ПРИНЯТА" if final_status == "accepted" else "❌ ОТКЛОНЕНА"
-    user_msg = f"📩 <b>Ваша анкета рассмотрена!</b>\n\n<b>Комментарий проверяющего:</b>\n{flaws_text}\n\n<b>Итог:</b> {status_str}"
+    user_msg = f"📩 <b>Ваша анкета рассмотрена!</b>\n\n<b>Комментарий проверяющего:</b>\n{esc(flaws_text)}\n\n<b>Итог:</b> {status_str}"
 
     try:
         await bot.send_message(user_id, user_msg, parse_mode="HTML")
@@ -212,7 +213,7 @@ async def process_flaws_final(query: types.CallbackQuery, state: FSMContext):
         pass
 
     await bot.send_message(OWNER_ID,
-                           f"👑 <b>ЛОГ АНКЕТ</b>\nАдмин {query.from_user.first_name} рассмотрел анкету <code>{user_id}</code>.\nСтатус: {status_str}\nНедочеты:\n{flaws_text}",
+                           f"👑 <b>ЛОГ АНКЕТ</b>\nАдмин {esc(query.from_user.first_name)} рассмотрел анкету <code>{user_id}</code>.\nСтатус: {status_str}\nНедочеты:\n{esc(flaws_text)}",
                            parse_mode="HTML")
 
     await state.clear()
