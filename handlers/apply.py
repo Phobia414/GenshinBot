@@ -15,6 +15,7 @@ from helpers import esc
 
 
 class ApplyForm(StatesGroup):
+    waiting_for_comment = State()
     age = State()
     age_visibility = State()
     experience = State()
@@ -245,6 +246,7 @@ async def process_source(message: types.Message, state: FSMContext):
         b = InlineKeyboardBuilder()
         b.button(text="✅ Принять", callback_data=f"appr_accept_{message.from_user.id}_{data['target_chat_id']}")
         b.button(text="❌ Отклонить", callback_data=f"appr_decline_{message.from_user.id}_{data['target_chat_id']}")
+        b.button(text="✍️ Комментарий", callback_data=f"appr_comment_{message.from_user.id}_{data['target_chat_id']}")
         b.button(text="💬 Связаться", url=f"tg://user?id={message.from_user.id}")
         b.adjust(2, 1)
 
@@ -357,4 +359,80 @@ async def cb_appr_decline(query: types.CallbackQuery):
     try:
         await bot.send_message(user_id, "😔 <b>К сожалению, ваша анкета была отклонена.</b>", parse_mode="HTML")
     except Exception:
+        pass
+
+
+@dp.callback_query(F.data.startswith("appr_comment_"))
+async def cb_appr_comment(query: types.CallbackQuery, state: FSMContext):
+    parts = query.data.replace("appr_comment_", "").split("_")
+    user_id, chat_id = int(parts[0]), int(parts[1])
+
+    if not await is_admin_of_chat(query.from_user.id, chat_id):
+        await query.answer("❌ Вы не являетесь админом этой группы.", show_alert=True)
+        return
+
+    # Сохраняем данные для следующего шага
+    await state.update_data(appr_user_id=user_id, appr_chat_id=chat_id)
+    await state.set_state(ApplyComment.waiting_for_comment)
+
+    b = InlineKeyboardBuilder()
+    b.button(text="❌ Отмена", callback_data="appr_cancel_comment")
+
+    await query.message.reply(
+        "✍️ **Напишите комментарий или причину отклонения для этого игрока.**\n\n"
+        "Ваш текст будет отправлен ему в личные сообщения.",
+        reply_markup=b.as_markup(),
+        parse_mode="Markdown"
+    )
+    await query.answer()
+
+
+@dp.callback_query(F.data == "appr_cancel_comment")
+async def cb_appr_cancel_comment(query: types.CallbackQuery, state: FSMContext):
+    await state.clear()
+    await query.message.delete()
+
+
+@dp.message(ApplyComment.waiting_for_comment, F.text)
+async def process_appr_comment_text(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    user_id = data.get("appr_user_id")
+    chat_id = data.get("appr_chat_id")
+
+    if not user_id or not chat_id:
+        await message.answer("❌ Ошибка: данные анкеты утеряны.")
+        await state.clear()
+        return
+
+    comment = message.text
+    await update_application_status(user_id, chat_id, "rejected")
+    await state.clear()
+
+    # Отправляем комментарий игроку
+    try:
+        await bot.send_message(
+            user_id,
+            f"😔 <b>К сожалению, ваша анкета была отклонена.</b>\n\n"
+            f"<b>Комментарий администратора:</b>\n<i>{esc(comment)}</i>",
+            parse_mode="HTML"
+        )
+    except Exception:
+        await message.answer("⚠️ Не удалось отправить сообщение игроку (возможно, у него закрыты ЛС).")
+
+    await message.answer("✅ Анкета отклонена, а комментарий отправлен игроку!")
+
+    # Уведомляем остальных админов
+    try:
+        admins = await bot.get_chat_administrators(chat_id)
+        for admin in admins:
+            if not admin.user.is_bot and admin.user.id != message.from_user.id:
+                try:
+                    await bot.send_message(
+                        admin.user.id,
+                        f"🔔 Админ {message.from_user.first_name} <b>ОТКЛОНИЛ</b> анкету пользователя <code>{user_id}</code> с комментарием:\n<i>{esc(comment)}</i>",
+                        parse_mode="HTML"
+                    )
+                except:
+                    pass
+    except:
         pass

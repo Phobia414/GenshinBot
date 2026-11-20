@@ -9,7 +9,7 @@ from config import OWNER_ID
 from callbacks import AdminAppCB
 from db import save_admin_application, get_admin_application, get_trusted_admins
 from constants import DIV
-from helpers import is_chat_admin
+from helpers import is_chat_admin, esc
 
 
 class AdminApplyForm(StatesGroup):

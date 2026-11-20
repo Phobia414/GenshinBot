@@ -417,7 +417,7 @@ async def cmd_kicklist(message: types.Message):
         return await message.answer("В группе нет зарегистрированных участников.")
 
     now = datetime.now(timezone.utc)
-    two_days_ago = now - timedelta(days=2)
+    four_days_ago = now - timedelta(days=4)
 
     kick_list = []
     norm_list = []
@@ -440,7 +440,7 @@ async def cmd_kicklist(message: types.Message):
             fs = now - timedelta(days=30)
             date_str = "неизвестно"
 
-        if fs > two_days_ago:
+        if fs > four_days_ago:
             newbie_list.append(f"🛡 {user_link} — {msgs} сообщ. (С {date_str})")
         elif msgs >= NORM_MSGS:
             norm_list.append(f"✅ {user_link} — {msgs} сообщ.")
@@ -458,7 +458,7 @@ async def cmd_kicklist(message: types.Message):
     else:
         text += "Все молодцы, неактивных нет!\n"
 
-    text += f"\n\n🛡 Защищенные новички (< 2 дней):\n"
+    text += f"\n\n🛡 Защищенные новички (< 4 дней):\n"
     if newbie_list:
         text += "\n".join(newbie_list[:10])
     else:
