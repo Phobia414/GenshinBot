@@ -13,9 +13,8 @@ from db import get_user, update_user, get_application, update_application_status
 from characters import CHARACTERS
 from helpers import esc
 
-
+# ================= СОСТОЯНИЯ =================
 class ApplyForm(StatesGroup):
-    waiting_for_comment = State()
     age = State()
     age_visibility = State()
     experience = State()
@@ -23,8 +22,12 @@ class ApplyForm(StatesGroup):
     timezone = State()
     triggers = State()
     activity = State()
-    source = State() # <--- НОВЫЙ ШАГ
+    source = State()
 
+# ВОТ ЭТОТ КЛАСС НУЖНО ДОБАВИТЬ ОБЯЗАТЕЛЬНО:
+class ApplyComment(StatesGroup):
+    waiting_for_comment = State()
+# =============================================
 
 FORM_STEPS = [
     (ApplyForm.age, "age"),  # 0
@@ -34,9 +37,8 @@ FORM_STEPS = [
     (ApplyForm.timezone, "timezone"),  # 4
     (ApplyForm.triggers, "triggers"),  # 5
     (ApplyForm.activity, "activity"),  # 6
-    (ApplyForm.source, "source")  # 7 <--- ДОБАВЛЕНО
+    (ApplyForm.source, "source")  # 7
 ]
-
 
 async def send_step(chat_id: int, step_index: int, state: FSMContext):
     if step_index >= len(FORM_STEPS):
