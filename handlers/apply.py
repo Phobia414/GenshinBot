@@ -65,10 +65,10 @@ async def send_step(chat_id: int, step_index: int, state: FSMContext):
     elif st == ApplyForm.timezone:
         text = "🕒 <b>Укажите ваш часовой пояс.</b>\n\nНапример: МСК, UTC+3, UTC+5. И удобное для вас время для общения."
     elif st == ApplyForm.triggers:
-        text = "⚠️ <b>Есть ли у вас триггерные темы или то, что категорически неприемлемо во флуде?</b>\n\nНапример: жестокость к животным, определенные фобии. Если таких тем нет — напишите «Нет»."
+        text = "⚠️ <b>Будете ли вы ролить в нашем проекте?</b>\n\nНаша ролевая не обязательная. Если вы не планируете отыгрывать роль, просто напишите «Нет»."
     elif st == ApplyForm.activity:
         text = "⚡ <b>Какова ваша ожидаемая активность?</b>\n\nКак часто или сколько сообщений в неделю вы сможете писать?"
-    elif st == ApplyForm.source: # <--- НОВЫЙ ВОПРОС
+    elif st == ApplyForm.source:
         text = (
             "📢 <b>Откуда вы о нас узнали?</b>\n\n"
             "Тик ток, пиар чаты или кто-то посоветовал? Если вы связывались с участником или администратором нашего проекта для вступления, напишите его юзернейм пожалуйста или имя/никнейм."
@@ -87,9 +87,7 @@ async def send_step(chat_id: int, step_index: int, state: FSMContext):
 
     await bot.send_chat_action(chat_id, 'typing')
     await asyncio.sleep(0.7)
-
     await bot.send_message(chat_id, text, reply_markup=b.as_markup(), parse_mode="HTML")
-
 
 @dp.callback_query(F.data == "apply_nav_back", StateFilter(ApplyForm))
 async def cb_nav_back(query: types.CallbackQuery, state: FSMContext):

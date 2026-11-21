@@ -14,6 +14,8 @@ async def init_db():
                     cols = [row[1] for row in await cur.fetchall()]
                 if cols and "chat_id" not in cols:
                     await db.execute(f"ALTER TABLE {table} RENAME TO {table}_old")
+                    await db.execute("ALTER TABLE admin_applications ADD COLUMN q_pos TEXT")
+                    await db.execute("ALTER TABLE admin_applications ADD COLUMN q_views TEXT")
             except Exception:
                 pass
 
@@ -134,8 +136,8 @@ async def init_db():
             CREATE TABLE IF NOT EXISTS admin_applications (
                 user_id INTEGER PRIMARY KEY,
                 username TEXT,
-                q1 TEXT, q2 TEXT, q3 TEXT, q4 TEXT, q5 TEXT, q6 TEXT,
-                q7 TEXT, q8 TEXT, q9 TEXT, q10 TEXT, q11 TEXT, q12 TEXT,
+                q1 TEXT, q2 TEXT, q_pos TEXT, q3 TEXT, q4 TEXT, q5 TEXT, q6 TEXT,
+                q7 TEXT, q8 TEXT, q9 TEXT, q10 TEXT, q11 TEXT, q12 TEXT, q_views TEXT,
                 status TEXT DEFAULT 'pending',
                 reviewer_id INTEGER DEFAULT 0,
                 flaws_text TEXT DEFAULT '',
@@ -825,13 +827,14 @@ async def save_admin_application(user_id, username, answers: dict):
     now = int(datetime.now(timezone.utc).timestamp())
     await execute("""
         INSERT OR REPLACE INTO admin_applications 
-        (user_id, username, q1, q2, q3, q4, q5, q6, q7, q8, q9, q10, q11, q12, status, created_at, target_chat_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+        (user_id, username, q1, q2, q_pos, q3, q4, q5, q6, q7, q8, q9, q10, q11, q12, q_views, status, created_at, target_chat_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
     """, (
-        user_id, username, answers.get('q1'), answers.get('q2'), answers.get('q3'),
-        answers.get('q4'), answers.get('q5'), answers.get('q6'), answers.get('q7'),
-        answers.get('q8'), answers.get('q9'), answers.get('q10'), answers.get('q11'),
-        answers.get('q12'), now, answers.get('target_chat_id', 0)
+        user_id, username, answers.get('q1'), answers.get('q2'), answers.get('q_pos'),
+        answers.get('q3'), answers.get('q4'), answers.get('q5'), answers.get('q6'),
+        answers.get('q7'), answers.get('q8'), answers.get('q9'), answers.get('q10'),
+        answers.get('q11'), answers.get('q12'), answers.get('q_views'),
+        now, answers.get('target_chat_id', 0)
     ))
 
 

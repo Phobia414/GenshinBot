@@ -66,7 +66,7 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
         return
 
     if current_state:
-        await state.clear() # <--- СБРАСЫВАЕМ ВСЕ ЗАВИСШИЕ СОСТОЯНИЯ (Анкеты, Жалобы)
+        await state.clear()  # СБРАСЫВАЕМ ВСЕ ЗАВИСШИЕ СОСТОЯНИЯ (Анкеты, Жалобы)
 
     chat_id = message.chat.id
     user = await _ensure_user(message.from_user.id, chat_id)
@@ -81,11 +81,14 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
             await state.update_data(target_chat_id=target_chat_id)
             await send_step(message.chat.id, 0, state)
         else:
-            await message.answer("🌸 Возьмите ссылку для заполнения анкеты у администраторов группы.\n\n<i>Для игры перейдите в группу и напишите /start там.</i>", parse_mode="HTML")
+            await message.answer(
+                "🌸 Возьмите ссылку для заполнения анкеты у администраторов группы.\n\n<i>Для игры перейдите в группу и напишите /start там.</i>",
+                parse_mode="HTML")
         return
 
-    if user["character_name"] and message.chat.type in ("group", "supergroup"):
-        await update_user_tag(bot, chat_id, message.from_user.id, user)
+    if user["character_name"]:
+        if chat_id > 0:
+            await update_user_tag(bot, chat_id, message.from_user.id, user)
 
         name = esc(user_display_name(user))
         text = f"── 〔 🌟 ГЛАВНОЕ МЕНЮ 〕 ──\n\n🍃 Привет, <b>{name}</b>!\n\nКуда отправимся сегодня?"
@@ -95,12 +98,10 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
         if sub_enabled == "1" and user.get("sub_passed") == 0:
             await send_sub_message(message, message.from_user.id, chat_id)
         else:
-            if not user["gender"]:
-                text = f"── 〔 ✨ ПРИВЕТСТВИЕ 〕 ──\n\nВыбери свой пол:"
-                await message.answer(text, reply_markup=gender_kb(message.from_user.id), parse_mode="HTML")
-            else:
-                text = f"── 〔 🌸 ВЫБОР ПЕРСОНАЖА 〕 ──\n\nВыбери регион, откуда родом твой герой 🎭"
-                await message.answer(text, reply_markup=regions_kb(message.from_user.id), parse_mode="HTML")
+            # УБРАН ВЫБОР ПОЛА, СРАЗУ РЕГИОНЫ
+            text = f"── 〔 🌸 ВЫБОР ПЕРСОНАЖА 〕 ──\n\nВыбери регион, откуда родом твой герой 🎭"
+            await message.answer(text, reply_markup=regions_kb(message.from_user.id), parse_mode="HTML")
+
 
 @dp.callback_query(MenuCB.filter(F.action.in_(["gender_male", "gender_female"])))
 async def cb_gender(query: types.CallbackQuery, callback_data: MenuCB, state: FSMContext):
@@ -179,6 +180,7 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
 
     chat = query.message.chat
 
+    # Обновляем тег с сохранением ранга
     updated_user_data = await get_user(query.from_user.id, chat_id)
     await update_user_tag(bot, chat.id, query.from_user.id, updated_user_data)
 
@@ -202,32 +204,61 @@ async def cb_character(query: types.CallbackQuery, callback_data: CharCB):
 
         await bot.send_message(chat_id, f"✅ Анкета опубликована! Добро пожаловать в игру, {esc(name)}!",
                                reply_markup=main_menu_kb(query.from_user.id), parse_mode="HTML")
-        return
+    else:
+        text = f"── 〔 🎉 ДОБРО ПОЖАЛОВАТЬ! 〕 ──\n\nТеперь ты — <b>{esc(name)}</b>!\n\nОрион рад за тебя! 💛"
 
-    text = f"── 〔 🎉 ДОБРО ПОЖАЛОВАТЬ! 〕 ──\n\nТеперь ты — <b>{esc(name)}</b>!\n\nОрион рад за тебя! 💛"
-
-    try:
-        await query.message.delete()
-    except Exception:
-        pass
-
-    char_image = get_character_image(name)
-
-    if char_image:
         try:
-            msg = await bot.send_photo(chat.id, photo=char_image, caption=text,
-                                       reply_markup=main_menu_kb(query.from_user.id), parse_mode="HTML")
-        except:
+            await query.message.delete()
+        except Exception:
+            pass
+
+        char_image = get_character_image(name)
+
+        if char_image:
+            try:
+                msg = await bot.send_photo(chat.id, photo=char_image, caption=text,
+                                           reply_markup=main_menu_kb(query.from_user.id), parse_mode="HTML")
+            except:
+                msg = await bot.send_message(chat.id, text=text, reply_markup=main_menu_kb(query.from_user.id),
+                                             parse_mode="HTML")
+        else:
             msg = await bot.send_message(chat.id, text=text, reply_markup=main_menu_kb(query.from_user.id),
                                          parse_mode="HTML")
-    else:
-        msg = await bot.send_message(chat.id, text=text, reply_markup=main_menu_kb(query.from_user.id),
-                                     parse_mode="HTML")
 
-    bot_state._last_bot_msg[chat.id] = msg.message_id
+        bot_state._last_bot_msg[chat.id] = msg.message_id
+
+    # ===== АВТО-СОЗЫВ ПОСЛЕ ВЫБОРА ПЕРСОНАЖА =====
+    try:
+        users = await fetch_all(
+            "SELECT user_id, username, character_name FROM users "
+            "WHERE chat_id = ? AND character_name IS NOT NULL AND character_name != '' "
+            "AND (IFNULL(call_opt_out, 0) = 0 OR user_id = ?)",
+            (chat.id, query.from_user.id)
+        )
+        if users:
+            mentions = []
+            for u in users:
+                if u["username"]:
+                    mentions.append(f"@{u['username']}")
+                else:
+                    mentions.append(f'<a href="tg://user?id={u["user_id"]}">{esc(u["character_name"])}</a>')
+
+            call_text = (
+                f"📢 <b>ПОЗЫВНОЙ</b>\n{DIV}\n\n"
+                f"Новый герой <b>{esc(name)}</b> вступил в игру! Приветствуем! 🎉\n\n{DIV}\n"
+            )
+
+            chunks = [mentions[i:i + 4] for i in range(0, len(mentions), 4)]
+            if chunks:
+                sent_msg = await bot.send_message(chat.id, call_text + ", ".join(chunks[0]), parse_mode="HTML")
+                for chunk in chunks[1:]:
+                    await sent_msg.reply(call_text + ", ".join(chunk), parse_mode="HTML")
+                    await asyncio.sleep(0.5)
+    except Exception as e:
+        print(f"Ошибка при авто-созыве: {e}")
 
 
-# ==================== ФУНКЦИИ ИЗ MENU.PY ====================
+# ==================== ДУБЛИКАТЫ ФУНКЦИЙ ИЗ MENU.PY (Для объема и совместимости) ====================
 
 @dp.callback_query(MenuCB.filter(F.action == "menu"))
 @inject_user
@@ -296,13 +327,11 @@ async def cb_profile(query, callback_data, user, chat_id):
     if " " in reg_name_for_title: reg_name_for_title = reg_name_for_title.split(" ", 1)[1]
     rep_title = get_reputation_title(rep, reg_name_for_title)
 
-    # УМНЫЙ ВЫВОД РАНГА
     admin_rank_text = ""
     if user.get("admin_rank"):
         ranks = await get_ranks_config()
         r_data = ranks.get(user["admin_rank"])
         if r_data:
-            # Берем profile_text, если его нет - name
             display_rank = r_data.get("profile_text") or r_data.get("name", "")
             admin_rank_text = f"👑 Должность: <b>{display_rank}</b>\n"
 
@@ -321,6 +350,7 @@ async def cb_profile(query, callback_data, user, chat_id):
     fallback = get_character_image(user["character_name"]) if user["character_name"] else None
     image = await get_section_image("profile", fallback, chat_id)
     await edit_or_send(query, text, profile_kb(query.from_user.id), image_url=image)
+
 
 @dp.callback_query(MenuCB.filter(F.action == "adventurers"))
 @inject_user
@@ -359,6 +389,7 @@ async def cb_reputation(query, callback_data, user, chat_id):
     )
     image = await get_section_image("reputation", chat_id=chat_id)
     await edit_or_send(query, text, reputation_kb(query.from_user.id), image_url=image)
+
 
 # ==================== СОБЫТИЯ ВХОДА ====================
 
@@ -401,7 +432,6 @@ async def on_chat_member_update(event: types.ChatMemberUpdated):
         elif is_new:
             user = await get_user(affected_user.id, event.chat.id)
             if user and user["character_name"]:
-                # Ждем 1 секунду, чтобы Телеграм обновил статус вступившего
                 await asyncio.sleep(1)
                 await update_user_tag(bot, event.chat.id, affected_user.id, user)
 
@@ -413,6 +443,19 @@ async def on_chat_member_update(event: types.ChatMemberUpdated):
 
             app = await get_application(affected_user.id, event.chat.id)
             if app and app['status'] == 'accepted':
+                # ДУБЛИРОВАНИЕ АНКЕТЫ В ЧАТ
+                app_text = (
+                    f"🎉 <b>У нас новенький! Встречайте!</b>\n\n"
+                    f"🎭 <b>Роль:</b> Будет выбрана\n\n"
+                    f"📖 <b>Опыт:</b> {esc(app['experience'])}\n"
+                    f"🌟 <b>О себе:</b> {esc(app['about'])}\n"
+                    f"🕒 <b>Часовой пояс:</b> {esc(app['timezone'])}\n"
+                    f"⚠️ <b>Триггеры:</b> {esc(app['triggers'])}\n"
+                    f"⚡ <b>Активность:</b> {esc(app['activity'])}\n"
+                    f"📢 <b>Откуда узнал(а):</b> {esc(app.get('source', 'Не указан'))}"
+                )
+                await bot.send_message(event.chat.id, app_text, parse_mode="HTML")
+
                 mention = f'<a href="tg://user?id={affected_user.id}">{esc(affected_user.first_name)}</a>'
                 await bot.send_message(
                     event.chat.id,
@@ -425,8 +468,8 @@ async def on_chat_member_update(event: types.ChatMemberUpdated):
                     mention = f'<a href="tg://user?id={affected_user.id}">{esc(affected_user.first_name)}</a>'
                     await bot.send_message(
                         event.chat.id,
-                        f"👋 {mention}, добро пожаловать в Тейват!\n\nВыбери свой пол:",
-                        reply_markup=gender_kb(affected_user.id), parse_mode="HTML"
+                        f"👋 {mention}, добро пожаловать в Тейват!\n\nВыбери регион, откуда родом твой герой:",
+                        reply_markup=regions_kb(affected_user.id), parse_mode="HTML"
                     )
     except Exception as e:
         print(f"ChatMemberUpdate error: {e}")

@@ -13,27 +13,29 @@ from helpers import is_chat_admin, esc
 
 
 class AdminApplyForm(StatesGroup):
-    q1 = State();
-    q2 = State();
-    q3 = State();
+    q1 = State()
+    q2 = State()
+    q_pos = State()  # НОВЫЙ ВОПРОС ПРО ДОЛЖНОСТЬ
+    q3 = State()
     q4 = State()
-    q5 = State();
-    q6 = State();
-    q7 = State();
+    q5 = State()
+    q6 = State()
+    q7 = State()
     q8 = State()
-    q9 = State();
-    q10 = State();
-    q11 = State();
+    q9 = State()
+    q10 = State()
+    q11 = State()
     q12 = State()
+    q_views = State()  # НОВЫЙ ВОПРОС ПРО ВЗГЛЯДЫ
     confirm = State()
 
 
-# ... (QUESTIONS оставляем как было) ...
 QUESTIONS = {
     "q1": "1. Ваш опыт во флудах/ролевых, других проектах (Игры, группы, работа) как администратора. Напишите подробный ответ. (Сколько были на посту администрации, какие должности занимали и как относитесь к должностной лестнице, можете добавить свое, если есть, что рассказать.)",
     "q2": "2. Ваше свободное время в реальной жизни, напишите примерное количество времени или расскажите о вашей занятости. (Время на учебу/работу, хобби, отдых, так нам будет легче узнать о вашем свободном времени для флуда.)",
+    "q_pos": "3. Какую должность хотите занимать? <b>Мастер интерактивов</b> (он же Активист — отвечает за проведение интерактивов в чате и игр), <b>Монтажер</b> или <b>Стажер</b>? (С возможностью должностного роста)",
     "q3": (
-        "3. Как хорошо вы знаете наши правила? Выберите вариант ниже:\n\n"
+        "4. Как хорошо вы знаете наши правила? Выберите вариант ниже:\n\n"
         "1) Один раз прочитал\n"
         "2) Итак знаю, даже не читал\n"
         "3) Читал пару раз, помню большую часть\n"
@@ -41,19 +43,20 @@ QUESTIONS = {
         "5) Идеально знаю правила, учил их"
     ),
     "q4": (
-        "4. Читали ли вы информацию про нашего бота о его механиках, функциях и общем описании?\n\n"
+        "5. Читали ли вы информацию про нашего бота о его механиках, функциях и общем описании?\n\n"
         "1) Да, читал внимательно\n"
         "2) Частично\n"
         "3) Нет, не читал"
     ),
-    "q5": "5. Почему решили стать частью администрации нашего проекта?",
-    "q6": "6. В административном чате происходит спор двух членов администрации, один из них намного меньше рангом другого. (Например Мл. Модер спорит с Гл. Админом) Вы являетесь обычным модератором и видите как Гл. Админ, начинает унижать или переходить на личности Мл. Модера в чате администрации. Владельца или Совладельца нет в сети на данный момент, ваши действия?",
-    "q7": "7. Участник в чате начинает указывать на не точности в системе проекта, бота, администрации. Вы как ответственный администратор, начинаете выяснять, что именно не нравится участнику и почему. Он указывает на моменты которые вы можете оспорить. Вы начнете спор отстояв проект, бота, администрацию или отступите и просто примете к сведению упрёк который вы могли оспорить? (Ответить кратко, что предпримете и почему?)",
-    "q8": "8. Администрация должна подстраиваться под участников или участники под администрацию? (2-3 предложения, что и почему?)",
-    "q9": "9. Действующее правило: \"Всем участникам чата запрещено оскорблять, унижать, провоцировать, угнетать других участников чата.\" Два друга знакомые между собой начали друг друга в \"шутку\" оскорблять, ваши действия, учитывая, действующее правило? (Ответить кратко, что предпримете и почему?)",
-    "q10": "10. Расскажите о самом сложном конфликте который вы рассматривали как администратор. Удалось ли вам его устранить? Если да, то как?",
-    "q11": "11. Бывало ли, что вы сорвались на участника/администратора? Что послужило триггером?",
-    "q12": "12. Вспомните ситуацию, когда вы допустили ошибку в выполнении обязанностей и это вызвало недовольство со стороны коллег-администраторов или участников, как вы себя повели? Признали ошибку или пытались оспорить? Делали что то, чтобы исправить ситуацию?"
+    "q5": "6. Почему решили стать частью администрации нашего проекта?",
+    "q6": "7. В административном чате происходит спор двух членов администрации, один из них намного меньше рангом другого. (Например Мл. Модер спорит с Гл. Админом) Вы являетесь обычным модератором и видите как Гл. Админ, начинает унижать или переходить на личности Мл. Модера в чате администрации. Владельца или Совладельца нет в сети на данный момент, ваши действия?",
+    "q7": "8. Участник в чате начинает указывать на не точности в системе проекта, бота, администрации. Вы как ответственный администратор, начинаете выяснять, что именно не нравится участнику и почему. Он указывает на моменты которые вы можете оспорить. Вы начнете спор отстояв проект, бота, администрацию или отступите и просто примете к сведению упрёк который вы могли оспорить? (Ответить кратко, что предпримете и почему?)",
+    "q8": "9. Администрация должна подстраиваться под участников или участники под администрацию? (2-3 предложения, что и почему?)",
+    "q9": "10. Действующее правило: \"Всем участникам чата запрещено оскорблять, унижать, провоцировать, угнетать других участников чата.\" Два друга знакомые между собой начали друг друга в \"шутку\" оскорблять, ваши действия, учитывая, действующее правило? (Ответить кратко, что предпримете и почему?)",
+    "q10": "11. Расскажите о самом сложном конфликте который вы рассматривали как администратор. Удалось ли вам его устранить? Если да, то как?",
+    "q11": "12. Бывало ли, что вы сорвались на участника/администратора? Что послужило триггером?",
+    "q12": "13. Вспомните ситуацию, когда вы допустили ошибку в выполнении обязанностей и это вызвало недовольство со стороны коллег-администраторов или участников, как вы себя повели? Признали ошибку или пытались оспорить? Делали что то, чтобы исправить ситуацию?",
+    "q_views": "14. <b>Разделяете ли вы наши взгляды об проекте?</b>\n\nНаш взгляд, на проект и то, чего мы хотим добиться: Мы хотим стать очень популярным проектом, чтобы люди о нас говорили как о великом и реально популярном проекте, который был на слуху у многих людей. Мы хотим, чтобы наш проект стал примером для подражания, чтобы владельцы новых флудов, хотели стать как мы. У нас большое будущее, которое мы создаем сами!\n\nНапишите о своих взглядах на проект, чего хотите добиться вы в проекте и каким вы бы хотели видеть проект, будучи членом администрации."
 }
 
 Q3_ANSWERS = {"1": "1) Один раз прочитал", "2": "2) Итак знаю, даже не читал",
@@ -66,7 +69,6 @@ Q4_ANSWERS = {"1": "1) Да, читал внимательно", "2": "2) Час
 async def cmd_adminlink(message: types.Message):
     if message.chat.type not in ("group", "supergroup"):
         return await message.answer("❌ Эта команда работает только в группе.")
-
     if message.from_user.id != OWNER_ID and not await is_chat_admin(message.chat.id, message.from_user.id):
         return await message.answer("❌ Только для администраторов группы.")
 
@@ -100,7 +102,7 @@ async def start_admin_apply(message: types.Message, state: FSMContext, chat_id: 
 
     text = (
         f"📝 <b>АНКЕТА В АДМИНИСТРАЦИЮ</b>\n{DIV}\n"
-        f"Анкета состоит из 12 вопросов, заполнение займет около 10-15 минут. Отвечайте честно и развернуто.\n\n"
+        f"Анкета состоит из 14 вопросов, заполнение займет около 10-15 минут. Отвечайте честно и развернуто.\n\n"
         f"<b>Для отмены напишите:</b> /cancel\n\n"
         f"{QUESTIONS['q1']}"
     )
@@ -128,6 +130,13 @@ async def process_q1(message: types.Message, state: FSMContext):
 @dp.message(AdminApplyForm.q2, F.text)
 async def process_q2(message: types.Message, state: FSMContext):
     await state.update_data(q2=message.text)
+    await state.set_state(AdminApplyForm.q_pos)
+    await message.answer(QUESTIONS["q_pos"])
+
+
+@dp.message(AdminApplyForm.q_pos, F.text)
+async def process_q_pos(message: types.Message, state: FSMContext):
+    await state.update_data(q_pos=message.text)
     await state.set_state(AdminApplyForm.q3)
 
     b = InlineKeyboardBuilder()
@@ -140,7 +149,6 @@ async def process_q2(message: types.Message, state: FSMContext):
     await message.answer(QUESTIONS["q3"], reply_markup=b.as_markup())
 
 
-# ЖЕСТКАЯ ПРИВЯЗКА К СОСТОЯНИЮ (StateFilter)
 @dp.callback_query(F.data.startswith("a_ans_q3_"), StateFilter(AdminApplyForm.q3))
 async def process_q3_btn(query: types.CallbackQuery, state: FSMContext):
     ans_key = query.data.replace("a_ans_q3_", "")
@@ -224,6 +232,13 @@ async def process_q11(message: types.Message, state: FSMContext):
 @dp.message(AdminApplyForm.q12, F.text)
 async def process_q12(message: types.Message, state: FSMContext):
     await state.update_data(q12=message.text)
+    await state.set_state(AdminApplyForm.q_views)
+    await message.answer(QUESTIONS["q_views"])
+
+
+@dp.message(AdminApplyForm.q_views, F.text)
+async def process_q_views(message: types.Message, state: FSMContext):
+    await state.update_data(q_views=message.text)
     await state.set_state(AdminApplyForm.confirm)
 
     data = await state.get_data()
@@ -231,9 +246,10 @@ async def process_q12(message: types.Message, state: FSMContext):
         f"👀 <b>ПРОВЕРЬТЕ ВАШИ ОТВЕТЫ</b>\n{DIV}\n"
         f"<b>1. Опыт:</b> {data['q1'][:100]}...\n"
         f"<b>2. Время:</b> {data['q2'][:100]}...\n"
-        f"<b>3. Правила:</b> {data['q3']}\n"
-        f"<b>4. Бот:</b> {data['q4']}\n"
-        f"<b>5. Мотивация:</b> {data['q5'][:100]}...\n\n"
+        f"<b>3. Желаемая должность:</b> {data['q_pos'][:100]}\n"
+        f"<b>4. Правила:</b> {data['q3']}\n"
+        f"<b>5. Бот:</b> {data['q4']}\n"
+        f"<b>6. Мотивация:</b> {data['q5'][:100]}...\n\n"
         f"<i>(Полный текст будет отправлен админам)</i>"
     )
 
@@ -246,37 +262,27 @@ async def process_q12(message: types.Message, state: FSMContext):
 
 @dp.callback_query(F.data == "a_ans_submit")
 async def process_submit(query: types.CallbackQuery, state: FSMContext):
-    # Убираем часики на кнопке
     await query.answer("Отправка анкеты...", show_alert=False)
-
     data = await state.get_data()
-
-    # Проверка: если данных нет (сессия истекла), просим начать заново
     if not data or not data.get("q1"):
-        await query.message.edit_text(
-            "❌ <b>Ошибка: данные анкеты утеряны или устарели.</b>\n\n"
-            "Пожалуйста, начните заполнение заново: /admin_apply",
-            parse_mode="HTML"
-        )
+        await query.message.edit_text("❌ <b>Ошибка: данные анкеты утеряны.</b>\nНачните заново: /admin_apply",
+                                      parse_mode="HTML")
         return
 
     try:
         username = f"@{query.from_user.username}" if query.from_user.username else query.from_user.first_name
-
-        # Сохраняем в БД
         await save_admin_application(query.from_user.id, username, data)
 
         admins = await get_trusted_admins()
         if OWNER_ID not in admins:
             admins.append(OWNER_ID)
 
-        # Формируем текст (обрезаем ответы до 1000 символов, чтобы не превысить лимит Telegram)
         def short(text):
             return esc(str(text)[:1000]) if text else ""
 
-        text_1 = f"📥 <b>НОВАЯ АНКЕТА В АДМИНИСТРАЦИЮ</b>\n👤 От: {esc(username)} (<code>{query.from_user.id}</code>)\n{DIV}\n<b>1. Опыт:</b>\n{short(data.get('q1'))}\n\n<b>2. Время:</b>\n{short(data.get('q2'))}\n\n<b>3. Правила:</b>\n{short(data.get('q3'))}\n\n<b>4. Бот:</b>\n{short(data.get('q4'))}\n\n<b>5. Мотивация:</b>\n{short(data.get('q5'))}"
-        text_2 = f"<b>6. Ситуация (спор):</b>\n{short(data.get('q6'))}\n\n<b>7. Ситуация (недочеты):</b>\n{short(data.get('q7'))}\n\n<b>8. Подстройка:</b>\n{short(data.get('q8'))}\n\n<b>9. Оскорбления друзей:</b>\n{short(data.get('q9'))}"
-        text_3 = f"<b>10. Сложный конфликт:</b>\n{short(data.get('q10'))}\n\n<b>11. Срыв:</b>\n{short(data.get('q11'))}\n\n<b>12. Ошибка:</b>\n{short(data.get('q12'))}"
+        text_1 = f"📥 <b>НОВАЯ АНКЕТА В АДМИНИСТРАЦИЮ</b>\n👤 От: {esc(username)} (<code>{query.from_user.id}</code>)\n{DIV}\n<b>1. Опыт:</b>\n{short(data.get('q1'))}\n\n<b>2. Время:</b>\n{short(data.get('q2'))}\n\n<b>3. Желаемая должность:</b>\n{short(data.get('q_pos'))}\n\n<b>4. Правила:</b>\n{short(data.get('q3'))}\n\n<b>5. Бот:</b>\n{short(data.get('q4'))}\n\n<b>6. Мотивация:</b>\n{short(data.get('q5'))}"
+        text_2 = f"<b>7. Ситуация (спор):</b>\n{short(data.get('q6'))}\n\n<b>8. Ситуация (недочеты):</b>\n{short(data.get('q7'))}\n\n<b>9. Подстройка:</b>\n{short(data.get('q8'))}\n\n<b>10. Оскорбления друзей:</b>\n{short(data.get('q9'))}"
+        text_3 = f"<b>11. Сложный конфликт:</b>\n{short(data.get('q10'))}\n\n<b>12. Срыв:</b>\n{short(data.get('q11'))}\n\n<b>13. Ошибка:</b>\n{short(data.get('q12'))}\n\n<b>14. Взгляды на проект:</b>\n{short(data.get('q_views'))}"
 
         b = InlineKeyboardBuilder()
         b.button(text="✅ Принять", callback_data=AdminAppCB(action="accept", user_id=query.from_user.id).pack())
@@ -299,23 +305,17 @@ async def process_submit(query: types.CallbackQuery, state: FSMContext):
         await state.clear()
 
         if sent_success:
-            await query.message.edit_text(
-                "✅ <b>Ваша анкета отправлена на рассмотрение!</b>\nОжидайте ответа от администрации.",
-                parse_mode="HTML"
-            )
+            await query.message.edit_text("✅ <b>Ваша анкета отправлена на рассмотрение!</b>\nОжидайте ответа.",
+                                          parse_mode="HTML")
         else:
             await query.message.edit_text(
-                "⚠️ <b>Произошла ошибка при отправке.</b>\n"
-                "Возможно, у администраторов закрыты личные сообщения. Пожалуйста, свяжитесь с ними напрямую.",
-                parse_mode="HTML"
-            )
+                "⚠️ <b>Произошла ошибка при отправке.</b>\nСвяжитесь с администрацией напрямую.", parse_mode="HTML")
 
     except Exception as e:
         print(f"КРИТИЧЕСКАЯ ОШИБКА В SUBMIT: {e}")
-        await query.message.edit_text(
-            f"❌ <b>Произошла системная ошибка при отправке.</b>\nПожалуйста, напишите администрации.\nКод ошибки: <code>{e}</code>",
-            parse_mode="HTML"
-        )
+        await query.message.edit_text(f"❌ <b>Ошибка:</b> <code>{e}</code>", parse_mode="HTML")
+
+
 @dp.callback_query(F.data == "a_ans_restart")
 async def process_restart(query: types.CallbackQuery, state: FSMContext):
     await state.clear()
@@ -326,5 +326,8 @@ async def process_restart(query: types.CallbackQuery, state: FSMContext):
     await start_admin_apply(query.message, state, 0)
     await query.answer()
 
+
+@dp.message(AdminApplyForm.q3)
+@dp.message(AdminApplyForm.q4)
 async def process_btn_states_text(message: types.Message):
     await message.answer("⚠️ Пожалуйста, выберите один из вариантов на кнопках выше.")

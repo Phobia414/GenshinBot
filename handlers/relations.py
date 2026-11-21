@@ -310,5 +310,23 @@ async def cb_buy_gift(query: types.CallbackQuery, callback_data: GiftCB, user: d
 
     await query.answer(f"✅ Ты подарил(а) {gift['name']}!\n+{gift['xp']} XP к отношениям.", show_alert=True)
 
+    # ===== НОВОЕ: УВЕДОМЛЕНИЕ В ЧАТ О ПОДАРКЕ =====
+    sender_name = esc(user["character_name"])
+    partner_name = esc(partner["character_name"])
+    gift_name = gift["name"]
+    xp_gained = gift["xp"]
+
+    try:
+        await bot.send_message(
+            chat_id,
+            f"🎁 <b>{sender_name}</b> подарил(а) <b>{gift_name}</b> для <b>{partner_name}</b>!\n"
+            f"💕 +{xp_gained} XP к отношениям.\n"
+            f"📊 Текущий уровень отношений: <b>{level} / {MAX_LEVEL}</b>",
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        print(f"Ошибка отправки подарка в чат: {e}")
+    # ===============================================
+
     text = f"— [ 🎁 ПОДАРКИ ] —\n\nДля: {esc(partner['character_name'])}\n\n💰 Твой баланс: {new_balance}\n📊 Уровень отношений: {level} / {MAX_LEVEL}"
     await edit_or_send(query, text, gifts_kb(query.from_user.id), image_url="")

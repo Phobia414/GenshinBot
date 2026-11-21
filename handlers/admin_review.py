@@ -70,10 +70,9 @@ async def cb_view_app(query: types.CallbackQuery, callback_data: AdminAppCB, sta
         return await query.answer(f"Эта анкета уже рассмотрена (Статус: {app['status']}).", show_alert=True)
 
     # ИСПРАВЛЕНИЕ: Экранируем все поля через esc(), чтобы HTML не ломался
-    text_1 = f"👤 <b>АНКЕТА ОТ:</b> {esc(app['username'])} (<code>{user_id}</code>)\n{DIV}\n<b>1. Опыт:</b>\n{esc(app['q1'])}\n\n<b>2. Время:</b>\n{esc(app['q2'])}\n\n<b>3. Правила:</b>\n{esc(app['q3'])}\n\n<b>4. Бот:</b>\n{esc(app['q4'])}\n\n<b>5. Мотивация:</b>\n{esc(app['q5'])}"
-    text_2 = f"<b>6. Ситуация (спор):</b>\n{esc(app['q6'])}\n\n<b>7. Ситуация (недочеты):</b>\n{esc(app['q7'])}\n\n<b>8. Подстройка:</b>\n{esc(app['q8'])}\n\n<b>9. Оскорбления друзей:</b>\n{esc(app['q9'])}"
-    text_3 = f"<b>10. Сложный конфликт:</b>\n{esc(app['q10'])}\n\n<b>11. Срыв:</b>\n{esc(app['q11'])}\n\n<b>12. Ошибка:</b>\n{esc(app['q12'])}"
-
+    text_1 = f"👤 <b>АНКЕТА ОТ:</b> {esc(app['username'])} (<code>{user_id}</code>)\n{DIV}\n<b>1. Опыт:</b>\n{esc(app['q1'])}\n\n<b>2. Время:</b>\n{esc(app['q2'])}\n\n<b>3. Желаемая должность:</b>\n{esc(app.get('q_pos', ''))}\n\n<b>4. Правила:</b>\n{esc(app['q3'])}\n\n<b>5. Бот:</b>\n{esc(app['q4'])}\n\n<b>6. Мотивация:</b>\n{esc(app['q5'])}"
+    text_2 = f"<b>7. Ситуация (спор):</b>\n{esc(app['q6'])}\n\n<b>8. Ситуация (недочеты):</b>\n{esc(app['q7'])}\n\n<b>9. Подстройка:</b>\n{esc(app['q8'])}\n\n<b>10. Оскорбления друзей:</b>\n{esc(app['q9'])}"
+    text_3 = f"<b>11. Сложный конфликт:</b>\n{esc(app['q10'])}\n\n<b>12. Срыв:</b>\n{esc(app['q11'])}\n\n<b>13. Ошибка:</b>\n{esc(app['q12'])}\n\n<b>14. Взгляды на проект:</b>\n{esc(app.get('q_views', ''))}"
     b = InlineKeyboardBuilder()
     b.button(text="✅ Принять", callback_data=AdminAppCB(action="accept", user_id=user_id).pack())
     b.button(text="❌ Отклонить", callback_data=AdminAppCB(action="reject", user_id=user_id).pack())
