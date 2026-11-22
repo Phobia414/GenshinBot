@@ -360,7 +360,7 @@ async def handle_interaction(message, user, matched_phrase, chat_id, custom_inte
         verb = "усыновил" if user["gender"] == "male" else ("удочерил" if user["gender"] == "female" else "усыновил(а)")
 
         beautiful_text = (
-            f"👨‍👩‍👧 <b>СЧАСТЛИВАЯ СЕМЬЯ</b>\n{DIV}\n\n"
+            f"👨‍👩‍👧 СЧАСТЛИВАЯ СЕМЬЯ\n{DIV}\n\n"
             f"🎉 {esc(user['character_name'])} {verb} {esc(target['character_name'])}!\n"
             f"Теперь они одна семья. Орион плачет от умиления 💛\n\n"
             f"👶 Всего детей в семье: {len(current_ids)}/2"
