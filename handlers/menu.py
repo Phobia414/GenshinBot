@@ -89,8 +89,7 @@ async def cb_profile(query, callback_data, user, chat_id):
     text = (
         f"─ [ 🖼 ПРОФИЛЬ ] ─\n\n"
         f"🍃 {name}\n\n"
-        f"💰 Баланс: <b>{user['balance']}</b>\n"
-        f"💎 Примогемы: <b>{user.get('primogems', 0)}</b>\n\n"
+        f"💰 Баланс: <b>{user['balance']}</b>\n\n"
         f"💧 Смола: <b>{resin} / {RESIN_MAX}</b>\n\n"
         f"🎖️ Репутация: <b>{rep_title}</b>\n\n"
         f"{partner_line}\n\n"

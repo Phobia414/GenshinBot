@@ -133,6 +133,8 @@ def relations_kb(uid, has_partner, married, can_marry, has_child, gender):
                 b.button(text="⊱ 👶 Удочерить ⊰", callback_data=RelCB(action="adopt_hint", owner_id=uid))
             else:
                 b.button(text="⊱ 👶 Усыновить/Удочерить ⊰", callback_data=RelCB(action="adopt_hint", owner_id=uid))
+            if has_child:
+                b.button(text="⊱ 💔 Отказаться от ребенка ⊰", callback_data=RelCB(action="remove_child", owner_id=uid))
         b.button(text="⊱ 💔 Разорвать отношения ⊰", callback_data=RelCB(action="breakup", owner_id=uid))
     b.button(text="⊱ ‹ Назад в меню ⊰", callback_data=MenuCB(action="menu", owner_id=uid))
     b.adjust(1)

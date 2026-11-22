@@ -238,7 +238,7 @@ async def process_source(message: types.Message, state: FSMContext):
             f"📖 <b>Опыт:</b> {esc(data.get('experience', 'Не указан'))}\n"
             f"🌟 <b>О себе:</b> {esc(data.get('about', 'Не указано'))}\n"
             f"🕒 <b>Часовой пояс:</b> {esc(data.get('timezone', 'Не указан'))}\n"
-            f"⚠️ <b>Триггеры:</b> {esc(data.get('triggers', 'Не указаны'))}\n"
+            f"🎭 <b>Будет ролить:</b> {esc(data.get('triggers', 'Не указаны'))}\n"
             f"⚡ <b>Активность:</b> {esc(data.get('activity', 'Не указана'))}\n"
             f"📢 <b>Откуда узнал(а):</b> {esc(data.get('source', 'Не указан'))}"
         )

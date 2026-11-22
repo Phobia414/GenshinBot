@@ -308,6 +308,18 @@ async def main():
             await set_guild_boss(chat_id, boss_name, boss["hp"], now_ts)
 
     await restore_chat_lists()
+    # Проверка босса при запуске (если суббота после 12, а босс старый)
+    now = datetime.now(timezone.utc)
+    if now.weekday() == 5 and now.hour >= 12: # 5 = Суббота
+        groups = await get_known_groups()
+        groups.append(0)
+        for chat_id in groups:
+            wb = await get_world_boss(chat_id)
+            # Если босс поставлен раньше этой субботы
+            week_start = now.replace(hour=12, minute=0, second=0, microsecond=0).timestamp()
+            if not wb or wb['week_start'] < week_start:
+                await rotate_bosses() # Принудительно меняем
+                break
     await set_bot_commands()
 
     scheduler = AsyncIOScheduler(timezone="Europe/Moscow")

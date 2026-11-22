@@ -46,7 +46,8 @@ async def cb_relations(query: types.CallbackQuery, callback_data: MenuCB, user: 
         if married and user["married_at"]:
             extra += f"\n📅 Свадьба: {datetime.fromtimestamp(user['married_at'], timezone.utc).strftime('%d.%m.%Y')}"
         if user["child_id"]:
-            extra += f"\n👶 Ребёнок: {esc(user['child_name'])}"
+            # Проверка на список детей
+            extra += f"\n👶 Дети: {esc(user['child_name'])}"
 
         default_text = (
             f"— [ ❤️ ОТНОШЕНИЯ ] —\n\n"
@@ -123,13 +124,11 @@ async def cmd_propose(message: types.Message):
         await message.answer("❌ У этого игрока уже есть партнёр.")
         return
 
-    # Проверка на защиту (если куплена в магазине)
     protector = await get_protected_owner(target_id, chat_id)
     if protector and protector != message.from_user.id:
         await message.answer("🛡 Этот игрок находится под защитой. Вы не можете предложить ему отношения.")
         return
 
-    # Кулдаун
     if message.from_user.id != OWNER_ID:
         key = (message.from_user.id, target_id, chat_id)
         now_ts = _now_ts()
@@ -169,7 +168,6 @@ async def cb_propose(query: types.CallbackQuery, callback_data: ProposeCB):
         await query.message.edit_text("— [ 🕊️ ОТКЛОНЕНО ] —\n\nПредложение отклонено.", parse_mode="HTML")
         return
 
-    # Проверяем, не занял ли кто-то кого-то за время раздумий
     proposer = await get_user(callback_data.proposer_id, chat_id)
     target = await get_user(callback_data.target_id, chat_id)
 
@@ -182,7 +180,6 @@ async def cb_propose(query: types.CallbackQuery, callback_data: ProposeCB):
 
     now = int(datetime.now(timezone.utc).timestamp())
 
-    # Обновляем обоих
     await update_user(callback_data.proposer_id, chat_id, partner_id=callback_data.target_id,
                       partner_name=target["character_name"], rel_xp=0, rel_started=now, is_married=0)
     await update_user(callback_data.target_id, chat_id, partner_id=callback_data.proposer_id,
@@ -229,6 +226,27 @@ async def cb_marry(query: types.CallbackQuery, callback_data: RelCB, user: dict,
 async def cb_adopt_hint(query: types.CallbackQuery, callback_data: RelCB):
     await query.answer("Чтобы усыновить партнёра, ответь на его сообщение в чате и напиши 'усыновить' или 'удочерить'.",
                        show_alert=True)
+
+
+@dp.callback_query(RelCB.filter(F.action == "remove_child"))
+@inject_user
+async def cb_remove_child(query: types.CallbackQuery, callback_data: RelCB, user: dict, chat_id: int):
+    await query.answer()
+    if query.from_user.id != callback_data.owner_id or not user["child_id"]: return
+
+    partner_id = user["partner_id"]
+
+    # Очищаем у обоих
+    await update_user(query.from_user.id, chat_id, child_id="", child_name="")
+    if partner_id:
+        await update_user(partner_id, chat_id, child_id="", child_name="")
+
+    await query.message.edit_text(
+        f"— [ 🕊️ ОТКАЗ ] —\n\n"
+        f"Вы отказались от ребенка. Теперь вы можете усыновить кого-то другого.",
+        parse_mode="HTML",
+        reply_markup=back_kb(query.from_user.id)
+    )
 
 
 # ==================== ФОТО ПАРЫ И ПОДАРКИ ====================
@@ -310,7 +328,7 @@ async def cb_buy_gift(query: types.CallbackQuery, callback_data: GiftCB, user: d
 
     await query.answer(f"✅ Ты подарил(а) {gift['name']}!\n+{gift['xp']} XP к отношениям.", show_alert=True)
 
-    # ===== НОВОЕ: УВЕДОМЛЕНИЕ В ЧАТ О ПОДАРКЕ =====
+    # ===== УВЕДОМЛЕНИЕ В ЧАТ О ПОДАРКЕ =====
     sender_name = esc(user["character_name"])
     partner_name = esc(partner["character_name"])
     gift_name = gift["name"]
@@ -326,7 +344,6 @@ async def cb_buy_gift(query: types.CallbackQuery, callback_data: GiftCB, user: d
         )
     except Exception as e:
         print(f"Ошибка отправки подарка в чат: {e}")
-    # ===============================================
 
     text = f"— [ 🎁 ПОДАРКИ ] —\n\nДля: {esc(partner['character_name'])}\n\n💰 Твой баланс: {new_balance}\n📊 Уровень отношений: {level} / {MAX_LEVEL}"
     await edit_or_send(query, text, gifts_kb(query.from_user.id), image_url="")

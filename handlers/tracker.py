@@ -17,7 +17,8 @@ from db import (
     get_guild, update_guild,
     add_ingredient, get_ingredients, INGREDIENTS,
     get_food_buff, get_total_bonuses, update_primogems,
-    get_application, update_application_status, get_all_custom_interactions, execute
+    get_application, update_application_status, get_all_custom_interactions,
+    execute  # <--- ДОБАВЛЕНО ДЛЯ ИСПРАВЛЕНИЯ БЛОКИРОВКИ БД
 )
 from helpers import (
     esc, _mention, extract_target, resolve_user_id,
@@ -126,10 +127,10 @@ async def track_text(message: types.Message, user: dict, chat_id: int):
 
         if is_correct:
             reward_coins = quiz.get("coins", 50)
-            reward_primo = quiz.get("primo", 10)
+            # reward_primo = quiz.get("primo", 10) <--- УДАЛЕНО
 
             await update_user(message.from_user.id, chat_id, balance=user["balance"] + reward_coins)
-            await update_primogems(message.from_user.id, chat_id, reward_primo)
+            # await update_primogems(message.from_user.id, chat_id, reward_primo) <--- УДАЛЕНО
 
             mention = f'<a href="tg://user?id={message.from_user.id}">{esc(message.from_user.first_name)}</a>'
 
@@ -137,7 +138,7 @@ async def track_text(message: types.Message, user: dict, chat_id: int):
                 chat_id=chat_id,
                 text=f"🎉 <b>ПРАВИЛЬНЫЙ ОТВЕТ!</b>\n\n"
                      f"{mention} быстрее всех ответил и получает "
-                     f"<b>{reward_coins} монет</b> и <b>{reward_primo} Примогемов</b>! 💰💎",
+                     f"<b>{reward_coins} монет</b>! 💰",  # <--- Убрали текст про примогемы
                 parse_mode="HTML",
                 reply_markup=back_kb(message.from_user.id)
             )
@@ -245,11 +246,11 @@ async def track_text(message: types.Message, user: dict, chat_id: int):
     user = await get_user(message.from_user.id, chat_id)
     if user["guild_id"]:
         await execute("""
-                INSERT INTO guild_member_stats (guild_id, user_id, msgs, replies) 
-                VALUES (?, ?, 1, ?) 
-                ON CONFLICT(guild_id, user_id) DO UPDATE SET msgs = msgs + 1, replies = replies + ?
-            """, (user["guild_id"], user["user_id"], 1 if message.reply_to_message else 0,
-                  1 if message.reply_to_message else 0))
+            INSERT INTO guild_member_stats (guild_id, user_id, msgs, replies) 
+            VALUES (?, ?, 1, ?) 
+            ON CONFLICT(guild_id, user_id) DO UPDATE SET msgs = msgs + 1, replies = replies + ?
+        """, (user["guild_id"], user["user_id"], 1 if message.reply_to_message else 0,
+              1 if message.reply_to_message else 0))
     await check_board_auto(message)
 
 
@@ -281,11 +282,10 @@ async def track_sticker(message: types.Message, user: dict, chat_id: int):
 
     if user["guild_id"]:
         await execute("""
-                INSERT INTO guild_member_stats (guild_id, user_id, msgs, replies) 
-                VALUES (?, ?, 1, ?) 
-                ON CONFLICT(guild_id, user_id) DO UPDATE SET msgs = msgs + 1, replies = replies + ?
-            """, (user["guild_id"], user["user_id"], 1 if message.reply_to_message else 0,
-                  1 if message.reply_to_message else 0))
+            INSERT INTO guild_member_stats (guild_id, user_id, stickers) 
+            VALUES (?, ?, 1) 
+            ON CONFLICT(guild_id, user_id) DO UPDATE SET stickers = stickers + 1
+        """, (user["guild_id"], user["user_id"]))
 
     await check_board_auto(message)
 
@@ -302,13 +302,11 @@ async def track_photo(message: types.Message, user: dict, chat_id: int):
         return
 
     if user["guild_id"]:
-        async with aiosqlite.connect(DB_PATH) as db:
-            await db.execute("""
-                INSERT INTO guild_member_stats (guild_id, user_id, photos) 
-                VALUES (?, ?, 1) 
-                ON CONFLICT(guild_id, user_id) DO UPDATE SET photos = photos + 1
-            """, (user["guild_id"], user["user_id"]))
-            await db.commit()
+        await execute("""
+            INSERT INTO guild_member_stats (guild_id, user_id, photos) 
+            VALUES (?, ?, 1) 
+            ON CONFLICT(guild_id, user_id) DO UPDATE SET photos = photos + 1
+        """, (user["guild_id"], user["user_id"]))
 
 
 async def handle_interaction(message, user, matched_phrase, chat_id, custom_inter=None):
@@ -330,22 +328,45 @@ async def handle_interaction(message, user, matched_phrase, chat_id, custom_inte
         await message.reply("❌ Игрок ещё не зарегистрирован или не выбрал персонажа.")
         return True
 
+    # ===== СИСТЕМА УСЫНОВЛЕНИЯ =====
     if matched_phrase in ("усыновить", "удочерить"):
-        if not user["is_married"]:
-            await message.reply("👶 Усыновить можно только в браке.")
+        if not user["is_married"] and user["child_id"]:
+            await message.reply("👶 До брака можно усыновить только одного ребенка. Сыграйте свадьбу для второго!")
             return True
-        if user["child_id"]:
-            await message.reply("👶 У тебя уже есть ребёнок.")
+
+        if str(target_id) in str(user["child_id"]).split(","):
+            await message.reply("👶 Вы уже усыновили этого игрока.")
             return True
-        if user["partner_id"] != target_id:
-            await message.reply("👶 Усыновить можно только партнёра по браку.")
+
+        current_ids = str(user["child_id"]).split(",") if user["child_id"] else []
+        current_names = str(user["child_name"]).split(",") if user["child_name"] else []
+
+        current_ids = [i for i in current_ids if i != "0" and i != ""]
+        current_names = [n for n in current_names if n != ""]
+
+        if len(current_ids) >= 2:
+            await message.reply("👶 У вас уже максимум детей (2).")
             return True
-        await update_user(message.from_user.id, chat_id, child_id=target_id, child_name=target["character_name"])
-        await update_user(target_id, chat_id, child_id=message.from_user.id, child_name=user["character_name"])
+
+        current_ids.append(str(target_id))
+        current_names.append(target["character_name"])
+
+        new_id_str = ",".join(current_ids)
+        new_name_str = ",".join(current_names)
+
+        await update_user(message.from_user.id, chat_id, child_id=new_id_str, child_name=new_name_str)
+        await update_user(target_id, chat_id, child_id=str(message.from_user.id), child_name=user["character_name"])
+
         verb = "усыновил" if user["gender"] == "male" else ("удочерил" if user["gender"] == "female" else "усыновил(а)")
-        await message.answer(
-            f"👶 {esc(user['character_name'])} {verb} {esc(target['character_name'])}!\n\nОрион плачет от умиления 💛",
-            reply_markup=back_kb(message.from_user.id))
+
+        beautiful_text = (
+            f"👨‍👩‍👧 <b>СЧАСТЛИВАЯ СЕМЬЯ</b>\n{DIV}\n\n"
+            f"🎉 {esc(user['character_name'])} {verb} {esc(target['character_name'])}!\n"
+            f"Теперь они одна семья. Орион плачет от умиления 💛\n\n"
+            f"👶 Всего детей в семье: {len(current_ids)}/2"
+        )
+
+        await message.answer(beautiful_text, reply_markup=back_kb(message.from_user.id))
         return True
 
     if custom_inter:
@@ -384,28 +405,23 @@ async def handle_interaction(message, user, matched_phrase, chat_id, custom_inte
 
     original_text = message.text or ""
 
-    # ИСПРАВЛЕНИЕ: Объявляем text_lower, чтобы не было NameError
     text_lower = original_text.lower().strip()
     reply_text = original_text[len(matched_phrase):].strip()
 
-    # ИСПРАВЛЕНИЕ: Убираем @упоминание из реплики, если оно там есть
     if isinstance(target_ref, str) and target_ref:
         reply_text = reply_text.replace(f"@{target_ref}", "").strip()
 
-    # ИСПРАВЛЕНИЕ: Делаем имена кликабельными (тегаем через tg://user?id=)
     sender_mention = f'<a href="tg://user?id={message.from_user.id}">{esc(user["character_name"])}</a>'
     target_mention = f'<a href="tg://user?id={target_id}">{esc(target["character_name"])}</a>'
 
-    # Формируем текст
     if text_lower == "подарить цветок":
         text = f"🌸 {sender_mention} {verb} цветок {target_mention}!"
     else:
         text = f"{emoji} {sender_mention} {verb} {target_mention}!{xp_line}"
 
-    # Добавляем реплику, если она осталась
     if reply_text:
         reply_text = reply_text.strip("()[] ")
-        if reply_text:  # Проверяем, что там не осталось пустоты (например, только скобки)
+        if reply_text:
             text += f"\n💬 <i>«{esc(reply_text)}»</i>"
 
     try:
@@ -415,6 +431,7 @@ async def handle_interaction(message, user, matched_phrase, chat_id, custom_inte
     await message.answer(text, parse_mode="HTML", reply_markup=back_kb(message.from_user.id))
     _inter_cooldown[message.from_user.id] = now
     return True
+
 
 async def show_user_card(message, user, tg_user, chat_id):
     name = esc(user["character_name"] or "Не выбран")
@@ -538,15 +555,14 @@ async def _check_board_auto_locked(message):
             continue
         t = TASKS[t_id]
 
-        # Проверяем, выполнено ли задание
         if get_progress(user, t["cat"]) >= t["need"]:
             coins_reward = random.randint(100, 300)
-            primo_reward = random.randint(20, 60)
+            # primo_reward = random.randint(20, 60) <--- УДАЛЕНО
 
             try:
                 # 1. СНАЧАЛА начисляем награду
                 await increment_user_field(message.from_user.id, chat_id, "balance", coins_reward)
-                await update_primogems(message.from_user.id, chat_id, primo_reward)
+                # await update_primogems(message.from_user.id, chat_id, primo_reward) <--- УДАЛЕНО
                 await _gain_rep(message.from_user.id, chat_id, REP_PER_BOARD_TASK, message.from_user.first_name)
 
                 # 2. ТОЛЬКО ПОСЛЕ ЭТОГО ставим отметку "получено"
@@ -554,7 +570,7 @@ async def _check_board_auto_locked(message):
                 await update_user(message.from_user.id, chat_id, board_claimed=";".join(new_claimed))
                 claimed = new_claimed
 
-                # 3. Отправляем уведомление (через bot.send_message, чтобы не зависеть от reply)
+                # 3. Отправляем уведомление
                 mention = f'<a href="tg://user?id={message.from_user.id}">{esc(message.from_user.first_name)}</a>'
                 await bot.send_message(
                     chat_id=chat_id,
@@ -562,13 +578,11 @@ async def _check_board_auto_locked(message):
                         f"🎉 {mention}, задание выполнено!\n\n"
                         f"«{t['text']}»\n"
                         f"💰 Награда: {coins_reward} монет\n"
-                        f"💎 +{primo_reward} Примогемов\n"
+                        # f"💎 +{primo_reward} Примогемов\n" <--- УДАЛЕНО
                         f"🎖️ +{REP_PER_BOARD_TASK} репутации"
                     ),
                     parse_mode="HTML",
                     reply_markup=back_kb(message.from_user.id)
                 )
             except Exception as e:
-                # Если произошла ошибка при начислении (например, база заблокирована),
-                # мы НЕ помечаем задание выполненным, чтобы бот попробовал снова в следующий раз.
                 print(f"Ошибка при выдаче награды за задание {t_id}: {e}")

@@ -477,15 +477,64 @@ async def cmd_reset_stats(message: types.Message):
     if message.from_user.id != OWNER_ID:
         return await message.answer("❌ Эта команда доступна только владельцу бота.")
 
-    await execute("UPDATE users SET messages_count = 0, msgs_week = 0, msgs_month = 0")
+    b = InlineKeyboardBuilder()
+    b.button(text="Сбросить День", callback_data="resetstats_day")
+    b.button(text="Сбросить Неделю", callback_data="resetstats_week")
+    b.button(text="Сбросить Месяц", callback_data="resetstats_month")
+    b.button(text="Сбросить ВСЁ", callback_data="resetstats_all")
+    b.adjust(1)
 
     await message.answer(
-        f"✅ <b>СБРОС СТАТИСТИКИ</b>\n{DIV}\n\n"
-        f"Счётчики сообщений (всего, за неделю и за месяц) обнулены у всех.\n"
-        f"Счетчик сообщений за сегодня (день) остался без изменений.",
-        parse_mode="HTML"
+        f"⚠️ <b>ВЫБЕРИТЕ, ЧТО СБРОСИТЬ</b>\n{DIV}\n"
+        f"<i>Действие нельзя отменить!</i>",
+        reply_markup=b.as_markup(), parse_mode="HTML"
     )
 
+
+@dp.callback_query(F.data.startswith("resetstats_"))
+async def cb_resetstats_confirm(query: types.CallbackQuery):
+    if query.from_user.id != OWNER_ID: return
+
+    action = query.data.replace("resetstats_", "")
+
+    # Если это уже подтверждение
+    if action.startswith("confirm_"):
+        target = action.replace("confirm_", "")
+
+        if target == "day":
+            await execute("UPDATE users SET msgs_day = 0")
+            msg = "Ежедневная статистика сброшена."
+        elif target == "week":
+            await execute("UPDATE users SET msgs_week = 0")
+            msg = "Недельная статистика сброшена."
+        elif target == "month":
+            await execute("UPDATE users SET msgs_month = 0")
+            msg = "Месячная статистика сброшена."
+        elif target == "all":
+            await execute("UPDATE users SET messages_count = 0, msgs_day = 0, msgs_week = 0, msgs_month = 0")
+            msg = "ВСЯ статистика (день, неделя, месяц, всего) сброшена."
+
+        await query.message.edit_text(f"✅ <b>УСПЕШНО</b>\n{DIV}\n{msg}", parse_mode="HTML")
+        return
+
+    # Иначе показываем подтверждение
+    names = {"day": "ЗА ДЕНЬ", "week": "ЗА НЕДЕЛЮ", "month": "ЗА МЕСЯЦ", "all": "ЗА ВСЁ ВРЕМЯ"}
+    b = InlineKeyboardBuilder()
+    b.button(text="✅ Да, сбросить", callback_data=f"resetstats_confirm_{action}")
+    b.button(text="❌ Отмена", callback_data="resetstats_cancel")
+    b.adjust(2)
+
+    await query.message.edit_text(
+        f"⚠️ <b>ПОДТВЕРЖДЕНИЕ</b>\n{DIV}\n"
+        f"Вы точно хотите сбросить статистику <b>{names.get(action, action)}</b> у всех игроков?",
+        reply_markup=b.as_markup(), parse_mode="HTML"
+    )
+
+
+@dp.callback_query(F.data == "resetstats_cancel")
+async def cb_resetstats_cancel(query: types.CallbackQuery):
+    if query.from_user.id != OWNER_ID: return
+    await query.message.edit_text("❌ Сброс статистики отменен.")
 
 # ==================== ЭКОНОМИКА И ВЛАДЕЛЕЦ ====================
 

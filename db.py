@@ -32,7 +32,7 @@ async def init_db():
                 char_change_paid INTEGER DEFAULT 0, rest_active INTEGER DEFAULT 0, clean_exempt INTEGER DEFAULT 0,
                 partner_id INTEGER DEFAULT 0, partner_name TEXT DEFAULT '', rel_xp INTEGER DEFAULT 0,
                 is_married INTEGER DEFAULT 0, rel_started INTEGER DEFAULT 0, married_at INTEGER DEFAULT 0,
-                child_id INTEGER DEFAULT 0, child_name TEXT DEFAULT '', guild_id INTEGER DEFAULT 0,
+                child_id TEXT DEFAULT '', child_name TEXT DEFAULT '', guild_id INTEGER DEFAULT 0,
                 guild_rank TEXT DEFAULT 'Участник', guild_contribution INTEGER DEFAULT 0, last_quiz INTEGER DEFAULT 0,
                 equip_flower INTEGER DEFAULT 0, equip_plume INTEGER DEFAULT 0, equip_sands INTEGER DEFAULT 0, equip_goblet INTEGER DEFAULT 0,
                 warns INTEGER DEFAULT 0, muted_until INTEGER DEFAULT 0, reputation INTEGER DEFAULT 0,
