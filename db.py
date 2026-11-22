@@ -168,6 +168,15 @@ async def init_db():
                 is_private INTEGER DEFAULT 0
             )
         """)
+        # Миграция для новых колонок в анкетах админов
+        try:
+            await db.execute("ALTER TABLE admin_applications ADD COLUMN q_pos TEXT")
+        except Exception:
+            pass
+        try:
+            await db.execute("ALTER TABLE admin_applications ADD COLUMN q_views TEXT")
+        except Exception:
+            pass
 
         await db.commit()
 
