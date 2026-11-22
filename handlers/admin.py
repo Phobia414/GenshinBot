@@ -838,3 +838,30 @@ async def cmd_untrust(message: types.Message):
 
     await remove_trusted_admin(target_id)
     await message.answer(f"✅ Пользователь {esc(display)} больше не получает анкеты.")
+
+
+@dp.message(Command("resetapps"))
+async def cmd_reset_apps(message: types.Message):
+    if message.from_user.id != OWNER_ID:
+        return
+
+    # Определяем, кому сбрасываем
+    target_ref, _ = extract_target(message)
+    if target_ref is None:
+        target_id = message.from_user.id
+    elif isinstance(target_ref, str):
+        target_id = await resolve_user_id(target_ref)
+    else:
+        target_id = target_ref
+
+    if not target_id:
+        return await message.answer("❌ Пользователь не найден.")
+
+    from db import reset_user_applications
+    await reset_user_applications(target_id)
+
+    await message.answer(
+        f"✅ <b>АНКЕТЫ СБРОШЕНЫ</b>\n{DIV}\n"
+        f"Пользователь <code>{target_id}</code> теперь может подать анкеты заново.",
+        parse_mode="HTML", reply_markup=back_kb(message.from_user.id)
+    )

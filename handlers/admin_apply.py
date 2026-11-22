@@ -3,6 +3,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.filters import Command, StateFilter
+import time
 
 from bot_instance import bot, dp
 from config import OWNER_ID
@@ -15,7 +16,7 @@ from helpers import is_chat_admin, esc
 class AdminApplyForm(StatesGroup):
     q1 = State()
     q2 = State()
-    q_pos = State()  # НОВЫЙ ВОПРОС ПРО ДОЛЖНОСТЬ
+    q_pos = State()
     q3 = State()
     q4 = State()
     q5 = State()
@@ -26,7 +27,7 @@ class AdminApplyForm(StatesGroup):
     q10 = State()
     q11 = State()
     q12 = State()
-    q_views = State()  # НОВЫЙ ВОПРОС ПРО ВЗГЛЯДЫ
+    q_views = State()
     confirm = State()
 
 
@@ -95,6 +96,11 @@ async def start_admin_apply(message: types.Message, state: FSMContext, chat_id: 
             return await message.answer("⏳ Ваша анкета уже находится на рассмотрении у администрации.")
         elif app['status'] == 'accepted':
             return await message.answer("✅ Вы уже являетесь частью администрации.")
+        elif app['status'] == 'rejected':
+            # Проверка на спам (1 час)
+            if app.get('created_at') and (int(time.time()) - app['created_at']) < 3600:
+                return await message.answer(
+                    "⏳ Ваша предыдущая анкета была отклонена недавно. Вы сможете подать новую через 1 час.")
 
     await state.clear()
     await state.update_data(target_chat_id=chat_id)

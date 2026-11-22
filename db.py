@@ -891,3 +891,8 @@ async def get_trusted_admins():
             users.append(r['user_id'])
 
     return users
+async def reset_user_applications(user_id):
+    # Сбрасываем анкету на вступление
+    await execute("UPDATE applications SET status = 'rejected' WHERE user_id = ?", (user_id,))
+    # Сбрасываем анкету админа
+    await execute("UPDATE admin_applications SET status = 'rejected' WHERE user_id = ?", (user_id,))

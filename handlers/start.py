@@ -75,8 +75,20 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
         if command.args and command.args.startswith("apply_"):
             target_chat_id = int(command.args.replace("apply_", ""))
             app = await get_application(message.from_user.id, target_chat_id)
+
             if app and app['status'] in ('pending', 'waiting_char'):
                 return await message.answer("⏳ Ваша анкета уже на рассмотрении или одобрена. Ожидайте.")
+
+            if app and app['status'] == 'rejected':
+                # Защита от спама: 5 минут между подачами
+                from state import _cmd_cooldown
+                from datetime import datetime, timezone
+                now_ts = int(datetime.now(timezone.utc).timestamp())
+                last_try = _cmd_cooldown.get(("apply", message.from_user.id, target_chat_id), 0)
+                if now_ts - last_try < 300:
+                    return await message.answer(
+                        "⏳ Ваша анкета была недавно отклонена. Подождите 5 минут перед повторной подачей.")
+                _cmd_cooldown[("apply", message.from_user.id, target_chat_id)] = now_ts
 
             await state.update_data(target_chat_id=target_chat_id)
             await send_step(message.chat.id, 0, state)
@@ -98,10 +110,8 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
         if sub_enabled == "1" and user.get("sub_passed") == 0:
             await send_sub_message(message, message.from_user.id, chat_id)
         else:
-            # УБРАН ВЫБОР ПОЛА, СРАЗУ РЕГИОНЫ
             text = f"── 〔 🌸 ВЫБОР ПЕРСОНАЖА 〕 ──\n\nВыбери регион, откуда родом твой герой 🎭"
             await message.answer(text, reply_markup=regions_kb(message.from_user.id), parse_mode="HTML")
-
 
 @dp.callback_query(MenuCB.filter(F.action.in_(["gender_male", "gender_female"])))
 async def cb_gender(query: types.CallbackQuery, callback_data: MenuCB, state: FSMContext):
