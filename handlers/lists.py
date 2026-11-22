@@ -64,7 +64,8 @@ async def cb_cmd_cat(query: types.CallbackQuery, callback_data: CmdCatCB):
 
     lines = [f"{data['title']}\n{DIV}\n"]
     for cmd, desc in data["commands"]:
-        lines.append(f"• {cmd}\n  {desc}")
+        # Обязательно должна быть esc() вокруг cmd и desc!
+        lines.append(f"• {esc(cmd)}\n  {esc(desc)}")
     lines.append(f"\n{DIV}\n\n💡 «ответом» — Reply на сообщение.")
 
     b = InlineKeyboardBuilder()

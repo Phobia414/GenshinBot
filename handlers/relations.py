@@ -29,7 +29,9 @@ class RelationsEdit(StatesGroup):
 @dp.callback_query(MenuCB.filter(F.action == "relations"))
 @inject_user
 async def cb_relations(query: types.CallbackQuery, callback_data: MenuCB, user: dict, chat_id: int, state: FSMContext):
-    await state.clear()
+    if state:  # <--- ДОБАВЛЕНА ПРОВЕРКА
+        await state.clear()
+
     if query.from_user.id != callback_data.owner_id:
         await query.answer("⚠️ Чужое меню!", show_alert=True)
         return
@@ -265,7 +267,7 @@ async def cb_remove_child_menu(query: types.CallbackQuery, callback_data: RelCB,
 
 @dp.callback_query(F.data.startswith("delchild_"))
 @inject_user
-async def cb_remove_child_do(query: types.CallbackQuery, user: dict, chat_id: int):
+async def cb_remove_child_do(query: types.CallbackQuery, user: dict, chat_id: int, state: FSMContext):
     target_id = query.data.replace("delchild_", "")
 
     if not user["child_id"]: return
