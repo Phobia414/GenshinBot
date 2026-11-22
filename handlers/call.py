@@ -7,8 +7,8 @@ from aiogram.filters import Command
 from bot_instance import dp
 from config import DB_PATH, OWNER_ID
 from constants import DIV, CALL_COOLDOWN, CALL_MAX_MENTIONS
-from helpers import esc, _ensure_user, is_chat_admin  # <--- ДОБАВЛЕН ИМПОРТ is_chat_admin
-from db import update_user
+from helpers import esc, _ensure_user, is_chat_admin
+from db import update_user, get_user
 from keyboards import back_kb
 
 
@@ -21,12 +21,10 @@ async def cmd_call(message: types.Message):
     chat_id = message.chat.id
     is_owner = message.from_user.id == OWNER_ID
 
-    # --- ПРОВЕРКА НА АДМИНИСТРАТОРА ---
     if not is_owner:
         if not await is_chat_admin(chat_id, message.from_user.id):
             await message.answer("❌ Эта команда доступна только администраторам чата.")
             return
-    # ----------------------------------
 
     now = int(datetime.now(timezone.utc).timestamp())
 
@@ -79,11 +77,9 @@ async def cmd_call(message: types.Message):
 
     base_header = f"📢 <b>ПОЗЫВНОЙ</b>\n{DIV}\n\n{esc(call_text)}\n\n{DIV}\n"
 
-    # Отправляем первое сообщение (реплай)
     sent_msg = await message.reply(base_header + ", ".join(chunks[0]), parse_mode="HTML",
                                    reply_markup=back_kb(message.from_user.id))
 
-    # Отправляем остальные пачки, ДОБАВЛЯЯ текст созыва
     for chunk in chunks[1:]:
         chunk_text = base_header + ", ".join(chunk)
         await sent_msg.reply(chunk_text, parse_mode="HTML", disable_notification=False)
@@ -93,11 +89,15 @@ async def cmd_call(message: types.Message):
 @dp.message(Command("calloff"))
 async def cmd_calloff(message: types.Message):
     chat_id = message.chat.id
+    if message.chat.type not in ("group", "supergroup"):
+        return await message.answer("❌ Эта команда работает только в группах.")
+
     user = await _ensure_user(message.from_user.id, chat_id)
-    if user.get("call_opt_out"):
+    if user.get("call_opt_out") == 1:
         await message.answer("🔕 Уведомления позывного уже отключены.\n\nВернуть: /callon",
                              reply_markup=back_kb(message.from_user.id))
         return
+
     await update_user(message.from_user.id, chat_id, call_opt_out=1)
     await message.answer(f"🔕 Готово!\n{DIV}\n\nТеперь я не буду упоминать тебя в /call.\n\nВернуть: /callon",
                          reply_markup=back_kb(message.from_user.id))
@@ -106,11 +106,15 @@ async def cmd_calloff(message: types.Message):
 @dp.message(Command("callon"))
 async def cmd_callon(message: types.Message):
     chat_id = message.chat.id
+    if message.chat.type not in ("group", "supergroup"):
+        return await message.answer("❌ Эта команда работает только в группах.")
+
     user = await _ensure_user(message.from_user.id, chat_id)
-    if not user.get("call_opt_out"):
+    if user.get("call_opt_out") == 0 or user.get("call_opt_out") is None:
         await message.answer("🔔 Уведомления позывного и так включены.\n\nОтключить: /calloff",
                              reply_markup=back_kb(message.from_user.id))
         return
+
     await update_user(message.from_user.id, chat_id, call_opt_out=0)
     await message.answer(f"🔔 Возвращаю тебя в список упоминаний.\n{DIV}\n\nЕсли снова захочешь отключить: /calloff",
                          reply_markup=back_kb(message.from_user.id))

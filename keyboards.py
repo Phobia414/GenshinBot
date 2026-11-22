@@ -119,22 +119,32 @@ def shop_kb(uid, discount=0):
     b.button(text="⊱ ‹ Назад в меню ⊰", callback_data=MenuCB(action="menu", owner_id=uid))
     b.adjust(1)
     return b.as_markup()
-def relations_kb(uid, has_partner, married, can_marry, has_child, gender):
+
+
+def relations_kb(uid, has_partner, married, can_marry, child_count, gender):
     b = InlineKeyboardBuilder()
     if has_partner:
         b.button(text="⊱ 🖼 Фото пары ⊰", callback_data=RelCB(action="set_image", owner_id=uid))
         b.button(text="⊱ 🎁 Подарить подарок ⊰", callback_data=RelCB(action="gifts", owner_id=uid))
+
         if can_marry and not married:
             b.button(text="⊱ 💍 Сыграть свадьбу ⊰", callback_data=RelCB(action="marry", owner_id=uid))
-        if married and not has_child:
+
+        max_children = 2 if married else 1
+
+        # Если есть свободные слоты для детей — показываем кнопку усыновления
+        if child_count < max_children:
             if gender == "male":
                 b.button(text="⊱ 👶 Усыновить ⊰", callback_data=RelCB(action="adopt_hint", owner_id=uid))
             elif gender == "female":
                 b.button(text="⊱ 👶 Удочерить ⊰", callback_data=RelCB(action="adopt_hint", owner_id=uid))
             else:
                 b.button(text="⊱ 👶 Усыновить/Удочерить ⊰", callback_data=RelCB(action="adopt_hint", owner_id=uid))
-            if has_child:
-                b.button(text="⊱ 💔 Отказаться от ребенка ⊰", callback_data=RelCB(action="remove_child", owner_id=uid))
+
+        # Если есть хотя бы один ребенок — показываем кнопку отказа
+        if child_count > 0:
+            b.button(text="⊱ 💔 Отказаться от ребенка ⊰", callback_data=RelCB(action="remove_child", owner_id=uid))
+
         b.button(text="⊱ 💔 Разорвать отношения ⊰", callback_data=RelCB(action="breakup", owner_id=uid))
     b.button(text="⊱ ‹ Назад в меню ⊰", callback_data=MenuCB(action="menu", owner_id=uid))
     b.adjust(1)

@@ -330,40 +330,44 @@ async def handle_interaction(message, user, matched_phrase, chat_id, custom_inte
 
     # ===== СИСТЕМА УСЫНОВЛЕНИЯ =====
     if matched_phrase in ("усыновить", "удочерить"):
-        if not user["is_married"] and user["child_id"]:
-            await message.reply("👶 До брака можно усыновить только одного ребенка. Сыграйте свадьбу для второго!")
-            return True
+        # Получаем текущие списки детей
+        current_ids = [i for i in str(user["child_id"]).split(",") if i and i != "0"]
+        current_names = [n for n in str(user["child_name"]).split(",") if n]
 
-        if str(target_id) in str(user["child_id"]).split(","):
+        if str(target_id) in current_ids:
             await message.reply("👶 Вы уже усыновили этого игрока.")
             return True
 
-        current_ids = str(user["child_id"]).split(",") if user["child_id"] else []
-        current_names = str(user["child_name"]).split(",") if user["child_name"] else []
-
-        current_ids = [i for i in current_ids if i != "0" and i != ""]
-        current_names = [n for n in current_names if n != ""]
-
-        if len(current_ids) >= 2:
-            await message.reply("👶 У вас уже максимум детей (2).")
+        # Проверка лимита: 1 до брака, 2 в браке
+        max_children = 2 if user["is_married"] else 1
+        if len(current_ids) >= max_children:
+            await message.reply(
+                f"👶 У вас уже максимум детей ({max_children}). Сыграйте свадьбу, чтобы усыновить второго!")
             return True
 
+        # Добавляем ребенка
         current_ids.append(str(target_id))
         current_names.append(target["character_name"])
 
         new_id_str = ",".join(current_ids)
         new_name_str = ",".join(current_names)
 
+        # 1. Записываем ребенка тому, кто усыновил
         await update_user(message.from_user.id, chat_id, child_id=new_id_str, child_name=new_name_str)
-        await update_user(target_id, chat_id, child_id=str(message.from_user.id), child_name=user["character_name"])
+
+        # 2. Если есть партнер, записываем и ему тоже
+        if user["partner_id"]:
+            await update_user(user["partner_id"], chat_id, child_id=new_id_str, child_name=new_name_str)
+
+        # ВАЖНО: Мы НЕ обновляем target_id, чтобы он не считал усыновителей своими детьми!
 
         verb = "усыновил" if user["gender"] == "male" else ("удочерил" if user["gender"] == "female" else "усыновил(а)")
 
         beautiful_text = (
-            f"👨‍👩‍👧 СЧАСТЛИВАЯ СЕМЬЯ\n{DIV}\n\n"
+            f"👨‍👩‍👧 <b>СЧАСТЛИВАЯ СЕМЬЯ</b>\n{DIV}\n\n"
             f"🎉 {esc(user['character_name'])} {verb} {esc(target['character_name'])}!\n"
             f"Теперь они одна семья. Орион плачет от умиления 💛\n\n"
-            f"👶 Всего детей в семье: {len(current_ids)}/2"
+            f"👶 Всего детей в семье: {len(current_ids)}/{max_children}"
         )
 
         await message.answer(beautiful_text, reply_markup=back_kb(message.from_user.id))

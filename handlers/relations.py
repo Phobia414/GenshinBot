@@ -45,8 +45,13 @@ async def cb_relations(query: types.CallbackQuery, callback_data: MenuCB, user: 
         extra = ""
         if married and user["married_at"]:
             extra += f"\n📅 Свадьба: {datetime.fromtimestamp(user['married_at'], timezone.utc).strftime('%d.%m.%Y')}"
+
+        # Считаем количество детей
+        child_count = 0
         if user["child_id"]:
-            # Проверка на список детей
+            child_count = len([i for i in str(user["child_id"]).split(",") if i and i != "0"])
+
+        if child_count > 0:
             extra += f"\n👶 Дети: {esc(user['child_name'])}"
 
         default_text = (
@@ -62,8 +67,9 @@ async def cb_relations(query: types.CallbackQuery, callback_data: MenuCB, user: 
             "{rel_started}", started).replace("{rel_level}", str(level)).replace("{max_level}", str(MAX_LEVEL)).replace(
             "{rel_xp}", str(user['rel_xp'])).replace("{rel_status}", status).replace("{extra}", extra).replace("{div}",
                                                                                                                DIV)
-        kb = relations_kb(query.from_user.id, True, married, level >= WEDDING_LEVEL, bool(user["child_id"]),
-                          user["gender"])
+
+        # Передаем child_count вместо bool(user["child_id"])
+        kb = relations_kb(query.from_user.id, True, married, level >= WEDDING_LEVEL, child_count, user["gender"])
     else:
         default_text = (
             f"— [ ❤️ ОТНОШЕНИЯ ] —\n\n"
@@ -230,23 +236,63 @@ async def cb_adopt_hint(query: types.CallbackQuery, callback_data: RelCB):
 
 @dp.callback_query(RelCB.filter(F.action == "remove_child"))
 @inject_user
-async def cb_remove_child(query: types.CallbackQuery, callback_data: RelCB, user: dict, chat_id: int):
+async def cb_remove_child_menu(query: types.CallbackQuery, callback_data: RelCB, user: dict, chat_id: int):
     await query.answer()
     if query.from_user.id != callback_data.owner_id or not user["child_id"]: return
 
-    partner_id = user["partner_id"]
+    current_ids = [i for i in str(user["child_id"]).split(",") if i and i != "0"]
+    current_names = [n for n in str(user["child_name"]).split(",") if n]
 
-    # Очищаем у обоих
-    await update_user(query.from_user.id, chat_id, child_id="", child_name="")
-    if partner_id:
-        await update_user(partner_id, chat_id, child_id="", child_name="")
+    if not current_ids:
+        await query.answer("У вас нет детей.", show_alert=True)
+        return
 
-    await query.message.edit_text(
-        f"— [ 🕊️ ОТКАЗ ] —\n\n"
-        f"Вы отказались от ребенка. Теперь вы можете усыновить кого-то другого.",
-        parse_mode="HTML",
-        reply_markup=back_kb(query.from_user.id)
+    b = InlineKeyboardBuilder()
+    # Выводим кнопку для каждого ребенка
+    for cid, cname in zip(current_ids, current_names):
+        b.button(text=f"👶 Отказаться от: {cname}", callback_data=f"delchild_{cid}")
+
+    b.button(text="❌ Отмена", callback_data=MenuCB(action="relations", owner_id=query.from_user.id))
+    b.adjust(1)
+
+    await edit_or_send(
+        query,
+        f"— [ 🕊️ ОТКАЗ ] —\n\nВыбери, от какого ребенка ты хочешь отказаться:",
+        b.as_markup(),
+        image_url=""
     )
+
+
+@dp.callback_query(F.data.startswith("delchild_"))
+@inject_user
+async def cb_remove_child_do(query: types.CallbackQuery, user: dict, chat_id: int):
+    target_id = query.data.replace("delchild_", "")
+
+    if not user["child_id"]: return
+
+    current_ids = str(user["child_id"]).split(",")
+    current_names = str(user["child_name"]).split(",")
+
+    # Оставляем только тех детей, чей ID не совпадает с выбранным
+    new_ids = [i for i in current_ids if i != target_id and i != "0"]
+    new_names = [name for i, name in zip(current_ids, current_names) if i != target_id and i != "0"]
+
+    new_id_str = ",".join(new_ids)
+    new_name_str = ",".join(new_names)
+
+    # Удаляем ребенка у себя
+    await update_user(query.from_user.id, chat_id, child_id=new_id_str, child_name=new_name_str)
+
+    # Удаляем ребенка у партнера (если он есть)
+    if user["partner_id"]:
+        await update_user(user["partner_id"], chat_id, child_id=new_id_str, child_name=new_name_str)
+
+    await query.answer("✅ Вы отказались от ребенка.", show_alert=True)
+
+    # Перезагружаем меню отношений с актуальными данными
+    updated_user = await get_user(query.from_user.id, chat_id)
+    await cb_relations(query, MenuCB(action="relations", owner_id=query.from_user.id), user=updated_user,
+                       chat_id=chat_id, state=None)
 
 
 # ==================== ФОТО ПАРЫ И ПОДАРКИ ====================
