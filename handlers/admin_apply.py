@@ -137,7 +137,8 @@ async def process_q1(message: types.Message, state: FSMContext):
 async def process_q2(message: types.Message, state: FSMContext):
     await state.update_data(q2=message.text)
     await state.set_state(AdminApplyForm.q_pos)
-    await message.answer(QUESTIONS["q_pos"])
+    # ДОБАВЛЕН parse_mode="HTML"
+    await message.answer(QUESTIONS["q_pos"], parse_mode="HTML")
 
 
 @dp.message(AdminApplyForm.q_pos, F.text)
@@ -239,7 +240,8 @@ async def process_q11(message: types.Message, state: FSMContext):
 async def process_q12(message: types.Message, state: FSMContext):
     await state.update_data(q12=message.text)
     await state.set_state(AdminApplyForm.q_views)
-    await message.answer(QUESTIONS["q_views"])
+    # ДОБАВЛЕН parse_mode="HTML"
+    await message.answer(QUESTIONS["q_views"], parse_mode="HTML")
 
 
 @dp.message(AdminApplyForm.q_views, F.text)
