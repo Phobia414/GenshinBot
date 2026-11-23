@@ -95,17 +95,24 @@ async def track_text(message: types.Message, user: dict, chat_id: int):
         except Exception:
             pass
         return
-    if is_group and user.get("admin_rank") in (None, "", "Игрок"):
-        import re
-        if re.search(r'(https?://|t\.me/|@[a-zA-Z0-9_]+)', message.text or ""):
-            # Проверяем, не является ли это упоминанием (мы разрешаем тегать людей)
-            # Если это просто ссылка — удаляем
-            if not message.entities or not any(e.type == 'text_mention' for e in message.entities):
+    # Защита от ссылок (для обычных игроков)
+    if is_group and message.from_user.id != OWNER_ID:
+        if user.get("admin_rank") in (None, "", "Игрок"):
+            has_link = False
+            # Проверяем вложения сообщения
+            if message.entities:
+                for ent in message.entities:
+                    # "url" — обычная ссылка, "text_link" — скрытая ссылка (текст с гиперссылкой)
+                    if ent.type in ("url", "text_link"):
+                        has_link = True
+                        break
+
+            if has_link:
                 try:
                     await message.delete()
-                    await message.answer(f"⚠️ {esc(message.from_user.first_name)}, ссылки запрещены!", delete_after=5) # если delete_after нет в aiogram, просто answer
+                    await message.answer(f"⚠️ {esc(message.from_user.first_name)}, ссылки запрещены!")
                     return
-                except:
+                except Exception:
                     pass
 
     now = int(datetime.now(timezone.utc).timestamp())
