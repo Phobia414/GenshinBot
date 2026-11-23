@@ -192,7 +192,6 @@ def guild_shop_kb(uid):
     b = InlineKeyboardBuilder()
     b.button(text="⊱ 🛒 +5 слотов (5000) ⊰", callback_data="gshop_buy_slots")
     b.button(text="⊱ 🎁 Сундук 5★ арта (3000) ⊰", callback_data="gshop_buy_chest")
-    b.button(text="⊱ 💎 160 Примогемов (10000) ⊰", callback_data="gshop_buy_primo")
     b.button(text="⊱ ‹ Назад ⊰", callback_data="guild_manage_back")
     b.adjust(1)
     return b.as_markup()

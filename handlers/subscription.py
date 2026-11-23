@@ -7,7 +7,7 @@ import json
 from bot_instance import bot, dp
 from callbacks import SubCB, MenuCB
 from db import get_setting, update_user, get_user
-from keyboards import gender_kb, regions_kb
+from keyboards import regions_kb
 
 # Замок от двойного нажатия при входе
 _send_locks = {}
