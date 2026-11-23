@@ -37,7 +37,7 @@ async def set_bot_commands():
     user_commands = [
         BotCommand(command="start", description="Открыть главное меню"),
         BotCommand(command="propose", description="Предложить отношения"),
-        BotCommand(command="duel", description="Дуэль"),
+        BotCommand(command="duel", description="Дуэль (Ответом)"),
         BotCommand(command="call", description="📢 Созвать всех (в группе)"),
         BotCommand(command="callon", description="🔔 Включить уведомления позывного"),
         BotCommand(command="calloff", description="🔕 Отключить уведомления позывного"),
@@ -48,8 +48,6 @@ async def set_bot_commands():
         BotCommand(command="disbandguild", description="Распустить гильдию"),
         BotCommand(command="stats", description="Топы"),
         BotCommand(command="daily", description="Ежедневная награда"),
-        BotCommand(command="gacha", description="Молитвы"),
-        BotCommand(command="give", description="Передать примогемы"),
         BotCommand(command="cleanup", description="🧹 Настройки авто-чистки (для админов)"),
         BotCommand(command="cleanup_list", description="🛡 Кто купил защиту от чистки"),
         BotCommand(command="applylink", description="🔗 Создать ссылку для набора (для админов)"),

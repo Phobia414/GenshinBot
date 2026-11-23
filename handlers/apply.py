@@ -63,7 +63,7 @@ async def send_step(chat_id: int, step_index: int, state: FSMContext):
     elif st == ApplyForm.about:
         text = "🌟 <b>Расскажите немного о себе.</b>\n\nУвлечения, достижения, образ жизни. <i>Вся ваша анкета будет автоматически отправлена в чат при вступлении!</i>"
     elif st == ApplyForm.timezone:
-        text = "🕒 <b>Укажите ваш часовой пояс.</b>\n\nНапример: МСК, UTC+3, UTC+5. И удобное для вас время для общения."
+        text = "🕒 <b>Укажите ваш часовой пояс.</b>\n\nНапример: МСК+2 И удобное для вас время для общения."
     elif st == ApplyForm.triggers:
         text = "⚠️ <b>Будете ли вы ролить в нашем проекте?</b>\n\nНаша ролевая не обязательная. Если вы не планируете отыгрывать роль, просто напишите «Нет»."
     elif st == ApplyForm.activity:
@@ -238,7 +238,7 @@ async def process_source(message: types.Message, state: FSMContext):
             f"📖 <b>Опыт:</b> {esc(data.get('experience', 'Не указан'))}\n"
             f"🌟 <b>О себе:</b> {esc(data.get('about', 'Не указано'))}\n"
             f"🕒 <b>Часовой пояс:</b> {esc(data.get('timezone', 'Не указан'))}\n"
-            f"🎭 <b>Будет ролить:</b> {esc(data.get('triggers', 'Не указаны'))}\n"
+            f"🎭 <b>Вопрос о ролевой:</b> {esc(data.get('triggers', 'Не указаны'))}\n"
             f"⚡ <b>Активность:</b> {esc(data.get('activity', 'Не указана'))}\n"
             f"📢 <b>Откуда узнал(а):</b> {esc(data.get('source', 'Не указан'))}"
         )

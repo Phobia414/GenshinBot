@@ -97,10 +97,7 @@ async def cb_check_sub(query: types.CallbackQuery, callback_data: SubCB, state: 
         user = await get_user(user_id, chat_id)
 
         # СРАЗУ ВЫДАЕМ ПОЛ ИЛИ РЕГИОН
-        if not user["gender"]:
-            text = f"── 〔 ✨ ПРИВЕТСТВИЕ 〕 ──\n\nДобро пожаловать в Тейват!\n\nДля начала выбери свой пол:"
-            await bot.send_message(chat_id, text, reply_markup=gender_kb(user_id), parse_mode="HTML")
-        elif not user["character_name"]:
+        if not user["character_name"]:
             text = f"── 〔 🌸 ВЫБОР ПЕРСОНАЖА 〕 ──\n\nВыбери регион, откуда родом твой герой 🎭"
             await bot.send_message(chat_id, text, reply_markup=regions_kb(user_id), parse_mode="HTML")
         else:

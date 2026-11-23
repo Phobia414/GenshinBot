@@ -72,12 +72,7 @@ async def cb_profile(query, callback_data, user, chat_id):
     if user["partner_id"]:
         partner_line = f"❤️ {esc(user['partner_name'])}"
     else:
-        if user["gender"] == "male":
-            partner_line = "❤️ Свободен"
-        elif user["gender"] == "female":
-            partner_line = "❤️ Свободна"
-        else:
-            partner_line = "❤️ Свободен(а)"
+        partner_line = "❤️ Свободен(а)"
 
     resin = await update_resin(query.from_user.id, chat_id)
     rep = user["reputation"] or 0

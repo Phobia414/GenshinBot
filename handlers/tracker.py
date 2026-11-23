@@ -31,7 +31,7 @@ from characters import get_character_image
 from helpers import get_placeholder_image
 from handlers.chat_list import update_chat_list
 from handlers.fun import start_duel_logic
-from keyboards import back_kb, regions_kb, gender_kb
+from keyboards import back_kb, regions_kb
 
 MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября",
           "декабря"]
@@ -95,6 +95,18 @@ async def track_text(message: types.Message, user: dict, chat_id: int):
         except Exception:
             pass
         return
+    if is_group and user.get("admin_rank") in (None, "", "Игрок"):
+        import re
+        if re.search(r'(https?://|t\.me/|@[a-zA-Z0-9_]+)', message.text or ""):
+            # Проверяем, не является ли это упоминанием (мы разрешаем тегать людей)
+            # Если это просто ссылка — удаляем
+            if not message.entities or not any(e.type == 'text_mention' for e in message.entities):
+                try:
+                    await message.delete()
+                    await message.answer(f"⚠️ {esc(message.from_user.first_name)}, ссылки запрещены!", delete_after=5) # если delete_after нет в aiogram, просто answer
+                    return
+                except:
+                    pass
 
     now = int(datetime.now(timezone.utc).timestamp())
     if user["muted_until"] and user["muted_until"] > now:
@@ -103,6 +115,48 @@ async def track_text(message: types.Message, user: dict, chat_id: int):
         except Exception:
             pass
         return
+    if is_group and user.get("admin_rank") in (None, "", "Игрок"):
+        import re
+        if re.search(r'(https?://|t\.me/|@[a-zA-Z0-9_]+)', message.text or ""):
+            # Проверяем, не является ли это упоминанием (мы разрешаем тегать людей)
+            # Если это просто ссылка — удаляем
+            if not message.entities or not any(e.type == 'text_mention' for e in message.entities):
+                try:
+                    await message.delete()
+                    await message.answer(f"⚠️ {esc(message.from_user.first_name)}, ссылки запрещены!", delete_after=5) # если delete_after нет в aiogram, просто answer
+                    return
+                except:
+                    pass
+
+    # Фильтр капса
+    if is_group and (message.text or ""):
+        text = message.text
+        if len(text) > 10 and text.isupper() and user.get("admin_rank") in (None, "", "Игрок"):
+            try:
+                await message.delete()
+                await message.answer(f"⚠️ {esc(message.from_user.first_name)}, не пиши капсом!")
+                return
+            except:
+                pass
+            # Умный анти-флуд
+    if is_group and user.get("admin_rank") in (None, "", "Игрок"):
+                import time
+                now_time = time.time()
+                user_flood = state._flood_cache.get(message.from_user.id, [])
+                # Оставляем только сообщения за последние 3 секунды
+                user_flood = [t for t in user_flood if now_time - t < 3]
+                user_flood.append(now_time)
+                state._flood_cache[message.from_user.id] = user_flood
+
+                if len(user_flood) > 5:  # Если больше 5 сообщений за 3 секунды
+                    try:
+                        await message.delete()
+                        await message.answer(f"🚫 {esc(message.from_user.first_name)}, прекрати флудить!")
+                        # Можно сразу выдать мут на 5 минут:
+                        await bot.restrict_chat_member(chat_id, message.from_user.id, ChatPermissions(can_send_messages=False), until_date=int(now_time)+300)
+                        return
+                    except:
+                        pass
 
     text_lower = (message.text or "").lower().strip()
 
@@ -403,7 +457,7 @@ async def handle_interaction(message, user, matched_phrase, chat_id, custom_inte
             pass
         return True
 
-    verb = inter["verb_f"] if user["gender"] == "female" else inter["verb_m"]
+    verb = inter["verb_m"]
     emoji = inter["emoji"]
     xp_line = f"\n💕 +{xp} XP" if xp else ""
 
@@ -439,19 +493,12 @@ async def handle_interaction(message, user, matched_phrase, chat_id, custom_inte
 
 async def show_user_card(message, user, tg_user, chat_id):
     name = esc(user["character_name"] or "Не выбран")
-    gtext = "Мужской" if user["gender"] == "male" else ("Женский" if user["gender"] == "female" else "Не указан")
 
     if user["partner_id"]:
         status = "💍 В браке" if user["is_married"] else "💕 В отношениях"
         partner_line = f"❤️ {esc(user['partner_name'])} · {status}"
     else:
-        if user["gender"] == "male":
-            partner_line = "❤️ Свободен"
-        elif user["gender"] == "female":
-            partner_line = "❤️ Свободна"
-        else:
-            partner_line = "❤️ Свободен(а)"
-
+        partner_line = "❤️ Свободен(а)"
     child_line = ""
     if user["child_id"]:
         child_line = f"\n👶 {esc(user['child_name'])}"
@@ -489,7 +536,7 @@ async def show_user_card(message, user, tg_user, chat_id):
         join_date = f"📅 В группе с: {fs.day} {MONTHS[fs.month - 1]}\n"
 
     text = (
-        f"🎭 {name} · ⚧ {gtext}\n"
+        f"🎭 {name}\n"
         f"{admin_rank_text}"
         f"{join_date}\n"
         f"💬 Всего сообщений: {user['messages_count']}\n"

@@ -60,13 +60,6 @@ def profile_kb(uid):
     b.adjust(1)
     return b.as_markup()
 
-def gender_kb(uid):
-    b = InlineKeyboardBuilder()
-    b.button(text="⊱ 👨 Мужской ⊰", callback_data=MenuCB(action="gender_male", owner_id=uid))
-    b.button(text="⊱ 👩 Женский ⊰", callback_data=MenuCB(action="gender_female", owner_id=uid))
-    b.adjust(2)
-    return b.as_markup()
-
 def regions_kb(uid):
     b = InlineKeyboardBuilder()
     for key, name in REGIONS.items():

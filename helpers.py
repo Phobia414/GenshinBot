@@ -386,12 +386,15 @@ async def apply_tg_rights(bot: Bot, chat_id: int, user_id: int, rank_data: dict)
     try:
         await bot.promote_chat_member(
             chat_id=chat_id, user_id=user_id,
-            can_change_info=False,
+            can_change_info=rights.get("can_change_info", False),
             can_delete_messages=rights.get("can_delete_messages", False),
-            can_invite_users=False,
+            can_invite_users=rights.get("can_invite_users", False),
             can_restrict_members=rights.get("can_restrict_members", False),
-            can_pin_messages=False, can_promote_members=False,
-            can_manage_chat=False, can_manage_video_chats=False, can_manage_topics=False
+            can_pin_messages=rights.get("can_pin_messages", False),
+            can_promote_members=rights.get("can_promote_members", False),
+            can_manage_chat=rights.get("can_manage_chat", False),
+            can_manage_video_chats=rights.get("can_manage_video_chats", False), # <--- ВАЖНО
+            can_manage_topics=False
         )
         await update_user_tag(bot, chat_id, user_id)
         return True

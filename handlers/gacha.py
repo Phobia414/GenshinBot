@@ -9,7 +9,7 @@ from db import get_user, update_user, update_primogems, get_gacha_gif, add_gacha
     get_local_setting
 from gacha_data import POOL_3_STAR, POOL_4_STAR, POOL_5_STAR
 from helpers import edit_or_send, inject_user
-import state
+import state#
 
 COST_1 = 160
 COST_10 = 1600

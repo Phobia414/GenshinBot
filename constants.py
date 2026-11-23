@@ -172,7 +172,7 @@ INTERACTIONS = {
     "укрыть": {"emoji": "🛏️", "verb_m": "укрыл", "verb_f": "укрыла"},
     "подарить цветок": {"emoji": "🌸", "verb_m": "подарил", "verb_f": "подарила"},
     "спеть": {"emoji": "🎵", "verb_m": "спел", "verb_f": "спела"},
-    "станцевать": {"emoji": "💃", "verb_m": "станцевал", "verb_f": "станцевала"},
+    "станцевать": {"emoji": "💃", "verb_m": "станцевал с", "verb_f": "станцевала с"},
     "укусить": {"emoji": "😈", "verb_m": "укусил", "verb_f": "укусила"},
     "щёлкнуть": {"emoji": "👃", "verb_m": "щёлкнул", "verb_f": "щёлкнула"},
     "ущипнуть": {"emoji": "🤏", "verb_m": "ущипнул", "verb_f": "ущипнула"},
@@ -216,17 +216,17 @@ INTERACTIONS = {
 PLAYER_COMMANDS = {
     "main": {"title": "🎮 ОСНОВНЫЕ КОМАНДЫ", "commands": [
         ("/start", "Открыть главное меню"),
-        ("/freerole", "Освободить свою роль"),
+        ("/freerole", "Освободить свою роль (Будьте осторожны)"),
         ("/daily", "Получить ежедневную награду"),
-        ("/give Сумма (ответом/@)", "Передать примогемы"),
         ("кто я", "Показать свою карточку"),
-        ("кто ты (ответом)", "Карточка игрока"),
+        ("кто ты (ответом)", "Карточка участника"),
+        ("!стата день/неделя/месяц", "Показывает статистику за день, неделю, месяц")
     ]},
     "interactions": {"title": "🎭 ВЗАИМОДЕЙСТВИЯ", "commands": [
-        ("обнять / поцеловать / погладить", "Нежные"),
-        ("подарить цветок", "Отправить цветок"),
-        ("ударить / пнуть / дать леща", "Шуточные атаки"),
-        ("поцеловать страстно / обнять крепко", "+XP для пар"),
+        ("обнять, поцеловать, поладить, приобнять, прижать, дать пять, похлопать, улыбнуться, подмигнуть, помахать, взъерошить, накормить, напоить, укрыть", "Нежные"),
+        ("подарить цветок, спеть, станцевать, укусить, щёлкнуть, ущипнуть, пнуть, обрызгать, кинуть снежок, шлепнуть, укусить за ушко, шепнуть на ушко, прижать к стене, обнять за талию, погладить по спине, поцеловать в шею, поцеловать в щёку, укусить за шею, флиртовать, подмигнуть игриво, сделать комплимент", "Интересные"),
+        ("ударить, пнуть, дать леща, дать пощёчину, толкнуть, отшлёпать, стукнуть, ткнуть пальцем, дать подзатыльник, уронить на пол, придушить, обозвать, щелбан, задушить в объятиях, закидать тапками ", "Шуточные атаки"),
+        ("поцеловать страстно, обнять крепко, шепнуть признание, взять за руку, прижать к сердцу", "+XP для пар"),
     ]},
     "relations": {"title": "❤️ ОТНОШЕНИЯ", "commands": [
         ("/propose (ответом или @)", "Предложить отношения"),
@@ -273,6 +273,7 @@ PLAYER_COMMANDS = {
 }
 
 # ================= НОВАЯ СИСТЕМА РАНГОВ =================
+# ================= НОВАЯ СИСТЕМА РАНГОВ =================
 DEFAULT_ADMIN_RANKS = {
     "owner": {
         "name": "👑 Владелец", "weight": 100, "cmd": "",
@@ -280,7 +281,7 @@ DEFAULT_ADMIN_RANKS = {
         "tg_rights": {
             "can_delete_messages": True, "can_restrict_members": True, "can_manage_tags": True,
             "can_pin_messages": True, "can_invite_users": True, "can_change_info": True,
-            "can_promote_members": True, "can_manage_chat": True
+            "can_promote_members": True, "can_manage_chat": True, "can_manage_video_chats": True
         }
     },
     "coowner": {
@@ -288,34 +289,47 @@ DEFAULT_ADMIN_RANKS = {
         "permissions": ["call", "applylink", "warn", "mute", "ban", "assign_lower"],
         "tg_rights": {
             "can_delete_messages": True, "can_restrict_members": True, "can_manage_tags": True,
-            "can_pin_messages": True, "can_invite_users": True, "can_change_info": True
+            "can_pin_messages": True, "can_invite_users": True, "can_change_info": True,
+            "can_manage_video_chats": True, "can_promote_members": True
         }
     },
     "headadmin": {
         "name": "👑 Г.Админ", "weight": 80, "cmd": "!гладмин",
-        # ГЛАВНЫЙ АДМИН МОЖЕТ ВЫДАВАТЬ РАНГИ
         "permissions": ["call", "applylink", "warn", "mute", "ban", "assign_lower"],
-        "tg_rights": {"can_delete_messages": True, "can_restrict_members": True, "can_manage_tags": True}
+        "tg_rights": {
+            "can_delete_messages": True, "can_restrict_members": True, "can_manage_tags": True,
+            "can_invite_users": True, "can_change_info": True, "can_manage_video_chats": True,
+            "can_promote_members": True
+        }
     },
     "admin": {
         "name": "🛡 Админ", "weight": 70, "cmd": "!админ",
-        # ОБЫЧНЫЙ АДМИН БОЛЬШЕ НЕ МОЖЕТ ВЫДАВАТЬ РАНГИ (убран assign_lower)
         "permissions": ["call", "applylink", "warn", "mute", "ban"],
-        "tg_rights": {"can_delete_messages": True, "can_restrict_members": True}
+        "tg_rights": {
+            "can_delete_messages": True, "can_restrict_members": True, "can_manage_tags": True,
+            "can_manage_video_chats": True
+        }
     },
     "moderator": {
         "name": "🛡 Модер", "weight": 60, "cmd": "!модер",
-        "permissions": ["call", "applylink", "warn", "mute"],
-        "tg_rights": {"can_delete_messages": True, "can_restrict_members": True}
+        "permissions": ["call", "applylink", "warn", "mute"], # Добавлен applylink и mute
+        "tg_rights": {
+            "can_delete_messages": True, "can_restrict_members": True, "can_manage_tags": True,
+            "can_manage_video_chats": True
+        }
     },
     "jrmod": {
         "name": "🛡 М.Модер", "weight": 50, "cmd": "!млмодер",
-        "permissions": ["call", "applylink"],
-        "tg_rights": {"can_delete_messages": True}
+        "permissions": ["call", "warn"],
+        "tg_rights": {
+            "can_delete_messages": True, "can_manage_video_chats": True
+        }
     },
     "trainee": {
         "name": "🛡 Стажер", "weight": 10, "cmd": "!стажер",
         "permissions": ["call"],
-        "tg_rights": {}
+        "tg_rights": {
+            "can_manage_video_chats": True
+        }
     }
 }

@@ -16,7 +16,7 @@ from . import call
 from . import checkimages
 from . import admin
 from . import admin_panel
-from . import gacha
+#from . import gacha
 from . import daily
 from . import economy
 from . import apply

@@ -127,7 +127,7 @@ async def cb_accept_app(query: types.CallbackQuery, callback_data: AdminAppCB):
                            parse_mode="HTML")
 
     b = InlineKeyboardBuilder().button(text="‹ К списку анкет", callback_data=AdminAppCB(action="list").pack())
-    await query.message.edit_text(f"✅ Вы ПРИНЯЛИ анкету <code>{user_id}</code>.\nСсылка отправлена пользователю.",
+    await query.message.edit_text(f"✅ Вы ПРИНЯЛИ анкету <code>{user_id}</code>.\nСсылка отправлена пользователю.", parse_mode="HTML",
                                   reply_markup=b.as_markup())
     await query.answer("Принято!")
 
@@ -148,7 +148,7 @@ async def cb_reject_app(query: types.CallbackQuery, callback_data: AdminAppCB):
                            parse_mode="HTML")
 
     b = InlineKeyboardBuilder().button(text="‹ К списку анкет", callback_data=AdminAppCB(action="list").pack())
-    await query.message.edit_text(f"❌ Вы ОТКЛОНИЛИ анкету <code>{user_id}</code>.", reply_markup=b.as_markup())
+    await query.message.edit_text(f"❌ Вы ОТКЛОНИЛИ анкету <code>{user_id}</code>.", parse_mode="HTML", reply_markup=b.as_markup())
     await query.answer("Отклонено!")
 
 

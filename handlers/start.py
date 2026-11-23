@@ -23,7 +23,7 @@ from helpers import (
     get_reputation_title, inject_user, format_text, update_user_tag, get_ranks_config
 )
 from keyboards import (
-    gender_kb, regions_kb, characters_kb, main_menu_kb, profile_kb, adventurers_kb,
+    regions_kb, characters_kb, main_menu_kb, profile_kb, adventurers_kb,
     reputation_kb, back_kb
 )
 from handlers.apply import ApplyForm, FORM_STEPS, send_step
@@ -94,7 +94,7 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
             await send_step(message.chat.id, 0, state)
         else:
             await message.answer(
-                "🌸 Возьмите ссылку для заполнения анкеты у администраторов группы.\n\n<i>Для игры перейдите в группу и напишите /start там.</i>",
+                "🌸 Возьмите ссылку для заполнения анкеты у администраторов группы или же в инфоканале.\n\n<i>Для продолжения перейдите в группу и напишите /start там.</i>",
                 parse_mode="HTML")
         return
 
@@ -110,31 +110,8 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
         if sub_enabled == "1" and user.get("sub_passed") == 0:
             await send_sub_message(message, message.from_user.id, chat_id)
         else:
-            text = f"── 〔 🌸 ВЫБОР ПЕРСОНАЖА 〕 ──\n\nВыбери регион, откуда родом твой герой 🎭"
+            text = f"── 〔 🌸 ВЫБОР ПЕРСОНАЖА 〕 ──\n\nВыбери регион, откуда родом твой персонаж 🎭"
             await message.answer(text, reply_markup=regions_kb(message.from_user.id), parse_mode="HTML")
-
-@dp.callback_query(MenuCB.filter(F.action.in_(["gender_male", "gender_female"])))
-async def cb_gender(query: types.CallbackQuery, callback_data: MenuCB, state: FSMContext):
-    await state.clear()
-    if query.from_user.id != callback_data.owner_id:
-        await query.answer("⚠️ Это чужое меню!", show_alert=True)
-        return
-    chat_id = query.message.chat.id
-    g = "male" if callback_data.action == "gender_male" else "female"
-    await update_user(query.from_user.id, chat_id, gender=g)
-
-    user = await get_user(query.from_user.id, chat_id)
-
-    if user and user.get("character_name"):
-        text = f"── 〔 💖 ОТЛИЧНО! 〕 ──\n\nПол успешно обновлен.\n\nТвой персонаж: <b>{esc(user['character_name'])}</b>"
-        fallback = get_character_image(user["character_name"]) if user["character_name"] else None
-        image = await get_section_image("menu", fallback, chat_id)
-        await edit_or_send(query, text, main_menu_kb(query.from_user.id), image_url=image)
-    else:
-        text = f"── 〔 💖 ОТЛИЧНО! 〕 ──\n\nТеперь выбери регион, откуда родом твой герой 🎭"
-        image = await get_section_image("regions", chat_id=chat_id)
-        await edit_or_send(query, text, regions_kb(query.from_user.id), image_url=image)
-
 
 @dp.callback_query(MenuCB.filter(F.action == "regions"))
 async def cb_regions(query: types.CallbackQuery, callback_data: MenuCB):
@@ -323,12 +300,7 @@ async def cb_profile(query, callback_data, user, chat_id):
     if user["partner_id"]:
         partner_line = f"❤️ {esc(user['partner_name'])}"
     else:
-        if user["gender"] == "male":
-            partner_line = "❤️ Свободен"
-        elif user["gender"] == "female":
-            partner_line = "❤️ Свободна"
-        else:
-            partner_line = "❤️ Свободен(а)"
+        partner_line = "❤️ Свободен(а)"
 
     resin = await update_resin(query.from_user.id, chat_id)
     rep = user["reputation"] or 0
@@ -350,7 +322,6 @@ async def cb_profile(query, callback_data, user, chat_id):
         f"🍃 {name}\n"
         f"{admin_rank_text}\n"
         f"💰 Баланс: <b>{user['balance']}</b>\n"
-        f"💎 Примогемы: <b>{user.get('primogems', 0)}</b>\n\n"
         f"💧 Смола: <b>{resin} / {RESIN_MAX}</b>\n\n"
         f"🎖️ Репутация: <b>{rep_title}</b>\n\n"
         f"{partner_line}\n\n"
