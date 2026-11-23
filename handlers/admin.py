@@ -93,7 +93,7 @@ async def cmd_warn(message: types.Message):
     if duration_seconds > 0:
         expires_at = int((datetime.now(timezone.utc) + timedelta(seconds=duration_seconds)).timestamp())
 
-    await add_user_warn(target_id, message.chat.id, message.from_user.id, reason, expires_at)
+    await add_user_warn(target_id, message.chat.id, message.from_user.id, f"[ВАРН] {reason}", expires_at)
 
     active_warns = await get_active_warns(target_id, message.chat.id)
     warns_count = len(active_warns)
@@ -186,6 +186,7 @@ async def cmd_mute(message: types.Message):
 
     mu = int((datetime.now(timezone.utc) + timedelta(minutes=minutes)).timestamp())
     await update_user(target_id, message.chat.id, muted_until=mu)
+    await add_user_warn(target_id, message.chat.id, message.from_user.id, f"[МУТ на {minutes} мин.] {reason}", mu)
     try:
         await bot.restrict_chat_member(message.chat.id, target_id, permissions=ChatPermissions(can_send_messages=False),
                                        until_date=mu)
@@ -233,6 +234,7 @@ async def cmd_ban(message: types.Message):
 
     try:
         await bot.ban_chat_member(message.chat.id, target_id)
+        await add_user_warn(target_id, message.chat.id, message.from_user.id, f"[БАН] {reason}", 0)
         await message.reply(f"⛔ Игрок забанен.\nПричина: {reason}")
         await log_action(message.chat.id, message.from_user.first_name, "BAN", target_id, reason)
     except Exception as e:
@@ -865,3 +867,81 @@ async def cmd_reset_apps(message: types.Message):
         f"Пользователь <code>{target_id}</code> теперь может подать анкеты заново.",
         parse_mode="HTML", reply_markup=back_kb(message.from_user.id)
     )
+# ==================== ИСТОРИЯ НАРУШЕНИЙ ====================
+
+@dp.message(Command("mywarns"))
+async def cmd_mywarns(message: types.Message):
+    chat_id = message.chat.id
+    warns = await get_user_warns(message.from_user.id, chat_id)
+
+    if not warns:
+        return await message.answer("✅ У вас нет истории нарушений в этом чате.", reply_markup=back_kb(message.from_user.id))
+
+    lines = [f"📋 <b>ВАША ИСТОРИЯ НАРУШЕНИЙ</b>\n{DIV}\n"]
+    now = int(datetime.now(timezone.utc).timestamp())
+
+    # Показываем последние 10 записей, чтобы не превысить лимит сообщения
+    for w in warns[:10]:
+        admin = await get_user(w['admin_id'], chat_id)
+        admin_name = admin['character_name'] if admin and admin['character_name'] else "Неизвестный"
+        date = datetime.fromtimestamp(w['created_at'], timezone.utc).strftime('%d.%m.%Y %H:%M')
+
+        if w['expires_at'] == 0:
+            status = "⛔ Навсегда"
+        elif w['expires_at'] > now:
+            left = (w['expires_at'] - now) // 60
+            if left > 60:
+                status = f"🟢 Активно (осталось {left // 60} ч.)"
+            else:
+                status = f"🟢 Активно (осталось {left} мин.)"
+        else:
+            status = "🔴 Истекло"
+
+        lines.append(f"📅 {date} | {status}\n👮 Админ: {esc(admin_name)}\n📝 {esc(w['reason'])}\n")
+
+    if len(warns) > 10:
+        lines.append(f"... и еще {len(warns) - 10} записей.")
+
+    await message.answer("\n".join(lines), parse_mode="HTML", reply_markup=back_kb(message.from_user.id))
+
+
+@dp.message(Command("warns"))
+async def cmd_check_warns(message: types.Message):
+    if not await check_mod_rights(message, "warn"): return
+
+    target_ref, display = parse_admin_target(message)
+    if not target_ref:
+        return await message.reply("Используй: <code>/warns @user</code> или ответом на сообщение", parse_mode="HTML")
+
+    target_id = target_ref if isinstance(target_ref, int) else await resolve_user_id(target_ref)
+    if not target_id: return await message.reply("❌ Игрок не найден.")
+
+    warns = await get_user_warns(target_id, message.chat.id)
+    if not warns:
+        return await message.reply(f"✅ У игрока {esc(display)} нет нарушений.")
+
+    lines = [f"📋 <b>ИСТОРИЯ НАРУШЕНИЙ: {esc(display)}</b>\n{DIV}\n"]
+    now = int(datetime.now(timezone.utc).timestamp())
+
+    for w in warns[:10]:
+        admin = await get_user(w['admin_id'], message.chat.id)
+        admin_name = admin['character_name'] if admin and admin['character_name'] else "Неизвестный"
+        date = datetime.fromtimestamp(w['created_at'], timezone.utc).strftime('%d.%m.%Y %H:%M')
+
+        if w['expires_at'] == 0:
+            status = "⛔ Навсегда"
+        elif w['expires_at'] > now:
+            left = (w['expires_at'] - now) // 60
+            if left > 60:
+                status = f"🟢 Активно (осталось {left // 60} ч.)"
+            else:
+                status = f"🟢 Активно (осталось {left} мин.)"
+        else:
+            status = "🔴 Истекло"
+
+        lines.append(f"📅 {date} | {status}\n👮 Админ: {esc(admin_name)}\n📝 {esc(w['reason'])}\n")
+
+    if len(warns) > 10:
+        lines.append(f"... и еще {len(warns) - 10} записей.")
+
+    await message.answer("\n".join(lines), parse_mode="HTML", reply_markup=back_kb(message.from_user.id))
