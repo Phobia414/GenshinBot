@@ -16,7 +16,7 @@ from db import (
     add_reputation, get_rep_level, RESIN_MAX, add_protected_user, remove_protected_user,
     update_primogems, get_guild_by_name, get_cleanup_settings, update_cleanup_settings,
     fetch_all, execute, fetch_one, add_trusted_admin, remove_trusted_admin,
-    add_user_warn, get_active_warns, clear_user_warns, remove_last_warn
+    add_user_warn, get_active_warns, clear_user_warns, remove_last_warn, get_user_warns
 )
 from helpers import (
     esc, is_chat_admin, _ensure_user, extract_target, resolve_user_id,
