@@ -273,7 +273,6 @@ PLAYER_COMMANDS = {
 }
 
 # ================= НОВАЯ СИСТЕМА РАНГОВ =================
-# ================= НОВАЯ СИСТЕМА РАНГОВ =================
 DEFAULT_ADMIN_RANKS = {
     "owner": {
         "name": "👑 Владелец", "weight": 100, "cmd": "",
@@ -312,7 +311,7 @@ DEFAULT_ADMIN_RANKS = {
     },
     "moderator": {
         "name": "🛡 Модер", "weight": 60, "cmd": "!модер",
-        "permissions": ["call", "applylink", "warn", "mute"], # Добавлен applylink и mute
+        "permissions": ["call", "applylink", "warn", "mute"],
         "tg_rights": {
             "can_delete_messages": True, "can_restrict_members": True, "can_manage_tags": True,
             "can_manage_video_chats": True

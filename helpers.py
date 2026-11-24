@@ -384,23 +384,34 @@ async def apply_tg_rights(bot: Bot, chat_id: int, user_id: int, rank_data: dict)
     if not rank_data: return False
     rights = rank_data.get("tg_rights", {})
     try:
-        await bot.promote_chat_member(
-            chat_id=chat_id, user_id=user_id,
-            can_change_info=rights.get("can_change_info", False),
-            can_delete_messages=rights.get("can_delete_messages", False),
-            can_invite_users=rights.get("can_invite_users", False),
-            can_restrict_members=rights.get("can_restrict_members", False),
-            can_pin_messages=rights.get("can_pin_messages", False),
-            can_promote_members=rights.get("can_promote_members", False),
-            can_manage_chat=rights.get("can_manage_chat", False),
-            can_manage_video_chats=rights.get("can_manage_video_chats", False), # <--- ВАЖНО
-            can_manage_topics=False
-        )
+        # Формируем kwargs для promote_chat_member
+        kwargs = {
+            "chat_id": chat_id,
+            "user_id": user_id,
+            "can_change_info": rights.get("can_change_info", False),
+            "can_delete_messages": rights.get("can_delete_messages", False),
+            "can_invite_users": rights.get("can_invite_users", False),
+            "can_restrict_members": rights.get("can_restrict_members", False),
+            "can_pin_messages": rights.get("can_pin_messages", False),
+            "can_promote_members": rights.get("can_promote_members", False),
+            "can_manage_chat": rights.get("can_manage_chat", False),
+            "can_manage_video_chats": rights.get("can_manage_video_chats", False),
+            "can_manage_topics": False
+        }
+
+        # Добавляем can_manage_tags, если версия Bot API поддерживает
+        if hasattr(bot, 'session') and hasattr(bot.session, 'api'):
+            # В Aiogram 3.x это просто передается как аргумент, если поддерживается API
+            # Добавим его в kwargs
+            kwargs["can_manage_tags"] = rights.get("can_manage_tags", False)
+
+        await bot.promote_chat_member(**kwargs)
         await update_user_tag(bot, chat_id, user_id)
         return True
     except Exception as e:
-        print(f"Ошибка выдачи прав ТГ: {e}")
-        return False
+        print(f"❌ ОШИБКА ВЫДАЧИ ПРАВ ТГ ДЛЯ {user_id} В {chat_id}: {e}")
+        # Возвращаем текст ошибки, чтобы админ увидел, в чем дело
+        return str(e)
 
 
 async def remove_tg_rights(bot: Bot, chat_id: int, user_id: int):
