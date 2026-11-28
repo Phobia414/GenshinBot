@@ -86,6 +86,8 @@ async def track_text(message: types.Message, user: dict, chat_id: int):
         except Exception:
             pass
 
+    now = int(datetime.now(timezone.utc).timestamp())
+
     # ===== ЗАЩИТА ОТ СПАМА ТЕКСТОМ (УДАЛЕНИЕ) =====
     if now - user["last_msg_time"] < ANTISPAM_SECONDS:
         # Удаляем только у обычных игроков. Админов и Владельца не трогаем.
