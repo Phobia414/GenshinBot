@@ -88,101 +88,130 @@ async def track_text(message: types.Message, user: dict, chat_id: int):
 
     now = int(datetime.now(timezone.utc).timestamp())
 
-    # ===== ЗАЩИТА ОТ СПАМА ТЕКСТОМ (УДАЛЕНИЕ) =====
-    if now - user["last_msg_time"] < ANTISPAM_SECONDS:
-        # Удаляем только у обычных игроков. Админов и Владельца не трогаем.
-        if message.from_user.id != OWNER_ID and user.get("admin_rank") in (None, "", "Игрок"):
+    @dp.message(StateFilter(None), F.text & ~F.text.startswith("/") & ~F.text.startswith("!"))
+    @inject_user
+    async def track_text(message: types.Message, user: dict, chat_id: int):
+        is_group = message.chat.type in ("group", "supergroup")
+
+        if message.from_user.username:
             try:
-                await message.delete()
-                # Опционально: можно отправить предупреждение, которое само удалится
-                # import asyncio
-                # warn_msg = await message.answer(f"⚠️ {esc(message.from_user.first_name)}, не спамь!")
-                # await asyncio.sleep(3)
-                # await warn_msg.delete()
+                await update_user(message.from_user.id, chat_id, username=message.from_user.username)
             except Exception:
-                pass  # Если сообщение уже удалено или нет прав
-        return
+                pass
 
-    if is_group and not user["character_name"]:
-        try:
-            await message.delete()
-        except Exception:
-            pass
-        return
-    # Защита от ссылок (для обычных игроков)
-    if is_group and message.from_user.id != OWNER_ID:
-        if user.get("admin_rank") in (None, "", "Игрок"):
-            has_link = False
-            # Проверяем вложения сообщения
-            if message.entities:
-                for ent in message.entities:
-                    # "url" — обычная ссылка, "text_link" — скрытая ссылка (текст с гиперссылкой)
-                    if ent.type in ("url", "text_link"):
-                        has_link = True
-                        break
+        if not user.get("first_seen"):
+            await update_user(message.from_user.id, chat_id, first_seen=int(datetime.now(timezone.utc).timestamp()))
+            user = await get_user(message.from_user.id, chat_id)
 
-            if has_link:
-                try:
-                    await message.delete()
-                    await message.answer(f"⚠️ {esc(message.from_user.first_name)}, ссылки запрещены!")
-                    return
-                except Exception:
-                    pass
-
-    now = int(datetime.now(timezone.utc).timestamp())
-    if user["muted_until"] and user["muted_until"] > now:
-        try:
-            await message.delete()
-        except Exception:
-            pass
-        return
-    # Защита от ссылок (для обычных игроков)
-    if is_group and message.from_user.id != OWNER_ID:
-        # Проверяем, что у пользователя нет админского ранга
-        if user.get("admin_rank") in (None, "", "Игрок"):
-            import re
-            # Ищем ТОЛЬКО реальные ссылки (http, https, t.me, tg://)
-            if re.search(r'(https?://|t\.me/|tg://)', message.text or ""):
-                try:
-                    await message.delete()
-                    # Отправляем предупреждение, которое удалится через 5 секунд (если поддерживается)
-                    try:
-                        await message.answer(f"⚠️ {esc(message.from_user.first_name)}, ссылки запрещены!")
-                    except:
-                        pass
-                    return
-                except Exception:
-                    pass
-
-    # Фильтр капса
-    if is_group and (message.text or ""):
-        text = message.text
-        if len(text) > 20 and text.isupper() and user.get("admin_rank") in (None, "", "Игрок"):
+        if is_group and not user["character_name"]:
             try:
                 await message.delete()
-                await message.answer(f"⚠️ {esc(message.from_user.first_name)}, не пиши капсом!")
-                return
-            except:
+            except Exception:
                 pass
-            # Умный анти-флуд
-    if is_group and user.get("admin_rank") in (None, "", "Игрок"):
-                import time
-                now_time = time.time()
-                user_flood = state._flood_cache.get(message.from_user.id, [])
-                # Оставляем только сообщения за последние 3 секунды
-                user_flood = [t for t in user_flood if now_time - t < 3]
-                user_flood.append(now_time)
-                state._flood_cache[message.from_user.id] = user_flood
+            return
 
-                if len(user_flood) > 5:  # Если больше 5 сообщений за 3 секунды
-                    try:
-                        await message.delete()
-                        await message.answer(f"🚫 {esc(message.from_user.first_name)}, прекрати флудить!")
-                        # Можно сразу выдать мут на 5 минут:
-                        await bot.restrict_chat_member(chat_id, message.from_user.id, ChatPermissions(can_send_messages=False), until_date=int(now_time)+300)
-                        return
-                    except:
-                        pass
+        now = int(datetime.now(timezone.utc).timestamp())
+        if user["muted_until"] and user["muted_until"] > now:
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            return
+
+        text_lower = (message.text or "").lower().strip()
+
+        # ===== СТРОГИЕ ТЕКСТОВЫЕ КОМАНДЫ =====
+        if is_group:
+            from aiogram.utils.keyboard import InlineKeyboardBuilder
+            from callbacks import ConfirmCB
+
+            # Брак
+            if text_lower == "брак":
+                from handlers.relations import cmd_propose
+                await cmd_propose(message)
+                return
+
+            # Развод (с подтверждением)
+            if text_lower == "развод":
+                b = InlineKeyboardBuilder()
+                b.button(text="✅ Да, развестись",
+                         callback_data=ConfirmCB(action="divorce", owner_id=message.from_user.id).pack())
+                b.button(text="❌ Отмена", callback_data="cancel_confirm")
+                b.adjust(1)
+                await message.answer(f"⚠️ <b>ВНИМАНИЕ</b>\n\nВы точно хотите разорвать отношения?",
+                                     reply_markup=b.as_markup(), parse_mode="HTML")
+                return
+
+            # Отказ от ребенка (с подтверждением)
+            if text_lower == "отказаться":
+                b = InlineKeyboardBuilder()
+                b.button(text="✅ Да, отказаться",
+                         callback_data=ConfirmCB(action="refuse_child", owner_id=message.from_user.id).pack())
+                b.button(text="❌ Отмена", callback_data="cancel_confirm")
+                b.adjust(1)
+                await message.answer(f"⚠️ <b>ВНИМАНИЕ</b>\n\nВы точно хотите отказаться от ребенка?",
+                                     reply_markup=b.as_markup(), parse_mode="HTML")
+                return
+
+            # Усыновление
+            if text_lower in ("усыновить", "удочерить"):
+                if await handle_interaction(message, user, text_lower, chat_id):
+                    return
+
+            # Перевод монет (с подтверждением)
+            import re
+            match = re.match(r"^(перевести|дать)\s+(\d+)$", text_lower)
+            if match:
+                amount = int(match.group(2))
+                target_ref, display = extract_target(message)
+
+                if not target_ref:
+                    return await message.answer("❌ Ответь на сообщение игрока или укажи @username.")
+
+                if isinstance(target_ref, str):
+                    target_id = await resolve_user_id(target_ref)
+                else:
+                    target_id = target_ref
+
+                if not target_id:
+                    return await message.answer("❌ Игрок не найден.")
+                if target_id == message.from_user.id:
+                    return await message.answer("❌ Себе нельзя.")
+
+                b = InlineKeyboardBuilder()
+                b.button(text="✅ Да, перевести",
+                         callback_data=ConfirmCB(action="transfer", owner_id=message.from_user.id, target_id=target_id,
+                                                 amount=amount).pack())
+                b.button(text="❌ Отмена", callback_data="cancel_confirm")
+                b.adjust(1)
+
+                target_user = await get_user(target_id, chat_id)
+                target_name = esc(target_user['character_name']) if target_user else display
+
+                await message.answer(f"⚠️ Вы точно хотите перевести <b>{amount}</b> монет игроку <b>{target_name}</b>?",
+                                     reply_markup=b.as_markup(), parse_mode="HTML")
+                return
+
+            # Профиль
+            if text_lower == "профиль":
+                from handlers.menu import cmd_profile_text
+                await cmd_profile_text(message)
+                return
+
+            # Баланс
+            if text_lower == "баланс":
+                await message.answer(f"💰 Твой баланс: <b>{user['balance']}</b> монет.",
+                                     reply_markup=back_kb(message.from_user.id))
+                return
+        # =====================================
+
+        # Дальше идет викторина, дуэли и т.д.
+        quiz = state._active_quizzes.get(message.chat.id)
+        if quiz:
+            # ... (код викторины)
+            pass
+        # ...
+        # ...
 
     text_lower = (message.text or "").lower().strip()
 
