@@ -484,7 +484,7 @@ async def track_sticker(message: types.Message, user: dict, chat_id: int):
     now = int(datetime.now(timezone.utc).timestamp())
     if user["muted_until"] and user["muted_until"] > now: return
 
-    # Проверка на медиа-спам
+    # Проверка на медиа-спам (передаем message и user)
     if is_group and await check_media_flood(message, user):
         return
 
@@ -500,11 +500,10 @@ async def track_photo(message: types.Message, user: dict, chat_id: int):
     is_group = message.chat.type in ("group", "supergroup")
     if is_group and not user["character_name"]: return
 
-    # Проверка на медиа-спам
+    # Проверка на медиа-спам (передаем message и user)
     if is_group and await check_media_flood(message, user):
         return
 
-    # Фото не влияет на статистику сообщений, но мы можем обновить время
     now = int(datetime.now(timezone.utc).timestamp())
     await update_user(message.from_user.id, chat_id, last_msg_time=now)
 
@@ -516,7 +515,7 @@ async def track_animation(message: types.Message, user: dict, chat_id: int):
     is_group = message.chat.type in ("group", "supergroup")
     if is_group and not user["character_name"]: return
 
-    # Проверка на медиа-спам
+    # Проверка на медиа-спам (передаем message и user)
     if is_group and await check_media_flood(message, user):
         return
 
