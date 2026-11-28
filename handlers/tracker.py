@@ -6,6 +6,7 @@ from aiogram import types, F
 from aiogram.types import FSInputFile
 from aiogram.filters import StateFilter, Command
 
+from callbacks import ConfirmCB
 from bot_instance import bot, dp
 from config import ANTISPAM_SECONDS, DB_PATH, OWNER_ID
 from constants import (
@@ -74,20 +75,6 @@ async def cmd_rppartner(message: types.Message):
 
     await update_chat_list(chat_id)
 
-
-@dp.message(StateFilter(None), F.text & ~F.text.startswith("/") & ~F.text.startswith("!"))
-@inject_user
-async def track_text(message: types.Message, user: dict, chat_id: int):
-    is_group = message.chat.type in ("group", "supergroup")
-
-    if message.from_user.username:
-        try:
-            await update_user(message.from_user.id, chat_id, username=message.from_user.username)
-        except Exception:
-            pass
-
-    now = int(datetime.now(timezone.utc).timestamp())
-
     @dp.message(StateFilter(None), F.text & ~F.text.startswith("/") & ~F.text.startswith("!"))
     @inject_user
     async def track_text(message: types.Message, user: dict, chat_id: int):
@@ -123,7 +110,7 @@ async def track_text(message: types.Message, user: dict, chat_id: int):
         # ===== СТРОГИЕ ТЕКСТОВЫЕ КОМАНДЫ =====
         if is_group:
             from aiogram.utils.keyboard import InlineKeyboardBuilder
-            from callbacks import ConfirmCB
+
 
             # Брак
             if text_lower == "брак":
