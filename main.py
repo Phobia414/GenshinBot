@@ -1,6 +1,8 @@
 import asyncio
 import logging
+import os
 import random
+import uvicorn
 from datetime import datetime, timezone
 
 from aiogram.types import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
@@ -29,6 +31,9 @@ from logger import setup_logging, get_logger
 
 from middlewares import *  # noqa: F401,F403
 import handlers  # noqa: F401
+
+# ИМПОРТИРУЕМ ВЕБ-ПРИЛОЖЕНИЕ ИЗ SERVER.PY
+from server import app as fastapi_app
 
 log = get_logger(__name__)
 
@@ -196,11 +201,10 @@ async def auto_cleanup_job():
                     log.warning(f"Не удалось получить админов чата {chat_id}: {e}")
                     continue
 
-                # НЕ КИКАЕМ ТЕХ, КТО ЗАШЕЛ МЕНЬШЕ 24 ЧАСОВ НАЗАД
                 min_time_to_kick = now - 86400
 
                 users_to_kick = await fetch_all(
-                     "SELECT user_id FROM users WHERE chat_id = ? AND msgs_week < ? "
+                    "SELECT user_id FROM users WHERE chat_id = ? AND msgs_week < ? "
                     "AND (rest_active = 0 OR rest_active IS NULL) "
                     "AND (clean_exempt = 0 OR clean_exempt IS NULL) "
                     "AND (first_seen < ? OR first_seen IS NULL)",
@@ -254,7 +258,6 @@ async def reset_monthly_stats():
         log.error(f"Ошибка сброса месячной статистики: {e}")
 
 
-# НОВАЯ ФУНКЦИЯ ДЛЯ СБРОСА ДНЕВНОЙ СТАТИСТИКИ
 async def reset_daily_stats():
     try:
         await execute("UPDATE users SET msgs_day = 0")
@@ -271,6 +274,19 @@ def setup_sentry():
         sentry_sdk.init(dsn=SENTRY_DSN, traces_sample_rate=0.1, profiles_sample_rate=0.1, send_default_pii=True)
     except Exception:
         pass
+
+
+# НОВАЯ ФУНКЦИЯ ДЛЯ ЗАПУСКА ВЕБ-СЕРВЕРА
+async def run_web_server():
+    # BotHost автоматически передает порт через переменную окружения PORT
+    port = int(os.environ.get("PORT", 8080))
+
+    # Создаем конфигурацию для Uvicorn
+    config = uvicorn.Config(fastapi_app, host="0.0.0.0", port=port, log_level="info")
+    server = uvicorn.Server(config)
+
+    log.info(f"🌐 Веб-сервер (Mini App) запускается на порту {port}")
+    await server.serve()
 
 
 async def main():
@@ -305,17 +321,16 @@ async def main():
             await set_guild_boss(chat_id, boss_name, boss["hp"], now_ts)
 
     await restore_chat_lists()
-    # Проверка босса при запуске (если суббота после 12, а босс старый)
+
     now = datetime.now(timezone.utc)
-    if now.weekday() == 5 and now.hour >= 12: # 5 = Суббота
+    if now.weekday() == 5 and now.hour >= 12:
         groups = await get_known_groups()
         groups.append(0)
         for chat_id in groups:
             wb = await get_world_boss(chat_id)
-            # Если босс поставлен раньше этой субботы
             week_start = now.replace(hour=12, minute=0, second=0, microsecond=0).timestamp()
             if not wb or wb['week_start'] < week_start:
-                await rotate_bosses() # Принудительно меняем
+                await rotate_bosses()
                 break
     await set_bot_commands()
 
@@ -328,8 +343,7 @@ async def main():
     scheduler.add_job(send_quiz_question, CronTrigger(minute=0), id="hourly_quiz", misfire_grace_time=300)
     scheduler.add_job(auto_cleanup_job, IntervalTrigger(hours=1), id="auto_cleanup")
 
-    # Сброс статистики
-    scheduler.add_job(reset_daily_stats, CronTrigger(hour=0, minute=0), id="reset_day") # <--- ДОБАВЛЕНО
+    scheduler.add_job(reset_daily_stats, CronTrigger(hour=0, minute=0), id="reset_day")
     scheduler.add_job(reset_weekly_stats, CronTrigger(day_of_week="mon", hour=0, minute=0), id="reset_week")
     scheduler.add_job(reset_monthly_stats, CronTrigger(day=1, hour=0, minute=0), id="reset_month")
 
@@ -338,10 +352,14 @@ async def main():
     log.info("=== БОТ ЗАПУЩЕН ===")
     logging.getLogger("aiogram.event").setLevel(logging.WARNING)
 
+    # ЗАПУСКАЕМ БОТА И САЙТ ОДНОВРЕМЕННО
     try:
-        await dp.start_polling(bot)
+        await asyncio.gather(
+            dp.start_polling(bot),
+            run_web_server()
+        )
     finally:
-        log.info("=== ОСТАНОВКА БОТА ===")
+        log.info("=== ОСТАНОВКА БОТА И САЙТА ===")
         scheduler.shutdown(wait=False)
 
 
