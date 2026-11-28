@@ -32,6 +32,7 @@ from helpers import get_placeholder_image
 from handlers.chat_list import update_chat_list
 from handlers.fun import start_duel_logic
 from keyboards import back_kb, regions_kb
+import asyncio
 
 MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября",
           "декабря"]
@@ -85,9 +86,20 @@ async def track_text(message: types.Message, user: dict, chat_id: int):
         except Exception:
             pass
 
-    if not user.get("first_seen"):
-        await update_user(message.from_user.id, chat_id, first_seen=int(datetime.now(timezone.utc).timestamp()))
-        user = await get_user(message.from_user.id, chat_id)
+    # ===== ЗАЩИТА ОТ СПАМА ТЕКСТОМ (УДАЛЕНИЕ) =====
+    if now - user["last_msg_time"] < ANTISPAM_SECONDS:
+        # Удаляем только у обычных игроков. Админов и Владельца не трогаем.
+        if message.from_user.id != OWNER_ID and user.get("admin_rank") in (None, "", "Игрок"):
+            try:
+                await message.delete()
+                # Опционально: можно отправить предупреждение, которое само удалится
+                # import asyncio
+                # warn_msg = await message.answer(f"⚠️ {esc(message.from_user.first_name)}, не спамь!")
+                # await asyncio.sleep(3)
+                # await warn_msg.delete()
+            except Exception:
+                pass  # Если сообщение уже удалено или нет прав
+        return
 
     if is_group and not user["character_name"]:
         try:
@@ -239,7 +251,95 @@ async def track_text(message: types.Message, user: dict, chat_id: int):
                 await message.reply(
                     "⚔️ Чтобы вызвать на дуэль, ответь на сообщение игрока или укажи @username, и напиши сумму (например: Вызвать на дуэль 500)")
                 return
+        # ===== СТРОГИЕ ТЕКСТОВЫЕ КОМАНДЫ (С ПОДТВЕРЖДЕНИЕМ) =====
+        if is_group:
+            from aiogram.utils.keyboard import InlineKeyboardBuilder
+            from callbacks import ConfirmCB
 
+            # Брак (без подтверждения, так как это лишь предложение)
+            if text_lower == "брак":
+                from handlers.relations import cmd_propose
+                await cmd_propose(message)
+                return
+
+            # Развод (с подтверждением)
+            if text_lower == "развод":
+                b = InlineKeyboardBuilder()
+                b.button(text="✅ Да, развестись",
+                         callback_data=ConfirmCB(action="divorce", owner_id=message.from_user.id).pack())
+                b.button(text="❌ Отмена", callback_data="cancel_confirm")
+                b.adjust(1)
+                await message.answer(
+                    f"⚠️ <b>ВНИМАНИЕ</b>\n\nВы точно хотите разорвать отношения? Это действие нельзя отменить.",
+                    reply_markup=b.as_markup(), parse_mode="HTML"
+                )
+                return
+
+            # Отказ от ребенка (с подтверждением)
+            if text_lower == "отказаться":
+                b = InlineKeyboardBuilder()
+                b.button(text="✅ Да, отказаться",
+                         callback_data=ConfirmCB(action="refuse_child", owner_id=message.from_user.id).pack())
+                b.button(text="❌ Отмена", callback_data="cancel_confirm")
+                b.adjust(1)
+                await message.answer(
+                    f"⚠️ <b>ВНИМАНИЕ</b>\n\nВы точно хотите отказаться от ребенка?",
+                    reply_markup=b.as_markup(), parse_mode="HTML"
+                )
+                return
+
+            # Усыновление
+            if text_lower in ("усыновить", "удочерить"):
+                if await handle_interaction(message, user, text_lower, chat_id):
+                    return
+
+            # Перевод монет (с подтверждением)
+            import re
+            match = re.match(r"^(перевести|дать)\s+(\d+)$", text_lower)
+            if match:
+                amount = int(match.group(2))
+                target_ref, display = extract_target(message)
+
+                if not target_ref:
+                    return await message.answer("❌ Ответь на сообщение игрока или укажи @username.")
+
+                if isinstance(target_ref, str):
+                    target_id = await resolve_user_id(target_ref)
+                else:
+                    target_id = target_ref
+
+                if not target_id:
+                    return await message.answer("❌ Игрок не найден.")
+                if target_id == message.from_user.id:
+                    return await message.answer("❌ Себе нельзя.")
+
+                b = InlineKeyboardBuilder()
+                b.button(text="✅ Да, перевести",
+                         callback_data=ConfirmCB(action="transfer", owner_id=message.from_user.id, target_id=target_id,
+                                                 amount=amount).pack())
+                b.button(text="❌ Отмена", callback_data="cancel_confirm")
+                b.adjust(1)
+
+                target_user = await get_user(target_id, chat_id)
+                target_name = esc(target_user['character_name']) if target_user else display
+
+                await message.answer(
+                    f"⚠️ Вы точно хотите перевести <b>{amount}</b> монет игроку <b>{target_name}</b>?",
+                    reply_markup=b.as_markup(), parse_mode="HTML"
+                )
+                return
+
+            # Профиль и Баланс (без изменений, без подтверждения)
+            if text_lower == "профиль":
+                from handlers.menu import cmd_profile_text
+                await cmd_profile_text(message)
+                return
+
+            if text_lower == "баланс":
+                await message.answer(f"💰 Твой баланс: <b>{user['balance']}</b> монет.",
+                                     reply_markup=back_kb(message.from_user.id))
+                return
+        # =====================================
     matched = None
     custom_inter = None
 
@@ -327,37 +427,53 @@ async def track_text(message: types.Message, user: dict, chat_id: int):
 
 @dp.message(StateFilter(None), F.sticker)
 @inject_user
+# ================== ЗАЩИТА ОТ МЕДИА-СПАМА ==================
+async def check_media_flood(message: types.Message, user: dict) -> bool:
+    """Возвращает True, если это спам (сообщение нужно удалить)"""
+    # Админов и владельца не трогаем
+    if message.from_user.id == OWNER_ID or user.get("admin_rank") not in (None, "", "Игрок"):
+        return False
+
+    import time
+    now = time.time()
+    user_id = message.from_user.id
+
+    # Получаем историю отправок за последние 5 секунд
+    history = state._media_flood_cache.get(user_id, [])
+    history = [t for t in history if now - t < 5]
+    history.append(now)
+    state._media_flood_cache[user_id] = history
+
+    # Если больше 3 медиафайлов за 5 секунд
+    if len(history) > 3:
+        try:
+            await message.delete()
+            # Можно выдать предупреждение (и оно само удалится через 5 сек)
+            msg = await message.answer(f"⚠️ {esc(message.from_user.first_name)}, прекрати спамить медиа!")
+            await asyncio.sleep(3)
+            await msg.delete()
+        except:
+            pass
+        return True
+    return False
+
+
+@dp.message(StateFilter(None), F.sticker)
+@inject_user
 async def track_sticker(message: types.Message, user: dict, chat_id: int):
     is_group = message.chat.type in ("group", "supergroup")
-
-    if is_group and not user["character_name"]:
-        try:
-            await message.delete()
-        except:
-            pass
-        return
+    if is_group and not user["character_name"]: return
 
     now = int(datetime.now(timezone.utc).timestamp())
-    if user["muted_until"] and user["muted_until"] > now:
-        try:
-            await message.delete()
-        except:
-            pass
-        return
+    if user["muted_until"] and user["muted_until"] > now: return
 
-    if now - user["last_msg_time"] < ANTISPAM_SECONDS: return
+    # Проверка на медиа-спам
+    if is_group and await check_media_flood(message, user):
+        return
 
     await increment_user_field(message.from_user.id, chat_id, "stickers_count", 1)
     await increment_user_field(message.from_user.id, chat_id, "board_sts", 1)
     await update_user(message.from_user.id, chat_id, last_msg_time=now)
-
-    if user["guild_id"]:
-        await execute("""
-            INSERT INTO guild_member_stats (guild_id, user_id, stickers) 
-            VALUES (?, ?, 1) 
-            ON CONFLICT(guild_id, user_id) DO UPDATE SET stickers = stickers + 1
-        """, (user["guild_id"], user["user_id"]))
-
     await check_board_auto(message)
 
 
@@ -365,19 +481,30 @@ async def track_sticker(message: types.Message, user: dict, chat_id: int):
 @inject_user
 async def track_photo(message: types.Message, user: dict, chat_id: int):
     is_group = message.chat.type in ("group", "supergroup")
-    if is_group and not user["character_name"]:
+    if is_group and not user["character_name"]: return
+
+    # Проверка на медиа-спам
+    if is_group and await check_media_flood(message, user):
+        return
+
+    # Фото не влияет на статистику сообщений, но мы можем обновить время
+    now = int(datetime.now(timezone.utc).timestamp())
+    await update_user(message.from_user.id, chat_id, last_msg_time=now)
+
+
+@dp.message(StateFilter(None), F.animation | F.video)
+@inject_user
+async def track_animation(message: types.Message, user: dict, chat_id: int):
+    """Обработчик для GIF-анимаций и видео"""
+    is_group = message.chat.type in ("group", "supergroup")
+    if is_group and not user["character_name"]: return
+
+    # Проверка на медиа-спам
+    if is_group and await check_media_flood(message, user):
         return
 
     now = int(datetime.now(timezone.utc).timestamp())
-    if user["muted_until"] and user["muted_until"] > now:
-        return
-
-    if user["guild_id"]:
-        await execute("""
-            INSERT INTO guild_member_stats (guild_id, user_id, photos) 
-            VALUES (?, ?, 1) 
-            ON CONFLICT(guild_id, user_id) DO UPDATE SET photos = photos + 1
-        """, (user["guild_id"], user["user_id"]))
+    await update_user(message.from_user.id, chat_id, last_msg_time=now)
 
 
 async def handle_interaction(message, user, matched_phrase, chat_id, custom_inter=None):

@@ -44,7 +44,6 @@ async def set_bot_commands():
         BotCommand(command="createguild", description="Создать гильдию"),
         BotCommand(command="donate", description="Пополнить казну"),
         BotCommand(command="transfer_ally", description="Передать деньги союзу"),
-        BotCommand(command="freerole", description="Освободить роль"),
         BotCommand(command="disbandguild", description="Распустить гильдию"),
         BotCommand(command="stats", description="Топы"),
         BotCommand(command="daily", description="Ежедневная награда"),

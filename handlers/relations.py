@@ -6,7 +6,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
 from bot_instance import bot, dp
-from callbacks import MenuCB, RelCB, GiftCB, ProposeCB
+from callbacks import MenuCB, RelCB, GiftCB, ProposeCB, ConfirmCB
 from config import OWNER_ID, PROPOSE_COOLDOWN
 from constants import (
     DIV, GIFTS, XP_PER_LEVEL, MAX_LEVEL, WEDDING_LEVEL,
@@ -395,3 +395,77 @@ async def cb_buy_gift(query: types.CallbackQuery, callback_data: GiftCB, user: d
 
     text = f"— [ 🎁 ПОДАРКИ ] —\n\nДля: {esc(partner['character_name'])}\n\n💰 Твой баланс: {new_balance}\n📊 Уровень отношений: {level} / {MAX_LEVEL}"
     await edit_or_send(query, text, gifts_kb(query.from_user.id), image_url="")
+@dp.message(Command("divorce_text"))
+async def cmd_divorce_text(message: types.Message):
+    # Это скрытая команда, мы вызываем её из tracker.py
+    chat_id = message.chat.id
+    user = await get_user(message.from_user.id, chat_id)
+    if not user["partner_id"]:
+        return await message.answer("❌ У тебя нет партнёра.")
+
+    partner_id = user["partner_id"]
+    await update_user(message.from_user.id, chat_id, partner_id=0, partner_name="", rel_xp=0, rel_started=0, is_married=0,
+                      married_at=0, child_id="", child_name="", rel_image="")
+    await update_user(partner_id, chat_id, partner_id=0, partner_name="", rel_xp=0, rel_started=0, is_married=0,
+                      married_at=0, child_id="", child_name="", rel_image="")
+
+    await message.answer("💔 Отношения разорваны.", reply_markup=back_kb(message.from_user.id))
+
+
+@dp.message(Command("refuse_child"))
+async def cmd_refuse_child_text(message: types.Message):
+    chat_id = message.chat.id
+    user = await get_user(message.from_user.id, chat_id)
+    if not user["child_id"]:
+        return await message.answer("❌ У тебя нет детей.")
+
+    # Очищаем у обоих
+    partner_id = user["partner_id"]
+    await update_user(message.from_user.id, chat_id, child_id="", child_name="")
+    if partner_id:
+        await update_user(partner_id, chat_id, child_id="", child_name="")
+
+    await message.answer("🕊️ Вы отказались от ребенка.", reply_markup=back_kb(message.from_user.id))
+
+
+from callbacks import ConfirmCB  # <--- добавь в импорты вверху
+
+
+@dp.callback_query(ConfirmCB.filter(F.action == "divorce"))
+async def cb_confirm_divorce(query: types.CallbackQuery, callback_data: ConfirmCB):
+    if query.from_user.id != callback_data.owner_id:
+        return await query.answer("❌ Это не ваша кнопка.", show_alert=True)
+
+    chat_id = query.message.chat.id
+    user = await get_user(query.from_user.id, chat_id)
+    if not user["partner_id"]:
+        return await query.answer("У вас нет партнёра.", show_alert=True)
+
+    partner_id = user["partner_id"]
+    await update_user(query.from_user.id, chat_id, partner_id=0, partner_name="", rel_xp=0, rel_started=0, is_married=0,
+                      married_at=0, child_id="", child_name="", rel_image="")
+    await update_user(partner_id, chat_id, partner_id=0, partner_name="", rel_xp=0, rel_started=0, is_married=0,
+                      married_at=0, child_id="", child_name="", rel_image="")
+
+    await query.message.edit_text("💔 Отношения разорваны.", parse_mode="HTML")
+
+
+@dp.callback_query(ConfirmCB.filter(F.action == "refuse_child"))
+async def cb_confirm_refuse(query: types.CallbackQuery, callback_data: ConfirmCB):
+    if query.from_user.id != callback_data.owner_id:
+        return await query.answer("❌ Это не ваша кнопка.", show_alert=True)
+
+    chat_id = query.message.chat.id
+    user = await get_user(query.from_user.id, chat_id)
+    if not user["child_id"]:
+        return await query.answer("У вас нет детей.", show_alert=True)
+
+    partner_id = user["partner_id"]
+    await update_user(query.from_user.id, chat_id, child_id="", child_name="")
+    if partner_id:
+        await update_user(partner_id, chat_id, child_id="", child_name="")
+
+    await query.message.edit_text("🕊️ Вы отказались от ребенка.", parse_mode="HTML")
+@dp.callback_query(F.data == "cancel_confirm")
+async def cb_cancel_confirm(query: types.CallbackQuery):
+    await query.message.edit_text("❌ Действие отменено.", parse_mode="HTML")

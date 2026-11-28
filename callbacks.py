@@ -116,3 +116,8 @@ class AdminAppCB(CallbackData, prefix="aapp"):
     action: str
     user_id: int = 0
     status: str = ""
+class ConfirmCB(CallbackData, prefix="confirm"):
+    action: str
+    owner_id: int
+    target_id: int = 0
+    amount: int = 0

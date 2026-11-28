@@ -14,6 +14,7 @@ _active_quiz: dict = {}
 _known_groups: set = set()
 _active_quizzes: dict = {}
 _flood_cache = {}
+_media_flood_cache = {}
 
 # ===== КАСТОМНЫЕ ПЕРСОНАЖИ И ФОТО =====
 _char_photos: dict = {}   # {"Дурин": "file_id или url"}

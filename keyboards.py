@@ -55,7 +55,6 @@ def back_kb(uid):
 
 def profile_kb(uid):
     b = InlineKeyboardBuilder()
-    b.button(text="⊱ 🎭 Освободить роль ⊰", callback_data=MenuCB(action="freerole", owner_id=uid))
     b.button(text="⊱ ‹ Назад в меню ⊰", callback_data=MenuCB(action="menu", owner_id=uid))
     b.adjust(1)
     return b.as_markup()
