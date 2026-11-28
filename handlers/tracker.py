@@ -143,7 +143,7 @@ async def track_text(message: types.Message, user: dict, chat_id: int):
     # Фильтр капса
     if is_group and (message.text or ""):
         text = message.text
-        if len(text) > 10 and text.isupper() and user.get("admin_rank") in (None, "", "Игрок"):
+        if len(text) > 20 and text.isupper() and user.get("admin_rank") in (None, "", "Игрок"):
             try:
                 await message.delete()
                 await message.answer(f"⚠️ {esc(message.from_user.first_name)}, не пиши капсом!")
@@ -177,23 +177,28 @@ async def track_text(message: types.Message, user: dict, chat_id: int):
         correct_answers = quiz.get("answers", [])
         is_correct = False
 
+        import re
+        user_text = text_lower.strip()
+
         for answer in correct_answers:
-            if not answer:
-                continue
-            if text_lower == answer or text_lower in answer or answer in text_lower:
+            if not answer: continue
+            ans_text = answer.strip()
+
+            # 1. Точное совпадение всего текста
+            if user_text == ans_text:
                 is_correct = True
                 break
-            else:
-                for word in answer.split():
-                    if len(word) > 2 and word in text_lower:
-                        is_correct = True
-                        break
-            if is_correct:
+
+            # 2. Поиск целого слова/фразы (чтобы "месяц" не засчитывался за "1.5 месяца")
+            # \b означает границу слова
+            pattern = r'\b' + re.escape(ans_text) + r'\b'
+            if re.search(pattern, user_text):
+                is_correct = True
                 break
 
         if is_correct:
             reward_coins = quiz.get("coins", 50)
-            # reward_primo = quiz.get("primo", 10) <--- УДАЛЕНО
+            # ... (остальной код награды остается без изменений)
 
             await update_user(message.from_user.id, chat_id, balance=user["balance"] + reward_coins)
             # await update_primogems(message.from_user.id, chat_id, reward_primo) <--- УДАЛЕНО
@@ -649,3 +654,58 @@ async def _check_board_auto_locked(message):
                 )
             except Exception as e:
                 print(f"Ошибка при выдаче награды за задание {t_id}: {e}")
+
+
+@dp.edited_message(StateFilter(None))
+@inject_user
+async def track_edited_message(message: types.Message, user: dict, chat_id: int):
+    is_group = message.chat.type in ("group", "supergroup")
+    if not is_group: return
+
+    # Если нет персонажа, удаляем
+    if not user["character_name"]:
+        try:
+            await message.delete()
+        except:
+            pass
+        return
+
+    # Если человек замучен
+    now = int(datetime.now(timezone.utc).timestamp())
+    if user["muted_until"] and user["muted_until"] > now:
+        try:
+            await message.delete()
+        except:
+            pass
+        return
+
+    # === ПРОВЕРКИ БЕЗОПАСНОСТИ (те же, что и в track_text) ===
+    text_lower = (message.text or "").lower().strip()
+    bad_action = False
+
+    # 1. Ссылки
+    if message.from_user.id != OWNER_ID and user.get("admin_rank") in (None, "", "Игрок"):
+        if message.entities:
+            for ent in message.entities:
+                if ent.type in ("url", "text_link"):
+                    bad_action = True
+                    break
+
+    # 2. Капс
+    if not bad_action and (message.text or ""):
+        text = message.text
+        if len(text) > 20 and text.isupper() and user.get("admin_rank") in (None, "", "Игрок"):
+            bad_action = True
+
+    # 3. Мат (если добавлял BAD_WORDS)
+    # from constants import BAD_WORDS
+    # if not bad_action and any(word in text_lower for word in BAD_WORDS) and user.get("admin_rank") in (None, "", "Игрок"):
+    #     bad_action = True
+
+    if bad_action:
+        try:
+            await message.delete()
+            await message.answer(
+                f"⚠️ {esc(message.from_user.first_name)}, редактирование сообщений с нарушением правил запрещено!")
+        except:
+            pass
