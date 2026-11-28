@@ -457,7 +457,6 @@ async def track_text(message: types.Message, user: dict, chat_id: int):
 
 
 @dp.message(StateFilter(None), F.sticker)
-@inject_user
 # ================== ЗАЩИТА ОТ МЕДИА-СПАМА ==================
 async def check_media_flood(message: types.Message, user: dict) -> bool:
     """Возвращает True, если это спам (сообщение нужно удалить)"""
